@@ -22,6 +22,7 @@
     timeline: null,
     launcher: null,
     launcherMoved: false,
+    currentExportMoved: false,
     settings: {
       enabled: true,
       showSidebarTime: false,
@@ -31,6 +32,7 @@
       closeOnOutsideClick: true,
       exportFilenameTemplate: '{title}',
       launcherPosition: { x: 0.94, y: 0.76 },
+      currentExportPositionY: 0.82,
       panelSize: { width: 580, height: 560 }
     }
   };
@@ -392,6 +394,57 @@
     return cached || { id, title: document.title.replace(/\s*[|·-]\s*ChatGPT.*$/i, '').trim() || 'ChatGPT 聊天记录' };
   }
 
+  function placeCurrentChatExportButton(button = document.querySelector('[data-chat-timeline-current-export]')) {
+    if (!button) return;
+    const maxTop = Math.max(VIEWPORT_MARGIN, window.innerHeight - button.offsetHeight - VIEWPORT_MARGIN);
+    const y = Math.max(0, Math.min(1, Number(S.settings.currentExportPositionY) || 0));
+    const top = Math.round(VIEWPORT_MARGIN + (maxTop - VIEWPORT_MARGIN) * y);
+    button.style.top = `${top}px`;
+  }
+
+  function saveCurrentChatExportPosition(top, button) {
+    const maxTop = Math.max(VIEWPORT_MARGIN, window.innerHeight - button.offsetHeight - VIEWPORT_MARGIN);
+    const y = Math.max(0, Math.min(1, (top - VIEWPORT_MARGIN) / Math.max(1, maxTop - VIEWPORT_MARGIN)));
+    S.settings.currentExportPositionY = y;
+    chrome.storage.local.set({ currentExportPositionY: y });
+  }
+
+  function setupCurrentChatExportDrag(button) {
+    let dragging = false;
+    let startY = 0;
+    let startTop = 0;
+
+    button.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      dragging = true;
+      S.currentExportMoved = false;
+      const rect = button.getBoundingClientRect();
+      startY = event.clientY;
+      startTop = rect.top;
+      button.setPointerCapture(event.pointerId);
+      button.classList.add('chat-timeline-dragging');
+    });
+
+    button.addEventListener('pointermove', event => {
+      if (!dragging) return;
+      const dy = event.clientY - startY;
+      if (Math.abs(dy) > 5) S.currentExportMoved = true;
+      const maxTop = window.innerHeight - button.offsetHeight - VIEWPORT_MARGIN;
+      const top = Math.max(VIEWPORT_MARGIN, Math.min(maxTop, startTop + dy));
+      button.style.top = `${top}px`;
+    });
+
+    const finish = event => {
+      if (!dragging) return;
+      dragging = false;
+      button.classList.remove('chat-timeline-dragging');
+      try { button.releasePointerCapture(event.pointerId); } catch (_) {}
+      saveCurrentChatExportPosition(button.getBoundingClientRect().top, button);
+    };
+    button.addEventListener('pointerup', finish);
+    button.addEventListener('pointercancel', finish);
+  }
+
   function ensureCurrentChatExportButton() {
     const id = currentConversationId();
     const existing = document.querySelector('[data-chat-timeline-current-export]');
@@ -405,28 +458,36 @@
     button.type = 'button';
     button.className = 'chat-timeline-current-export';
     button.setAttribute('data-chat-timeline-current-export', '1');
-    button.textContent = '导出 MD';
-    button.title = '导出当前 ChatGPT 聊天为 Markdown';
+    button.setAttribute('aria-label', '导出整个对话（Markdown）');
+    button.title = '导出整个对话（Markdown）';
+    button.innerHTML = `
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <path d="M14 2v6h6"></path>
+        <path d="M12 11v6"></path>
+        <path d="m9.5 14.5 2.5 2.5 2.5-2.5"></path>
+      </svg>`;
     button.addEventListener('click', async () => {
+      if (S.currentExportMoved) {
+        S.currentExportMoved = false;
+        return;
+      }
       if (button.disabled) return;
       const rec = currentConversationRecord();
       if (!rec) return;
-      const oldText = button.textContent;
       button.disabled = true;
-      button.textContent = '导出中…';
+      button.title = '正在导出整个对话…';
       try {
         await exportConversationMarkdown(rec);
-        button.textContent = '已导出';
+        button.title = '已导出整个对话';
         window.setTimeout(() => {
-          if (button.isConnected) button.textContent = oldText;
+          if (button.isConnected) button.title = '导出整个对话（Markdown）';
         }, 1000);
       } catch (error) {
-        button.textContent = '失败';
         button.title = `导出失败：${error.message}`;
         window.setTimeout(() => {
           if (button.isConnected) {
-            button.textContent = oldText;
-            button.title = '导出当前 ChatGPT 聊天为 Markdown';
+            button.title = '导出整个对话（Markdown）';
           }
         }, 1600);
       } finally {
@@ -434,6 +495,8 @@
       }
     });
     document.body.appendChild(button);
+    placeCurrentChatExportButton(button);
+    setupCurrentChatExportDrag(button);
   }
 
   function removeFloatingButton() {
@@ -1271,7 +1334,7 @@
   async function loadSettings() {
     const values = await new Promise(resolve => {
       chrome.storage.local.get(
-        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'panelSize'],
+        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'currentExportPositionY', 'panelSize'],
         data => resolve(data || {})
       );
     });
@@ -1285,6 +1348,7 @@
     if (values.launcherPosition?.x != null && values.launcherPosition?.y != null) {
       S.settings.launcherPosition = values.launcherPosition;
     }
+    if (values.currentExportPositionY != null) S.settings.currentExportPositionY = values.currentExportPositionY;
     if (values.panelSize?.width && values.panelSize?.height) S.settings.panelSize = values.panelSize;
   }
 
@@ -1406,6 +1470,7 @@
     setInterval(backgroundSyncConversationList, BACKGROUND_SYNC_MS);
     window.addEventListener('resize', () => {
       placeLauncher();
+      placeCurrentChatExportButton();
       positionTimelinePanel();
     });
     S.ready = true;

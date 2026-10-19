@@ -367,26 +367,43 @@
 
 .chat-timeline-current-export {
   position: fixed !important;
-  right: 18px !important;
-  bottom: 18px !important;
+  right: 10px !important;
   z-index: 2147483645 !important;
-  min-width: 74px !important;
-  height: 34px !important;
-  padding: 0 12px !important;
+  width: 38px !important;
+  height: 38px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   border: 1px solid rgba(127, 127, 127, 0.28) !important;
-  border-radius: 9px !important;
+  border-radius: 10px !important;
   background: rgba(255, 255, 255, 0.96) !important;
   color: #374151 !important;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12) !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
-  font-size: 12px !important;
-  font-weight: 600 !important;
-  cursor: pointer !important;
+  cursor: ns-resize !important;
+  touch-action: none !important;
+  user-select: none !important;
 }
 
 .chat-timeline-current-export:hover:not(:disabled) {
   color: #0d9373 !important;
   border-color: rgba(16, 163, 127, 0.35) !important;
+  box-shadow: 0 7px 20px rgba(0, 0, 0, 0.16) !important;
+}
+
+.chat-timeline-current-export svg {
+  width: 20px !important;
+  height: 20px !important;
+  fill: none !important;
+  stroke: currentColor !important;
+  stroke-width: 1.8 !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  pointer-events: none !important;
+}
+
+.chat-timeline-current-export.chat-timeline-dragging {
+  cursor: ns-resize !important;
 }
 
 .chat-timeline-current-export:disabled {
