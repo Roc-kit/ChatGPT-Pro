@@ -4,7 +4,7 @@
   "version": "3.0.0",
   "description": "ChatGPT Pro 工具箱：支持聊天时间线、消息时间戳、来源筛选、搜索和 Markdown/JSON 批量导出。",
 
-  "permissions": ["storage"],
+  "permissions": ["storage", "unlimitedStorage"],
 
   "homepage_url": "https://github.com/Roc-kit/ChatGPT-Pro",
 

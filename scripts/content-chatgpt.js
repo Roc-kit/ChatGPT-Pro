@@ -274,7 +274,8 @@
       const direction = createdSort?.getAttribute('aria-sort') === 'ascending' ? 'oldest' : 'newest';
       if (projectFilter) populateProjectFilter(projectFilter, records);
       if (list && projectFilter) renderTimelineRows(list, records, direction, projectFilter.value, null, titleFilterInput?.value || '');
-      if (status) status.textContent = `${records.length} 条 · ${statusText}`;
+      const searchView = S.timeline.querySelector('[data-panel-content="search"]');
+      if (status && searchView?.hidden !== false) status.textContent = `${records.length} 条 · ${statusText}`;
     }
   }
 
@@ -1254,6 +1255,191 @@
     return { successCount: records.length - failures.length, failureCount: failures.length };
   }
 
+  function runtimeMessage(message) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(message, response => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        if (!response?.success) {
+          reject(new Error(response?.error || '扩展后台操作失败'));
+          return;
+        }
+        resolve(response);
+      });
+    });
+  }
+
+  function buildSearchIndexRecord(data, rec) {
+    const seen = new Set();
+    const messages = Object.values(data?.mapping || {})
+      .map(node => node?.message)
+      .filter(message => message?.id && ['user', 'assistant'].includes(message?.author?.role))
+      .sort((a, b) => timestampValue(a.create_time) - timestampValue(b.create_time))
+      .filter(message => {
+        if (seen.has(message.id)) return false;
+        seen.add(message.id);
+        return true;
+      })
+      .map(message => ({
+        id: message.id,
+        role: message.author.role,
+        text: messageText(message),
+        createTime: timestampValue(message.create_time)
+      }))
+      .filter(message => message.text);
+    return {
+      id: rec.id,
+      title: data?.title || rec.title || 'Untitled conversation',
+      href: rec.href || `/c/${rec.id}`,
+      updateTime: timestampValue(rec.updateTime ?? data?.update_time ?? data?.updated_at),
+      messages
+    };
+  }
+
+  async function updateFullTextIndex(records, onProgress) {
+    await runtimeMessage({ action: 'searchIndexPrune', keepIds: records.map(record => record.id) });
+    const metadata = await runtimeMessage({ action: 'searchIndexMetadata' });
+    const indexed = new Map((metadata.records || []).map(record => [record.id, Number(record.updateTime || 0)]));
+    const pending = records.filter(record => indexed.get(record.id) !== timestampValue(record.updateTime));
+    const failures = [];
+    const totalGroups = Math.max(1, Math.ceil(pending.length / EXPORT_GROUP_SIZE));
+
+    for (let index = 0; index < pending.length; index++) {
+      const rec = pending[index];
+      const progress = {
+        done: index,
+        total: pending.length,
+        group: Math.floor(index / EXPORT_GROUP_SIZE) + 1,
+        totalGroups,
+        title: rec.title || rec.id
+      };
+      try {
+        const data = await fetchConversationForExport(rec, progress, onProgress);
+        await runtimeMessage({ action: 'searchIndexUpsert', record: buildSearchIndexRecord(data, rec) });
+      } catch (error) {
+        failures.push(`${rec.title || rec.id}：${error.message}`);
+      }
+      onProgress?.({ ...progress, phase: 'completed', done: index + 1, failures: failures.length });
+      const isLast = index === pending.length - 1;
+      const isGroupEnd = (index + 1) % EXPORT_GROUP_SIZE === 0;
+      if (!isLast && isGroupEnd) {
+        await waitForExport(EXPORT_GROUP_GAP_MS, onProgress, { ...progress, phase: 'group-wait', done: index + 1 });
+      } else if (!isLast) {
+        await waitForExport(EXPORT_REQUEST_GAP_MS, onProgress, { ...progress, phase: 'pacing', done: index + 1 });
+      }
+    }
+    return { indexedCount: pending.length - failures.length, skippedCount: records.length - pending.length, failures };
+  }
+
+  function searchResultTime(result) {
+    const value = result.createTime || result.updateTime;
+    return value ? formatMessageTime(value) : '';
+  }
+
+  function findSearchResultFallback(excerpt) {
+    const needle = normalizedSearchText(String(excerpt || '').replace(/^…|…$/g, '').slice(0, 48));
+    if (!needle) return null;
+    return window.ChatGPTDomAdapter.messageElements().find(element =>
+      normalizedSearchText(element.innerText || element.textContent).includes(needle)
+    ) || null;
+  }
+
+  function conversationScrollContainer() {
+    const firstMessage = window.ChatGPTDomAdapter.messageElements()[0];
+    for (let element = firstMessage?.parentElement; element && element !== document.body; element = element.parentElement) {
+      const style = getComputedStyle(element);
+      if (/(auto|scroll)/.test(style.overflowY) && element.scrollHeight > element.clientHeight) return element;
+    }
+    return document.scrollingElement;
+  }
+
+  async function jumpToSearchMessage(messageId, excerpt = '') {
+    if (!messageId && !excerpt) return false;
+    let previousHeight = -1;
+    for (let round = 0; round < 24; round++) {
+      const target = window.ChatGPTDomAdapter.findMessage(messageId) || findSearchResultFallback(excerpt);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.classList.add('chatgpt-pro-search-target');
+        window.setTimeout(() => target.classList.remove('chatgpt-pro-search-target'), 2600);
+        return true;
+      }
+      const scroller = conversationScrollContainer();
+      if (!scroller) break;
+      const height = scroller.scrollHeight;
+      scroller.scrollTo?.({ top: 0, behavior: 'auto' });
+      if (round > 2 && height === previousHeight && scroller.scrollTop === 0) break;
+      previousHeight = height;
+      await sleep(350);
+    }
+    return false;
+  }
+
+  let pendingSearchJumpInFlight = false;
+  async function resumePendingSearchJump() {
+    if (pendingSearchJumpInFlight) return;
+    let pending;
+    try {
+      pending = JSON.parse(sessionStorage.getItem('chatgpt-pro-pending-search-jump') || 'null');
+    } catch {
+      sessionStorage.removeItem('chatgpt-pro-pending-search-jump');
+      return;
+    }
+    if (!pending || pending.conversationId !== currentConversationId()) return;
+    pendingSearchJumpInFlight = true;
+    try {
+      if (await jumpToSearchMessage(pending.messageId, pending.snippet)) {
+        sessionStorage.removeItem('chatgpt-pro-pending-search-jump');
+      }
+    } finally {
+      pendingSearchJumpInFlight = false;
+    }
+  }
+
+  async function openFullTextSearchResult(result) {
+    if (result.conversationId === currentConversationId()) {
+      if (result.messageId) await jumpToSearchMessage(result.messageId, result.snippet);
+      return;
+    }
+    if (result.messageId) {
+      sessionStorage.setItem('chatgpt-pro-pending-search-jump', JSON.stringify({
+        conversationId: result.conversationId,
+        messageId: result.messageId,
+        snippet: result.snippet
+      }));
+    }
+    window.location.href = new URL(result.href || `/c/${result.conversationId}`, location.origin).href;
+  }
+
+  function renderFullTextResults(container, results) {
+    container.replaceChildren();
+    if (!results.length) {
+      const empty = document.createElement('p');
+      empty.className = 'chatgpt-pro-search-empty';
+      empty.textContent = '没有找到匹配内容';
+      container.appendChild(empty);
+      return;
+    }
+    for (const result of results) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'chatgpt-pro-search-result';
+      const title = document.createElement('strong');
+      title.textContent = result.title;
+      const meta = document.createElement('span');
+      meta.className = 'chatgpt-pro-search-result-meta';
+      meta.textContent = [result.role === 'user' ? '用户' : (result.role === 'assistant' ? 'ChatGPT' : ''), searchResultTime(result)].filter(Boolean).join(' · ');
+      const snippet = document.createElement('span');
+      snippet.className = 'chatgpt-pro-search-result-snippet';
+      snippet.textContent = result.snippet;
+      button.append(title, meta, snippet);
+      button.addEventListener('click', () => openFullTextSearchResult(result));
+      container.appendChild(button);
+    }
+  }
+
   async function openTimeline() {
     closeTimeline();
     const panel = document.createElement('section');
@@ -1262,7 +1448,10 @@
     panel.setAttribute('aria-label', '聊天目录');
     panel.innerHTML = `
       <div class="chatgpt-pro-panel-header">
-        <strong>聊天目录</strong>
+        <div class="chatgpt-pro-panel-tabs" role="tablist" aria-label="聊天工具">
+          <button type="button" class="chatgpt-pro-panel-tab chatgpt-pro-panel-tab-active" role="tab" aria-selected="true" data-panel-view="directory">聊天目录</button>
+          <button type="button" class="chatgpt-pro-panel-tab" role="tab" aria-selected="false" data-panel-view="search">全文搜索</button>
+        </div>
         <span class="chatgpt-pro-panel-status">正在读取本地目录…</span>
         <div class="chatgpt-pro-batch-actions" hidden>
           <span class="chatgpt-pro-batch-count">已选 0</span>
@@ -1270,7 +1459,7 @@
           <button type="button" data-batch-format="json">导出 JSON</button>
         </div>
       </div>
-      <div class="chatgpt-pro-panel-list">
+      <div class="chatgpt-pro-panel-list" data-panel-content="directory">
         <div class="chatgpt-pro-columns">
           <label class="chatgpt-pro-select-all" title="全选当前筛选结果">
             <input type="checkbox" aria-label="全选当前筛选结果">
@@ -1297,7 +1486,18 @@
           <span class="chatgpt-pro-export-column-title">导出</span>
         </div>
         <div class="chatgpt-pro-rows"></div>
-      </div>`;
+      </div>
+      <section class="chatgpt-pro-fulltext" data-panel-content="search" hidden>
+        <form class="chatgpt-pro-fulltext-form">
+          <input class="chatgpt-pro-fulltext-input" type="search" autocomplete="off" placeholder="搜索所有聊天内容" aria-label="全文搜索关键词">
+          <button type="submit">搜索</button>
+        </form>
+        <div class="chatgpt-pro-search-index-bar">
+          <span class="chatgpt-pro-search-index-status">正在读取索引状态…</span>
+          <button type="button" class="chatgpt-pro-search-index-update">更新索引</button>
+        </div>
+        <div class="chatgpt-pro-search-results" aria-live="polite"></div>
+      </section>`;
 
     document.body.appendChild(panel);
     S.timeline = panel;
@@ -1308,6 +1508,14 @@
     applyPanelSize(panel);
     setupPanelResize(panel);
     const status = panel.querySelector('.chatgpt-pro-panel-status');
+    const panelTabs = Array.from(panel.querySelectorAll('[data-panel-view]'));
+    const directoryView = panel.querySelector('[data-panel-content="directory"]');
+    const searchView = panel.querySelector('[data-panel-content="search"]');
+    const fullTextForm = panel.querySelector('.chatgpt-pro-fulltext-form');
+    const fullTextInput = panel.querySelector('.chatgpt-pro-fulltext-input');
+    const searchIndexStatus = panel.querySelector('.chatgpt-pro-search-index-status');
+    const searchIndexUpdate = panel.querySelector('.chatgpt-pro-search-index-update');
+    const searchResults = panel.querySelector('.chatgpt-pro-search-results');
     const list = panel.querySelector('.chatgpt-pro-rows');
     const createdSort = panel.querySelector('.chatgpt-pro-created-sort');
     const createdSortIcon = panel.querySelector('.chatgpt-pro-created-sort-icon');
@@ -1322,6 +1530,7 @@
     const batchActions = panel.querySelector('.chatgpt-pro-batch-actions');
     const batchCount = panel.querySelector('.chatgpt-pro-batch-count');
     const batchButtons = Array.from(panel.querySelectorAll('[data-batch-format]'));
+    let activeView = 'directory';
     let sortDirection = 'newest';
     let currentRecords = [];
     const selectedIds = new Set();
@@ -1338,7 +1547,7 @@
       selectAll.disabled = visible.length === 0;
       selectAll.checked = visible.length > 0 && selectedVisible === visible.length;
       selectAll.indeterminate = selectedVisible > 0 && selectedVisible < visible.length;
-      batchActions.hidden = selectedIds.size === 0;
+      batchActions.hidden = activeView !== 'directory' || selectedIds.size === 0;
       batchCount.textContent = `已选 ${selectedIds.size}`;
     };
 
@@ -1356,6 +1565,78 @@
       titleFilterButton.setAttribute('aria-expanded', String(open));
       if (open) window.setTimeout(() => titleFilterInput.focus(), 0);
     };
+
+    const refreshSearchIndexStatus = async () => {
+      try {
+        const response = await runtimeMessage({ action: 'searchIndexMetadata' });
+        searchIndexStatus.textContent = `已索引 ${response.records?.length || 0} / ${currentRecords.length} 个对话`;
+      } catch (error) {
+        searchIndexStatus.textContent = `索引状态读取失败：${error.message}`;
+      }
+    };
+
+    const setActiveView = view => {
+      activeView = view === 'search' ? 'search' : 'directory';
+      directoryView.hidden = activeView !== 'directory';
+      searchView.hidden = activeView !== 'search';
+      panelTabs.forEach(tab => {
+        const active = tab.dataset.panelView === activeView;
+        tab.classList.toggle('chatgpt-pro-panel-tab-active', active);
+        tab.setAttribute('aria-selected', String(active));
+      });
+      if (activeView === 'search') {
+        batchActions.hidden = true;
+        status.textContent = '本地全文搜索';
+        refreshSearchIndexStatus();
+        window.setTimeout(() => fullTextInput.focus(), 0);
+      } else {
+        updateSelectionUi();
+        status.textContent = `${currentRecords.length} 条聊天记录`;
+      }
+    };
+
+    panelTabs.forEach(tab => tab.addEventListener('click', () => setActiveView(tab.dataset.panelView)));
+    fullTextForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const query = fullTextInput.value.trim();
+      if (!query) {
+        searchResults.replaceChildren();
+        return;
+      }
+      status.textContent = '正在搜索本地索引…';
+      try {
+        const response = await runtimeMessage({ action: 'searchFullText', query, limit: 200 });
+        renderFullTextResults(searchResults, response.results || []);
+        status.textContent = `找到 ${response.results?.length || 0} 条匹配消息`;
+      } catch (error) {
+        status.textContent = `全文搜索失败：${error.message}`;
+      }
+    });
+    searchIndexUpdate.addEventListener('click', async () => {
+      if (searchIndexUpdate.disabled) return;
+      searchIndexUpdate.disabled = true;
+      try {
+        const result = await updateFullTextIndex(currentRecords, progress => {
+          const base = `${progress.done} / ${progress.total}`;
+          if (progress.phase === 'rate-limit') {
+            searchIndexStatus.textContent = `请求受限，${progress.remainingSeconds} 秒后继续 · ${base}`;
+          } else if (progress.phase === 'group-wait') {
+            searchIndexStatus.textContent = `本组完成，${progress.remainingSeconds} 秒后继续 · ${base}`;
+          } else if (progress.phase === 'retry-wait') {
+            searchIndexStatus.textContent = `请求失败，${progress.remainingSeconds} 秒后重试 · ${base}`;
+          } else if (progress.phase !== 'pacing') {
+            searchIndexStatus.textContent = `正在更新索引 ${base}`;
+          }
+        });
+        searchIndexStatus.textContent = result.failures.length
+          ? `新增/更新 ${result.indexedCount} 个，失败 ${result.failures.length} 个`
+          : `索引已是最新 · 更新 ${result.indexedCount} 个，跳过 ${result.skippedCount} 个`;
+      } catch (error) {
+        searchIndexStatus.textContent = `索引更新失败：${error.message}`;
+      } finally {
+        searchIndexUpdate.disabled = false;
+      }
+    });
 
     createdSort.addEventListener('click', async () => {
       sortDirection = sortDirection === 'newest' ? 'oldest' : 'newest';
@@ -1450,10 +1731,10 @@
       if (cached.length) {
         populateProjectFilter(projectFilter, cached);
         renderCurrent();
-        status.textContent = `本地已有 ${cached.length} 条，正在增量检查最新数据…`;
+        if (activeView === 'directory') status.textContent = `本地已有 ${cached.length} 条，正在增量检查最新数据…`;
         requestAnimationFrame(positionTimelinePanel);
       } else {
-        status.textContent = '首次使用，正在建立本地目录…';
+        if (activeView === 'directory') status.textContent = '首次使用，正在建立本地目录…';
       }
 
       const fresh = await window.APIHandler.syncConversationList(false);
@@ -1461,11 +1742,11 @@
       currentRecords = fresh;
       populateProjectFilter(projectFilter, fresh);
       renderCurrent();
-      status.textContent = `${fresh.length} 条 · 已完成增量同步`;
+      status.textContent = activeView === 'directory' ? `${fresh.length} 条 · 已完成增量同步` : '本地全文搜索';
       requestAnimationFrame(positionTimelinePanel);
       if (S.settings.showSidebarTime) await reloadTimestampMap(false);
     } catch (e) {
-      if (S.timeline === panel) status.textContent = `同步失败，已保留本地数据：${e.message}`;
+      if (S.timeline === panel && activeView === 'directory') status.textContent = `同步失败，已保留本地数据：${e.message}`;
     }
   }
 
@@ -1504,6 +1785,7 @@
           clearTimeout(messageTimer);
           messageTimer = setTimeout(() => {
             stampMessageTimestamps().catch(error => log('Message timestamp refresh failed:', error.message));
+            resumePendingSearchJump().catch(error => log('Search result jump failed:', error.message));
           }, 100);
         }
       }
@@ -1663,6 +1945,7 @@
     });
     S.ready = true;
     ensureCurrentChatExportButton();
+    window.setTimeout(() => resumePendingSearchJump().catch(error => log('Search result jump failed:', error.message)), 600);
   }
 
   setupMessages();
