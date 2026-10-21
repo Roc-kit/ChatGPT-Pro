@@ -238,10 +238,11 @@
       const list = S.timeline.querySelector('.chatgpt-pro-rows');
       const projectFilter = S.timeline.querySelector('.chatgpt-pro-project-filter');
       const createdSort = S.timeline.querySelector('.chatgpt-pro-created-sort');
+      const titleFilterInput = S.timeline.querySelector('.chatgpt-pro-title-filter-input');
       const status = S.timeline.querySelector('.chatgpt-pro-panel-status');
       const direction = createdSort?.getAttribute('aria-sort') === 'ascending' ? 'oldest' : 'newest';
       if (projectFilter) populateProjectFilter(projectFilter, records);
-      if (list && projectFilter) renderTimelineRows(list, records, direction, projectFilter.value);
+      if (list && projectFilter) renderTimelineRows(list, records, direction, projectFilter.value, null, titleFilterInput?.value || '');
       if (status) status.textContent = `${records.length} 条 · ${statusText}`;
     }
   }
@@ -667,16 +668,24 @@
     select.value = [...select.options].some(option => option.value === selected) ? selected : '__all__';
   }
 
-  function visibleTimelineRecords(records, direction = 'newest', projectFilter = '__all__') {
+  function normalizedSearchText(value) {
+    return String(value || '').normalize('NFKC').toLocaleLowerCase('zh-CN').trim();
+  }
+
+  function visibleTimelineRecords(records, direction = 'newest', projectFilter = '__all__', titleQuery = '') {
     const factor = direction === 'oldest' ? 1 : -1;
-    const filtered = projectFilter === '__all__'
+    const sourceFiltered = projectFilter === '__all__'
       ? records
       : records.filter(rec => projectFilterKey(rec) === projectFilter);
+    const query = normalizedSearchText(titleQuery);
+    const filtered = query
+      ? sourceFiltered.filter(rec => normalizedSearchText(rec.title).includes(query))
+      : sourceFiltered;
     return [...filtered].sort((a, b) => factor * (timestampValue(a.createTime) - timestampValue(b.createTime)));
   }
 
-  function renderTimelineRows(container, records, direction = 'newest', projectFilter = '__all__', selection = null) {
-    const sorted = visibleTimelineRecords(records, direction, projectFilter);
+  function renderTimelineRows(container, records, direction = 'newest', projectFilter = '__all__', selection = null, titleQuery = '') {
+    const sorted = visibleTimelineRecords(records, direction, projectFilter, titleQuery);
 
     container.replaceChildren();
     for (const rec of sorted) {
@@ -1238,7 +1247,19 @@
           <button type="button" class="chatgpt-pro-created-sort" aria-label="按创建时间排序" aria-sort="descending">
             <span>创建时间</span><span class="chatgpt-pro-created-sort-icon">↓</span>
           </button>
-          <span>标题</span>
+          <div class="chatgpt-pro-title-filter">
+            <button type="button" class="chatgpt-pro-title-filter-button" aria-haspopup="dialog" aria-expanded="false">
+              <span>标题</span><span class="chatgpt-pro-title-filter-icon" aria-hidden="true">▾</span>
+            </button>
+            <div class="chatgpt-pro-title-filter-menu" role="dialog" aria-label="按标题筛选" hidden>
+              <label for="chatgpt-pro-title-filter-input">搜索标题</label>
+              <input id="chatgpt-pro-title-filter-input" class="chatgpt-pro-title-filter-input" type="search" autocomplete="off" placeholder="输入标题关键词">
+              <div class="chatgpt-pro-title-filter-actions">
+                <button type="button" class="chatgpt-pro-title-filter-clear">清除</button>
+                <button type="button" class="chatgpt-pro-title-filter-apply">确定</button>
+              </div>
+            </div>
+          </div>
           <select class="chatgpt-pro-project-filter" aria-label="按项目筛选">
             <option value="__all__">项目名称 · 全部</option>
           </select>
@@ -1259,6 +1280,12 @@
     const list = panel.querySelector('.chatgpt-pro-rows');
     const createdSort = panel.querySelector('.chatgpt-pro-created-sort');
     const createdSortIcon = panel.querySelector('.chatgpt-pro-created-sort-icon');
+    const titleFilter = panel.querySelector('.chatgpt-pro-title-filter');
+    const titleFilterButton = panel.querySelector('.chatgpt-pro-title-filter-button');
+    const titleFilterMenu = panel.querySelector('.chatgpt-pro-title-filter-menu');
+    const titleFilterInput = panel.querySelector('.chatgpt-pro-title-filter-input');
+    const titleFilterClear = panel.querySelector('.chatgpt-pro-title-filter-clear');
+    const titleFilterApply = panel.querySelector('.chatgpt-pro-title-filter-apply');
     const projectFilter = panel.querySelector('.chatgpt-pro-project-filter');
     const selectAll = panel.querySelector('.chatgpt-pro-select-all input');
     const batchActions = panel.querySelector('.chatgpt-pro-batch-actions');
@@ -1268,7 +1295,14 @@
     let currentRecords = [];
     const selectedIds = new Set();
 
-    const updateSelectionUi = (visible = visibleTimelineRecords(currentRecords, sortDirection, projectFilter.value)) => {
+    const currentVisibleRecords = () => visibleTimelineRecords(
+      currentRecords,
+      sortDirection,
+      projectFilter.value,
+      titleFilterInput.value
+    );
+
+    const updateSelectionUi = (visible = currentVisibleRecords()) => {
       const selectedVisible = visible.filter(rec => selectedIds.has(rec.id)).length;
       selectAll.disabled = visible.length === 0;
       selectAll.checked = visible.length > 0 && selectedVisible === visible.length;
@@ -1279,8 +1313,17 @@
 
     const selection = { ids: selectedIds, onChange: updateSelectionUi };
     const renderCurrent = () => {
-      const visible = renderTimelineRows(list, currentRecords, sortDirection, projectFilter.value, selection);
+      const query = titleFilterInput.value;
+      titleFilterButton.classList.toggle('chatgpt-pro-filter-active', Boolean(normalizedSearchText(query)));
+      titleFilterButton.setAttribute('aria-label', query ? `标题筛选：${query}` : '按标题筛选');
+      const visible = renderTimelineRows(list, currentRecords, sortDirection, projectFilter.value, selection, query);
       updateSelectionUi(visible);
+    };
+
+    const setTitleFilterOpen = open => {
+      titleFilterMenu.hidden = !open;
+      titleFilterButton.setAttribute('aria-expanded', String(open));
+      if (open) window.setTimeout(() => titleFilterInput.focus(), 0);
     };
 
     createdSort.addEventListener('click', async () => {
@@ -1293,8 +1336,39 @@
       selectedIds.clear();
       renderCurrent();
     });
+    titleFilterButton.addEventListener('click', () => {
+      setTitleFilterOpen(titleFilterMenu.hidden);
+    });
+    titleFilterInput.addEventListener('input', () => {
+      selectedIds.clear();
+      renderCurrent();
+    });
+    titleFilterInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        setTitleFilterOpen(false);
+        titleFilterButton.focus();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        setTitleFilterOpen(false);
+        titleFilterButton.focus();
+      }
+    });
+    titleFilterClear.addEventListener('click', () => {
+      titleFilterInput.value = '';
+      selectedIds.clear();
+      renderCurrent();
+      titleFilterInput.focus();
+    });
+    titleFilterApply.addEventListener('click', () => {
+      setTitleFilterOpen(false);
+      titleFilterButton.focus();
+    });
+    panel.addEventListener('pointerdown', event => {
+      if (!titleFilterMenu.hidden && !titleFilter.contains(event.target)) setTitleFilterOpen(false);
+    });
     selectAll.addEventListener('change', () => {
-      const visible = visibleTimelineRecords(currentRecords, sortDirection, projectFilter.value);
+      const visible = currentVisibleRecords();
       for (const rec of visible) {
         if (selectAll.checked) selectedIds.add(rec.id);
         else selectedIds.delete(rec.id);
@@ -1305,7 +1379,7 @@
       button.addEventListener('click', async () => {
         if (!selectedIds.size || button.disabled) return;
         const format = button.dataset.batchFormat === 'json' ? 'json' : 'md';
-        const selected = visibleTimelineRecords(currentRecords, sortDirection, projectFilter.value)
+        const selected = currentVisibleRecords()
           .filter(rec => selectedIds.has(rec.id));
         if (!selected.length) return;
         batchButtons.forEach(item => { item.disabled = true; });
