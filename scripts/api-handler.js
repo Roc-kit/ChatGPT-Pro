@@ -17,9 +17,12 @@ const APIHandler = (function () {
     MIN_SYNC_INTERVAL_MS: 60 * 1000
   };
 
-  const K_DIRECTORY = 'ct_directory_v2';
-  const K_DIRECTORY_TS = 'ct_directory_ts';
-  const K_LOCK = 'ct_fetch_lock';
+  const K_DIRECTORY = 'chatgpt_pro_directory_v1';
+  const K_DIRECTORY_TS = 'chatgpt_pro_directory_ts';
+  const K_LOCK = 'chatgpt_pro_fetch_lock';
+  const LEGACY_DIRECTORY = 'ct_directory_v2';
+  const LEGACY_DIRECTORY_TS = 'ct_directory_ts';
+  const LEGACY_LOCK = 'ct_fetch_lock';
 
   let _token = null;
   let _tokenFetchedAt = 0;
@@ -160,7 +163,7 @@ const APIHandler = (function () {
       updateTime: item.update_time ?? item.updated_at ?? item.updateTime ?? null,
       href: projectId ? `/g/${shortUrl}/c/${id}` : `/c/${id}`,
       projectId,
-      projectName: project?.name || item._chatTimelineProjectName || ''
+      projectName: project?.name || item._chatgptProProjectName || item._chatTimelineProjectName || ''
     };
   }
 
@@ -178,9 +181,18 @@ const APIHandler = (function () {
   }
 
   async function readDirectory() {
-    const data = await store.get([K_DIRECTORY]);
-    if (!Array.isArray(data[K_DIRECTORY])) return [];
-    return data[K_DIRECTORY].map(sanitizeStoredRecord).filter(Boolean);
+    const data = await store.get([K_DIRECTORY, K_DIRECTORY_TS, LEGACY_DIRECTORY, LEGACY_DIRECTORY_TS]);
+    const current = Array.isArray(data[K_DIRECTORY]) ? data[K_DIRECTORY] : null;
+    const legacy = Array.isArray(data[LEGACY_DIRECTORY]) ? data[LEGACY_DIRECTORY] : null;
+    const records = current || legacy || [];
+    if (!current && legacy) {
+      await store.set({
+        [K_DIRECTORY]: legacy,
+        [K_DIRECTORY_TS]: data[LEGACY_DIRECTORY_TS] || Date.now()
+      });
+      await store.del([LEGACY_DIRECTORY, LEGACY_DIRECTORY_TS, LEGACY_LOCK]);
+    }
+    return records.map(sanitizeStoredRecord).filter(Boolean);
   }
 
   async function writeDirectory(records) {
@@ -452,6 +464,9 @@ const APIHandler = (function () {
       K_DIRECTORY,
       K_DIRECTORY_TS,
       K_LOCK,
+      LEGACY_DIRECTORY,
+      LEGACY_DIRECTORY_TS,
+      LEGACY_LOCK,
       // Legacy keys from v2.1 and upstream versions.
       'ct_data',
       'ct_ts',

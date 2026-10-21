@@ -1017,7 +1017,7 @@
   function buildConversationJson(data, rec = {}) {
     const sourceType = conversationSourceType(rec);
     const payload = {
-      timeline: {
+      chatgpt_pro: {
         title: data?.title || rec.title || 'ChatGPT 聊天记录',
         source: conversationUrl(rec, data),
         conversation_id: rec.id || data?.id || data?.conversation_id || '',
