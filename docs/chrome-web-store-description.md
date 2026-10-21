@@ -1,6 +1,6 @@
-# ChatGPT Timeline
+# ChatGPT Pro: The Ultimate AI Toolbox for ChatGPT
 
-ChatGPT Timeline 是一个用于 ChatGPT Web 的第三方 Chrome 扩展，帮助你更方便地按时间查找、筛选、整理和导出历史聊天。
+ChatGPT Pro 是一个用于 ChatGPT Web 的第三方 Chrome 扩展工具箱，帮助你更方便地查找、筛选、整理和导出历史聊天。
 
 主要功能：
 
@@ -28,4 +28,4 @@ ChatGPT Timeline 是一个用于 ChatGPT Web 的第三方 Chrome 扩展，帮助
 
 扩展不会把聊天内容、聊天目录或身份验证信息发送到开发者控制的服务器。相关数据仅用于实现扩展功能，目录缓存和设置保存在用户浏览器本地。只有用户主动执行导出时，扩展才会在浏览器本地生成 Markdown、JSON 或 ZIP 文件并交由浏览器下载。
 
-GitHub：https://github.com/Roc-kit/ChatGPT-Timeline
+GitHub：https://github.com/Roc-kit/ChatGPT-Pro

@@ -1,4 +1,4 @@
-/** ChatGPT Timeline - background service worker */
+/** ChatGPT Pro - background service worker */
 
 const DEFAULT_SETTINGS = {
   enabled: true,
@@ -12,7 +12,7 @@ const DEFAULT_SETTINGS = {
 };
 
 chrome.runtime.onInstalled.addListener((details) => {
-  console.log('[ChatGPT Timeline] Installed:', details.reason);
+  console.log('[ChatGPT Pro] Installed:', details.reason);
   if (details.reason === 'install') {
     chrome.storage.local.set(DEFAULT_SETTINGS);
   } else {
@@ -62,4 +62,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-console.log('[ChatGPT Timeline] Background worker ready');
+console.log('[ChatGPT Pro] Background worker ready');

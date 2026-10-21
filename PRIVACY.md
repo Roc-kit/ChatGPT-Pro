@@ -1,8 +1,8 @@
-# ChatGPT Timeline 隐私政策
+# ChatGPT Pro 隐私政策
 
 最后更新：2026-09-07
 
-ChatGPT Timeline 是一个用于 ChatGPT Web 的 Chrome 扩展，用于帮助用户查看聊天创建时间、消息时间戳、按普通聊天 / 项目 / 自定义 GPT 筛选历史聊天，并导出聊天记录。
+ChatGPT Pro 是一个用于 ChatGPT Web 的 Chrome 扩展，用于帮助用户查看聊天创建时间、消息时间戳、搜索历史聊天、按普通聊天 / 项目 / 自定义 GPT 筛选历史聊天，并导出聊天记录。
 
 ## 1. 扩展会处理哪些数据
 
@@ -16,7 +16,7 @@ ChatGPT Timeline 是一个用于 ChatGPT Web 的 Chrome 扩展，用于帮助用
 
 ## 2. 数据如何使用
 
-这些数据仅用于提供 ChatGPT Timeline 的用户可见功能，包括：
+这些数据仅用于提供 ChatGPT Pro 的用户可见功能，包括：
 
 - 构建和更新本地聊天目录；
 - 显示侧边栏聊天时间和消息时间戳；
@@ -33,7 +33,7 @@ ChatGPT Timeline 是一个用于 ChatGPT Web 的 Chrome 扩展，用于帮助用
 
 ## 4. 数据共享、出售与广告
 
-ChatGPT Timeline：
+ChatGPT Pro：
 
 - 不出售用户数据；
 - 不向第三方共享用户数据用于广告、营销、用户画像或信用评估；
@@ -46,7 +46,7 @@ ChatGPT Timeline：
 
 - 使用扩展中的“完整刷新 / 重建缓存”重建本地目录；
 - 在 Chrome 中清除该扩展的本地存储；
-- 卸载 ChatGPT Timeline 扩展。
+- 卸载 ChatGPT Pro 扩展。
 
 ## 6. 权限说明
 
@@ -57,14 +57,14 @@ ChatGPT Timeline：
 
 ## 7. Limited Use
 
-ChatGPT Timeline 对用户数据的使用仅限于实现或改进扩展明确提供的单一用途和用户可见功能，并遵守 Chrome Web Store User Data Policy 的 Limited Use 要求。用户数据不会被用于与该扩展核心功能无关的用途。
+ChatGPT Pro 对用户数据的使用仅限于实现或改进扩展明确提供的单一用途和用户可见功能，并遵守 Chrome Web Store User Data Policy 的 Limited Use 要求。用户数据不会被用于与该扩展核心功能无关的用途。
 
 ## 8. 第三方服务与免责声明
 
-ChatGPT Timeline 是独立开发的第三方扩展，与 OpenAI 没有隶属、授权或背书关系。ChatGPT 名称及相关商标归其各自权利人所有。
+ChatGPT Pro 是独立开发的第三方扩展，与 OpenAI 没有隶属、授权或背书关系。ChatGPT 名称及相关商标归其各自权利人所有。
 
 ## 9. 联系方式
 
-项目主页：<https://github.com/Roc-kit/ChatGPT-Timeline>
+项目主页：<https://github.com/Roc-kit/ChatGPT-Pro>
 
-问题反馈：<https://github.com/Roc-kit/ChatGPT-Timeline/issues>
+问题反馈：<https://github.com/Roc-kit/ChatGPT-Pro/issues>

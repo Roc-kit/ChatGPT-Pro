@@ -1,12 +1,12 @@
 (function () {
   'use strict';
 
-  const INIT_KEY = Symbol.for('chat-timeline.message-timestamp-source');
+  const INIT_KEY = Symbol.for('chatgpt-pro.message-timestamp-source');
   if (window[INIT_KEY]) return;
   window[INIT_KEY] = true;
 
-  const ATTR = 'data-ct-message-create-time';
-  const ENABLED_ATTR = 'data-ct-message-timestamps-enabled';
+  const ATTR = 'data-chatgpt-pro-message-create-time';
+  const ENABLED_ATTR = 'data-chatgpt-pro-message-timestamps-enabled';
 
   function enabled() {
     return document.documentElement.getAttribute(ENABLED_ATTR) === '1';

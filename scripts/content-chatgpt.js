@@ -1,4 +1,4 @@
-/** ChatGPT Timeline – ChatGPT page integration */
+/** ChatGPT Pro – ChatGPT page integration */
 
 (function () {
   'use strict';
@@ -11,7 +11,7 @@
   const PANEL_MIN_WIDTH = 390;
   const PANEL_MIN_HEIGHT = 280;
   const PANEL_COMPACT_WIDTH = 500;
-  const MESSAGE_TIMESTAMP_SOURCE_ATTR = 'data-ct-message-timestamps-enabled';
+  const MESSAGE_TIMESTAMP_SOURCE_ATTR = 'data-chatgpt-pro-message-timestamps-enabled';
 
   const S = {
     ready: false,
@@ -37,7 +37,7 @@
     }
   };
 
-  const log = (...args) => console.log('[ChatGPT Timeline]', ...args);
+  const log = (...args) => console.log('[ChatGPT Pro]', ...args);
 
   function timestampValue(value) {
     if (!value) return 0;
@@ -65,7 +65,7 @@
 
   function allConvLinks() {
     return Array.from(document.querySelectorAll('a[href*="/c/"]'))
-      .filter(link => !link.closest('.chat-timeline-panel'));
+      .filter(link => !link.closest('.chatgpt-pro-panel'));
   }
 
   function extractId(a) {
@@ -74,7 +74,7 @@
   }
 
   function removeMessageTimestamps() {
-    document.querySelectorAll('[data-ct-message-timestamp]').forEach(el => el.remove());
+    document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').forEach(el => el.remove());
   }
 
   function setMessageTimestampSourceEnabled(enabled) {
@@ -90,11 +90,11 @@
     if (!text) return null;
     const span = document.createElement('span');
     span.className = [
-      'chat-timeline-message-timestamp',
-      role === 'assistant' ? 'chat-timeline-message-timestamp-assistant' : '',
-      role === 'user' ? 'chat-timeline-message-timestamp-user' : ''
+      'chatgpt-pro-message-timestamp',
+      role === 'assistant' ? 'chatgpt-pro-message-timestamp-assistant' : '',
+      role === 'user' ? 'chatgpt-pro-message-timestamp-user' : ''
     ].filter(Boolean).join(' ');
-    span.setAttribute('data-ct-message-timestamp', '1');
+    span.setAttribute('data-chatgpt-pro-message-timestamp', '1');
     span.textContent = text;
     return span;
   }
@@ -102,9 +102,9 @@
   function stampMessageTimestampElements() {
     let stamped = 0;
     for (const messageEl of document.querySelectorAll('[data-message-id]')) {
-      if (messageEl.closest('.chat-timeline-panel')) continue;
-      if (messageEl.querySelector(':scope > [data-ct-message-timestamp]')) continue;
-      const value = Number(messageEl.getAttribute('data-ct-message-create-time'));
+      if (messageEl.closest('.chatgpt-pro-panel')) continue;
+      if (messageEl.querySelector(':scope > [data-chatgpt-pro-message-timestamp]')) continue;
+      const value = Number(messageEl.getAttribute('data-chatgpt-pro-message-create-time'));
       if (!Number.isFinite(value) || value <= 0) continue;
       const role = messageEl.getAttribute('data-message-author-role') || '';
       const timestamp = createMessageTimestamp(value, role);
@@ -125,10 +125,10 @@
 
   function makeBadge(text) {
     const badge = document.createElement('span');
-    badge.setAttribute('data-chat-timeline', '1');
+    badge.setAttribute('data-chatgpt-pro', '1');
     badge.className = [
-      'chat-timeline-badge',
-      `chat-timeline-${S.settings.fontSize}`
+      'chatgpt-pro-badge',
+      `chatgpt-pro-${S.settings.fontSize}`
     ].filter(Boolean).join(' ');
     badge.textContent = text;
     return badge;
@@ -144,7 +144,7 @@
     const walker = document.createTreeWalker(link, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         if (!node.textContent?.trim()) return NodeFilter.FILTER_REJECT;
-        if (node.parentElement?.closest('[data-ct-holder]')) return NodeFilter.FILTER_REJECT;
+        if (node.parentElement?.closest('[data-chatgpt-pro-holder]')) return NodeFilter.FILTER_REJECT;
         return NodeFilter.FILTER_ACCEPT;
       }
     });
@@ -162,26 +162,26 @@
   }
 
   function injectBadges(link, rec) {
-    if (link.querySelector('[data-ct-holder]')) return false;
+    if (link.querySelector('[data-chatgpt-pro-holder]')) return false;
     const holder = document.createElement('span');
-    holder.className = 'chat-timeline-holder';
-    holder.setAttribute('data-ct-holder', '1');
+    holder.className = 'chatgpt-pro-holder';
+    holder.setAttribute('data-chatgpt-pro-holder', '1');
 
     if (rec.createTime) holder.appendChild(makeBadge(formatTime(rec.createTime)));
 
     if (!holder.childElementCount) return false;
-    link.classList.add('chat-timeline-decorated');
-    link.style.setProperty('--ct-title-offset', `${getSidebarTitleOffset(link)}px`);
+    link.classList.add('chatgpt-pro-decorated');
+    link.style.setProperty('--chatgpt-pro-title-offset', `${getSidebarTitleOffset(link)}px`);
     link.appendChild(holder);
     return true;
   }
 
   function removeAllBadges() {
-    document.querySelectorAll('[data-ct-holder]').forEach(el => el.remove());
-    document.querySelectorAll('.chat-timeline-decorated').forEach(el =>
+    document.querySelectorAll('[data-chatgpt-pro-holder]').forEach(el => el.remove());
+    document.querySelectorAll('.chatgpt-pro-decorated').forEach(el =>
       {
-        el.classList.remove('chat-timeline-decorated');
-        el.style.removeProperty('--ct-title-offset');
+        el.classList.remove('chatgpt-pro-decorated');
+        el.style.removeProperty('--chatgpt-pro-title-offset');
       }
     );
     S.stamped = new WeakSet();
@@ -191,7 +191,7 @@
     if (!S.settings.enabled || !S.settings.showSidebarTime || !S.apiData.size) return 0;
     let count = 0;
     for (const link of allConvLinks()) {
-      if (S.stamped.has(link) && link.querySelector('[data-ct-holder]')) continue;
+      if (S.stamped.has(link) && link.querySelector('[data-chatgpt-pro-holder]')) continue;
       const id = extractId(link);
       if (!id) continue;
       const rec = S.apiData.get(id) || S.apiData.get(id.slice(0, 8));
@@ -229,10 +229,10 @@
     }
 
     if (S.timeline?.isConnected) {
-      const list = S.timeline.querySelector('.chat-timeline-rows');
-      const projectFilter = S.timeline.querySelector('.chat-timeline-project-filter');
-      const createdSort = S.timeline.querySelector('.chat-timeline-created-sort');
-      const status = S.timeline.querySelector('.chat-timeline-panel-status');
+      const list = S.timeline.querySelector('.chatgpt-pro-rows');
+      const projectFilter = S.timeline.querySelector('.chatgpt-pro-project-filter');
+      const createdSort = S.timeline.querySelector('.chatgpt-pro-created-sort');
+      const status = S.timeline.querySelector('.chatgpt-pro-panel-status');
       const direction = createdSort?.getAttribute('aria-sort') === 'ascending' ? 'oldest' : 'newest';
       if (projectFilter) populateProjectFilter(projectFilter, records);
       if (list && projectFilter) renderTimelineRows(list, records, direction, projectFilter.value);
@@ -259,7 +259,7 @@
     S.timeline?.remove();
     S.timeline = null;
     if (S.launcher) {
-      S.launcher.classList.remove('chat-timeline-open');
+      S.launcher.classList.remove('chatgpt-pro-open');
       S.launcher.removeAttribute('data-panel-vertical');
       S.launcher.removeAttribute('data-panel-horizontal');
       S.launcher.setAttribute('aria-expanded', 'false');
@@ -323,7 +323,7 @@
       startLeft = rect.left;
       startTop = rect.top;
       button.setPointerCapture(event.pointerId);
-      button.classList.add('chat-timeline-dragging');
+      button.classList.add('chatgpt-pro-dragging');
     });
 
     button.addEventListener('pointermove', event => {
@@ -343,7 +343,7 @@
     const finish = event => {
       if (!dragging) return;
       dragging = false;
-      button.classList.remove('chat-timeline-dragging');
+      button.classList.remove('chatgpt-pro-dragging');
       try { button.releasePointerCapture(event.pointerId); } catch (_) {}
       const rect = button.getBoundingClientRect();
       saveLauncherPosition(rect.left, rect.top);
@@ -355,15 +355,15 @@
 
   function ensureFloatingButton() {
     if (S.launcher?.isConnected) return;
-    const existing = document.querySelector('[data-chat-timeline-launcher]');
+    const existing = document.querySelector('[data-chatgpt-pro-launcher]');
     if (existing) {
       S.launcher = existing;
       return;
     }
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'chat-timeline-launcher';
-    button.setAttribute('data-chat-timeline-launcher', '1');
+    button.className = 'chatgpt-pro-launcher';
+    button.setAttribute('data-chatgpt-pro-launcher', '1');
     button.setAttribute('aria-label', '打开聊天目录');
     button.setAttribute('aria-expanded', 'false');
     button.title = '聊天目录（可拖动）';
@@ -394,7 +394,7 @@
     return cached || { id, title: document.title.replace(/\s*[|·-]\s*ChatGPT.*$/i, '').trim() || 'ChatGPT 聊天记录' };
   }
 
-  function placeCurrentChatExportButton(button = document.querySelector('[data-chat-timeline-current-export]')) {
+  function placeCurrentChatExportButton(button = document.querySelector('[data-chatgpt-pro-current-export]')) {
     if (!button) return;
     const maxTop = Math.max(VIEWPORT_MARGIN, window.innerHeight - button.offsetHeight - VIEWPORT_MARGIN);
     const y = Math.max(0, Math.min(1, Number(S.settings.currentExportPositionY) || 0));
@@ -422,7 +422,7 @@
       startY = event.clientY;
       startTop = rect.top;
       button.setPointerCapture(event.pointerId);
-      button.classList.add('chat-timeline-dragging');
+      button.classList.add('chatgpt-pro-dragging');
     });
 
     button.addEventListener('pointermove', event => {
@@ -437,7 +437,7 @@
     const finish = event => {
       if (!dragging) return;
       dragging = false;
-      button.classList.remove('chat-timeline-dragging');
+      button.classList.remove('chatgpt-pro-dragging');
       try { button.releasePointerCapture(event.pointerId); } catch (_) {}
       saveCurrentChatExportPosition(button.getBoundingClientRect().top, button);
     };
@@ -447,7 +447,7 @@
 
   function ensureCurrentChatExportButton() {
     const id = currentConversationId();
-    const existing = document.querySelector('[data-chat-timeline-current-export]');
+    const existing = document.querySelector('[data-chatgpt-pro-current-export]');
     if (!id) {
       existing?.remove();
       return;
@@ -456,8 +456,8 @@
 
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'chat-timeline-current-export';
-    button.setAttribute('data-chat-timeline-current-export', '1');
+    button.className = 'chatgpt-pro-current-export';
+    button.setAttribute('data-chatgpt-pro-current-export', '1');
     button.setAttribute('aria-label', '导出整个对话（Markdown）');
     button.title = '导出整个对话（Markdown）';
     button.innerHTML = `
@@ -503,7 +503,7 @@
     closeTimeline();
     S.launcher?.remove();
     S.launcher = null;
-    document.querySelector('[data-chat-timeline-current-export]')?.remove();
+    document.querySelector('[data-chatgpt-pro-current-export]')?.remove();
   }
 
   function positionTimelinePanel() {
@@ -546,14 +546,14 @@
     const height = Math.max(minHeight, Math.min(maxHeight, Number(S.settings.panelSize?.height) || 560));
     panel.style.setProperty('width', `${Math.round(width)}px`, 'important');
     panel.style.setProperty('height', `${Math.round(height)}px`, 'important');
-    panel.classList.toggle('chat-timeline-compact', width < PANEL_COMPACT_WIDTH);
+    panel.classList.toggle('chatgpt-pro-compact', width < PANEL_COMPACT_WIDTH);
   }
 
   function setupPanelResize(panel) {
     const directions = ['n', 'e', 's', 'w', 'ne', 'nw', 'se', 'sw'];
     for (const direction of directions) {
       const handle = document.createElement('div');
-      handle.className = `chat-timeline-resize-handle chat-timeline-resize-${direction}`;
+      handle.className = `chatgpt-pro-resize-handle chatgpt-pro-resize-${direction}`;
       handle.dataset.resizeDirection = direction;
       panel.appendChild(handle);
 
@@ -565,7 +565,7 @@
         const startY = event.clientY;
         const startRect = panel.getBoundingClientRect();
         handle.setPointerCapture(event.pointerId);
-        panel.classList.add('chat-timeline-resizing');
+        panel.classList.add('chatgpt-pro-resizing');
 
         const move = moveEvent => {
           const dx = moveEvent.clientX - startX;
@@ -585,7 +585,7 @@
           height = Math.max(minHeight, Math.min(maxHeight, height));
           panel.style.setProperty('width', `${Math.round(width)}px`, 'important');
           panel.style.setProperty('height', `${Math.round(height)}px`, 'important');
-          panel.classList.toggle('chat-timeline-compact', width < PANEL_COMPACT_WIDTH);
+          panel.classList.toggle('chatgpt-pro-compact', width < PANEL_COMPACT_WIDTH);
           positionTimelinePanel();
         };
 
@@ -593,7 +593,7 @@
           handle.removeEventListener('pointermove', move);
           handle.removeEventListener('pointerup', finish);
           handle.removeEventListener('pointercancel', finish);
-          panel.classList.remove('chat-timeline-resizing');
+          panel.classList.remove('chatgpt-pro-resizing');
           try { handle.releasePointerCapture(finishEvent.pointerId); } catch (_) {}
           const rect = panel.getBoundingClientRect();
           S.settings.panelSize = { width: Math.round(rect.width), height: Math.round(rect.height) };
@@ -675,7 +675,7 @@
     container.replaceChildren();
     for (const rec of sorted) {
       const row = document.createElement('a');
-      row.className = 'chat-timeline-row';
+      row.className = 'chatgpt-pro-row';
       row.href = rec.href || `/c/${rec.id}`;
       row.addEventListener('click', event => {
         if (!S.settings.openInBackground) return;
@@ -685,10 +685,10 @@
       });
 
       const selectCell = document.createElement('span');
-      selectCell.className = 'chat-timeline-row-select';
+      selectCell.className = 'chatgpt-pro-row-select';
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
-      checkbox.className = 'chat-timeline-row-checkbox';
+      checkbox.className = 'chatgpt-pro-row-checkbox';
       checkbox.checked = Boolean(selection?.ids?.has(rec.id));
       checkbox.setAttribute('aria-label', `选择 ${rec.title}`);
       checkbox.addEventListener('click', event => event.stopPropagation());
@@ -706,24 +706,24 @@
       selectCell.appendChild(checkbox);
 
       const date = document.createElement('span');
-      date.className = 'chat-timeline-row-date';
+      date.className = 'chatgpt-pro-row-date';
       date.textContent = formatTime(rec.createTime);
 
       const title = document.createElement('span');
-      title.className = 'chat-timeline-row-title';
+      title.className = 'chatgpt-pro-row-title';
       title.textContent = rec.title;
 
       const project = document.createElement('span');
-      project.className = 'chat-timeline-row-project';
+      project.className = 'chatgpt-pro-row-project';
       project.textContent = conversationSourceName(rec);
 
       const exportCell = document.createElement('span');
-      exportCell.className = 'chat-timeline-row-export';
+      exportCell.className = 'chatgpt-pro-row-export';
 
       const createExportButton = (label, titleText, action) => {
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'chat-timeline-export-button';
+        button.className = 'chatgpt-pro-export-button';
         button.textContent = label;
         button.title = titleText;
         button.setAttribute('aria-label', `${titleText}：${rec.title}`);
@@ -1143,7 +1143,7 @@
     }
     const now = new Date();
     const pad = n => String(n).padStart(2, '0');
-    const zipName = `ChatGPT-Timeline_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}_${format.toUpperCase()}.zip`;
+    const zipName = `ChatGPT-Pro_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}_${format.toUpperCase()}.zip`;
     downloadBlobFile(zipName, buildStoredZip(files));
     return { successCount: records.length - failures.length, failureCount: failures.length };
   }
@@ -1151,52 +1151,52 @@
   async function openTimeline() {
     closeTimeline();
     const panel = document.createElement('section');
-    panel.className = 'chat-timeline-panel';
+    panel.className = 'chatgpt-pro-panel';
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-label', '聊天目录');
     panel.innerHTML = `
-      <div class="chat-timeline-panel-header">
+      <div class="chatgpt-pro-panel-header">
         <strong>聊天目录</strong>
-        <span class="chat-timeline-panel-status">正在读取本地目录…</span>
-        <div class="chat-timeline-batch-actions" hidden>
-          <span class="chat-timeline-batch-count">已选 0</span>
+        <span class="chatgpt-pro-panel-status">正在读取本地目录…</span>
+        <div class="chatgpt-pro-batch-actions" hidden>
+          <span class="chatgpt-pro-batch-count">已选 0</span>
           <button type="button" data-batch-format="md">导出 MD</button>
           <button type="button" data-batch-format="json">导出 JSON</button>
         </div>
       </div>
-      <div class="chat-timeline-panel-list">
-        <div class="chat-timeline-columns">
-          <label class="chat-timeline-select-all" title="全选当前筛选结果">
+      <div class="chatgpt-pro-panel-list">
+        <div class="chatgpt-pro-columns">
+          <label class="chatgpt-pro-select-all" title="全选当前筛选结果">
             <input type="checkbox" aria-label="全选当前筛选结果">
           </label>
-          <button type="button" class="chat-timeline-created-sort" aria-label="按创建时间排序" aria-sort="descending">
-            <span>创建时间</span><span class="chat-timeline-created-sort-icon">↓</span>
+          <button type="button" class="chatgpt-pro-created-sort" aria-label="按创建时间排序" aria-sort="descending">
+            <span>创建时间</span><span class="chatgpt-pro-created-sort-icon">↓</span>
           </button>
           <span>标题</span>
-          <select class="chat-timeline-project-filter" aria-label="按项目筛选">
+          <select class="chatgpt-pro-project-filter" aria-label="按项目筛选">
             <option value="__all__">项目名称 · 全部</option>
           </select>
-          <span class="chat-timeline-export-column-title">导出</span>
+          <span class="chatgpt-pro-export-column-title">导出</span>
         </div>
-        <div class="chat-timeline-rows"></div>
+        <div class="chatgpt-pro-rows"></div>
       </div>`;
 
     document.body.appendChild(panel);
     S.timeline = panel;
-    S.launcher.classList.add('chat-timeline-open');
+    S.launcher.classList.add('chatgpt-pro-open');
     S.launcher.setAttribute('aria-expanded', 'true');
     S.launcher.textContent = '−';
     S.launcher.title = '收起聊天目录（可拖动）';
     applyPanelSize(panel);
     setupPanelResize(panel);
-    const status = panel.querySelector('.chat-timeline-panel-status');
-    const list = panel.querySelector('.chat-timeline-rows');
-    const createdSort = panel.querySelector('.chat-timeline-created-sort');
-    const createdSortIcon = panel.querySelector('.chat-timeline-created-sort-icon');
-    const projectFilter = panel.querySelector('.chat-timeline-project-filter');
-    const selectAll = panel.querySelector('.chat-timeline-select-all input');
-    const batchActions = panel.querySelector('.chat-timeline-batch-actions');
-    const batchCount = panel.querySelector('.chat-timeline-batch-count');
+    const status = panel.querySelector('.chatgpt-pro-panel-status');
+    const list = panel.querySelector('.chatgpt-pro-rows');
+    const createdSort = panel.querySelector('.chatgpt-pro-created-sort');
+    const createdSortIcon = panel.querySelector('.chatgpt-pro-created-sort-icon');
+    const projectFilter = panel.querySelector('.chatgpt-pro-project-filter');
+    const selectAll = panel.querySelector('.chatgpt-pro-select-all input');
+    const batchActions = panel.querySelector('.chatgpt-pro-batch-actions');
+    const batchCount = panel.querySelector('.chatgpt-pro-batch-count');
     const batchButtons = Array.from(panel.querySelectorAll('[data-batch-format]'));
     let sortDirection = 'newest';
     let currentRecords = [];
@@ -1307,7 +1307,7 @@
 
       if (S.settings.showMessageTimestamps) {
         const messageRelevant = mutations.some(mutation =>
-          (mutation.type === 'attributes' && mutation.attributeName === 'data-ct-message-create-time') ||
+          (mutation.type === 'attributes' && mutation.attributeName === 'data-chatgpt-pro-message-create-time') ||
           Array.from(mutation.addedNodes).some(node =>
             node.nodeType === 1 && (
               node.matches?.('[data-message-id], section[data-turn-id]') ||
@@ -1327,7 +1327,7 @@
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-ct-message-create-time']
+      attributeFilter: ['data-chatgpt-pro-message-create-time']
     });
   }
 
@@ -1370,7 +1370,7 @@
             platform: 'chatgpt',
             initialized: S.ready,
             directoryCount: cached.length,
-            badgeCount: document.querySelectorAll('[data-chat-timeline]').length,
+            badgeCount: document.querySelectorAll('[data-chatgpt-pro]').length,
             enabled: S.settings.enabled,
             apiLoaded: S.apiLoaded,
             apiSize: S.apiData.size

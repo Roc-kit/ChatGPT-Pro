@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "ChatGPT Timeline",
-  "version": "2.6.1",
-  "description": "ChatGPT 聊天时间线：支持创建时间、消息时间戳、来源筛选、Markdown/JSON 导出和批量导出。",
+  "name": "ChatGPT Pro: The Ultimate AI Toolbox for ChatGPT",
+  "version": "3.0.0",
+  "description": "ChatGPT Pro 工具箱：支持聊天时间线、消息时间戳、来源筛选、搜索和 Markdown/JSON 批量导出。",
 
   "permissions": ["storage"],
 
-  "homepage_url": "https://github.com/Roc-kit/ChatGPT-Timeline",
+  "homepage_url": "https://github.com/Roc-kit/ChatGPT-Pro",
 
   "host_permissions": [
     "https://chatgpt.com/*"
@@ -35,7 +35,7 @@
   ],
 
   "action": {
-    "default_title": "ChatGPT Timeline",
+    "default_title": "ChatGPT Pro",
     "default_popup": "popup/popup.html",
     "default_icon": {
       "16":  "icons/icon16.png",

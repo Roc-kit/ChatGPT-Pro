@@ -1,4 +1,4 @@
-/** ChatGPT Timeline – ChatGPT API and persistent directory cache */
+/** ChatGPT Pro – ChatGPT API and persistent directory cache */
 
 const APIHandler = (function () {
   'use strict';
@@ -352,7 +352,7 @@ const APIHandler = (function () {
                 });
               }
             } catch (e) {
-              console.warn(`[ChatGPT Timeline] GPT ${gizmoId} metadata skipped:`, e.message);
+              console.warn(`[ChatGPT Pro] GPT ${gizmoId} metadata skipped:`, e.message);
             }
             await sleep(CFG.INTER_PAGE_MS);
           }
@@ -370,7 +370,7 @@ const APIHandler = (function () {
                 }
               }
             } catch (e) {
-              console.warn(`[ChatGPT Timeline] project ${project.id} sync skipped:`, e.message);
+              console.warn(`[ChatGPT Pro] project ${project.id} sync skipped:`, e.message);
             }
             await sleep(CFG.INTER_PAGE_MS);
           }

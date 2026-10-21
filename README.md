@@ -1,8 +1,8 @@
-# ChatGPT Timeline
+# ChatGPT Pro: The Ultimate AI Toolbox for ChatGPT
 
-ChatGPT Timeline 是一个用于 ChatGPT Web 的 Chrome 扩展，主要用来更方便地按时间查找历史聊天，并补充 ChatGPT 原生界面没有显示的时间信息。当前对话支持通过页面右侧的 Markdown 导出图标一键导出完整对话，图标可沿右侧边缘上下拖动并记忆位置。
+ChatGPT Pro 是一个用于 ChatGPT Web 的 Chrome 扩展工具箱，主要用来更方便地查找、整理和导出历史聊天，并补充 ChatGPT 原生界面没有显示的时间信息。当前对话支持通过页面右侧的 Markdown 导出图标一键导出完整对话，图标可沿右侧边缘上下拖动并记忆位置。
 
-仓库链接：https://github.com/Roc-kit/ChatGPT-Timeline/tree/main
+仓库链接：https://github.com/Roc-kit/ChatGPT-Pro/tree/main
 
 应用商店：https://chromewebstore.google.com/detail/chatgpt-timeline/pacdoelilndpplfgfiacniganmnlonih
 
@@ -90,5 +90,5 @@ Codex 很好用，但是 Plus 的额度根本不够用。后面主要使用 Chat
 1. 打开 `chrome://extensions/`。
 2. 开启“开发者模式”。
 3. 点击“加载已解压的扩展程序”。
-4. 选择 ChatGPT Timeline 项目目录。
+4. 选择 ChatGPT Pro 项目目录。
 5. 刷新 ChatGPT 页面。
