@@ -36,6 +36,7 @@
     messageVisibilityObserver: null,
     observedMessageElements: new WeakSet(),
     observedConversationId: undefined,
+    observedMessageSignature: '',
     messageRouteRetryTimers: [],
     settings: {
       enabled: true,
@@ -130,9 +131,6 @@
     if (!message?.create_time) return false;
     const timestamp = createMessageTimestamp(message.create_time, window.ChatGPTDomAdapter.messageRole(messageEl));
     if (!timestamp) return false;
-    if (target.matches('.turn-action-controls')) {
-      timestamp.classList.add('chatgpt-pro-message-timestamp-controls');
-    }
     target.insertBefore(timestamp, target.firstChild);
     return true;
   }
@@ -180,8 +178,9 @@
       if (messageEl.closest('.chatgpt-pro-panel')) continue;
       const target = window.ChatGPTDomAdapter.timestampTarget(messageEl);
       if (!target) continue;
-      if (target.matches('.turn-action-controls')) {
-        if (stampMessageTimestampElement(messageEl)) S.observedMessageElements.add(messageEl);
+      if (target.querySelector(':scope > [data-chatgpt-pro-message-timestamp]')) continue;
+      if (stampMessageTimestampElement(messageEl)) {
+        S.observedMessageElements.add(messageEl);
         continue;
       }
       if (S.observedMessageElements.has(messageEl)) continue;
@@ -192,11 +191,60 @@
     return observed;
   }
 
+  function renderedMessageIds() {
+    const ids = new Set();
+    for (const messageEl of window.ChatGPTDomAdapter.messageElements()) {
+      window.ChatGPTDomAdapter.messageIds(messageEl).forEach(id => ids.add(id));
+    }
+    return [...ids];
+  }
+
+  function renderedMessageSignature() {
+    return renderedMessageIds().join('|');
+  }
+
+  function hasMissingRenderedTimestamps() {
+    if (!S.messageConversation) return false;
+    return window.ChatGPTDomAdapter.messageElements().some(messageEl => {
+      const target = window.ChatGPTDomAdapter.timestampTarget(messageEl);
+      if (!target || target.querySelector(':scope > [data-chatgpt-pro-message-timestamp]')) return false;
+      return Boolean(conversationMessageForElement(S.messageConversation, messageEl)?.create_time);
+    });
+  }
+
+  function refreshMessageTimestampsForView() {
+    if (refreshMessageTimestampsForRoute(false)) return;
+    if (!S.settings.enabled || !S.settings.showMessageTimestamps || !S.observedConversationId) return;
+
+    const signature = renderedMessageSignature();
+    if (signature && signature !== S.observedMessageSignature) {
+      S.observedMessageSignature = signature;
+      S.messageVisibilityObserver?.disconnect();
+      S.messageVisibilityObserver = null;
+      S.observedMessageElements = new WeakSet();
+
+      const ids = renderedMessageIds();
+      if (S.messageConversation && ids.some(id => !S.messageConversation?.mapping?.[id])) {
+        S.messageConversation = null;
+        S.messageConversationPromise = null;
+      }
+      stampMessageTimestamps().catch(error => log('Message timestamp view refresh failed:', error.message));
+      return;
+    }
+
+    // ChatGPT can rebuild a message body without changing its semantic IDs.
+    // Restore decorations that React removed from those reused nodes.
+    if (hasMissingRenderedTimestamps()) {
+      stampMessageTimestamps().catch(error => log('Message timestamp repair failed:', error.message));
+    }
+  }
+
   function refreshMessageTimestampsForRoute(force = false) {
     const conversationId = currentConversationId();
     if (!force && conversationId === S.observedConversationId) return false;
 
     S.observedConversationId = conversationId;
+    S.observedMessageSignature = renderedMessageSignature();
     clearMessageRouteRetryTimers();
     removeMessageTimestamps();
     if (S.settings.enabled) ensureCurrentChatExportButton();
@@ -215,10 +263,10 @@
   }
 
   function setupConversationRouteTracking() {
-    const checkRoute = () => refreshMessageTimestampsForRoute(false);
-    window.addEventListener('popstate', checkRoute);
-    window.addEventListener('hashchange', checkRoute);
-    window.setInterval(checkRoute, MESSAGE_ROUTE_CHECK_MS);
+    const checkView = () => refreshMessageTimestampsForView();
+    window.addEventListener('popstate', checkView);
+    window.addEventListener('hashchange', checkView);
+    window.setInterval(checkView, MESSAGE_ROUTE_CHECK_MS);
   }
 
   function makeBadge(text) {
@@ -1804,7 +1852,7 @@
     let sidebarTimer = null;
     let messageTimer = null;
     S.observer = new MutationObserver(mutations => {
-      refreshMessageTimestampsForRoute(false);
+      refreshMessageTimestampsForView();
       const sidebarRelevant = mutations.some(mutation =>
         Array.from(mutation.addedNodes).some(node =>
           node.nodeType === 1 && window.ChatGPTDomAdapter.containsSidebarConversationLink(node)
@@ -1828,10 +1876,7 @@
             'data-content-search-unit-key'
           ].includes(mutation.attributeName)) ||
           Array.from(mutation.addedNodes).some(node =>
-            node.nodeType === 1 && (
-              window.ChatGPTDomAdapter.containsMessageNode(node) ||
-              window.ChatGPTDomAdapter.containsMessageDecorationTarget(node)
-            )
+            node.nodeType === 1 && window.ChatGPTDomAdapter.containsMessageNode(node)
           )
         );
         if (messageRelevant) {
