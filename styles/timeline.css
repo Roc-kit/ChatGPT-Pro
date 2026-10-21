@@ -2,37 +2,37 @@
 
 .chatgpt-pro-decorated {
   position: relative !important;
-  min-height: 55px !important;
-  padding-bottom: 25px !important;
+}
+
+.chatgpt-pro-sidebar-title-host {
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  align-content: center !important;
+  min-height: 0 !important;
 }
 
 .chatgpt-pro-holder {
-  position: absolute !important;
-  left: var(--chatgpt-pro-title-offset, 12px) !important;
-  right: 8px !important;
-  bottom: 2px !important;
-  z-index: 2 !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
   display: flex !important;
-  flex-direction: column !important;
   align-items: flex-start !important;
-  gap: 2px !important;
+  overflow: hidden !important;
   pointer-events: none !important;
 }
 
 .chatgpt-pro-badge {
   display: block !important;
   max-width: 100% !important;
-  padding: 1px 5px !important;
-  border-radius: 4px !important;
+  padding: 0 !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
   font-weight: 500 !important;
-  line-height: 1.35 !important;
+  line-height: 1.1 !important;
   color: #0d9373 !important;
-  background: rgba(16, 163, 127, 0.11) !important;
-  border: 1px solid rgba(16, 163, 127, 0.25) !important;
+  background: transparent !important;
+  border: 0 !important;
 }
 
 .chatgpt-pro-small { font-size: 11px !important; }
@@ -547,7 +547,7 @@ html.dark .chatgpt-pro-badge,
 .dark .chatgpt-pro-badge,
 [data-theme="dark"] .chatgpt-pro-badge {
   color: #5ee9b5 !important;
-  background: rgba(16, 163, 127, 0.18) !important;
+  background: transparent !important;
 }
 
 html.dark .chatgpt-pro-message-timestamp,

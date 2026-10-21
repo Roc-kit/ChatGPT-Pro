@@ -27,6 +27,44 @@
     return document.querySelector('main') || document;
   }
 
+  function conversationIdFromHref(href) {
+    if (!href) return null;
+    try {
+      const url = new URL(href, location.origin);
+      if (url.origin !== location.origin) return null;
+      return url.pathname.match(/(?:\/g\/[^/]+)?\/c\/([a-zA-Z0-9-]+)/)?.[1] || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function sidebarRoot() {
+    const candidates = Array.from(document.querySelectorAll('nav, aside, [role="navigation"]'))
+      .filter(element => !element.closest('main, [role="dialog"], .chatgpt-pro-panel'))
+      .map(element => ({
+        element,
+        count: Array.from(element.querySelectorAll('a[href*="/c/"]')).filter(link => conversationIdFromHref(link.href)).length
+      }))
+      .filter(candidate => candidate.count > 0)
+      .sort((a, b) => b.count - a.count);
+    return candidates[0]?.element || null;
+  }
+
+  function sidebarConversationLinks() {
+    const root = sidebarRoot();
+    if (!root) return [];
+    return Array.from(root.querySelectorAll('a[href*="/c/"]'))
+      .filter(link => conversationIdFromHref(link.href));
+  }
+
+  function containsSidebarConversationLink(node) {
+    if (!(node instanceof Element)) return false;
+    const root = sidebarRoot();
+    if (!root || !(root === node || root.contains(node))) return false;
+    if (node.matches('a[href*="/c/"]') && conversationIdFromHref(node.href)) return true;
+    return Array.from(node.querySelectorAll('a[href*="/c/"]')).some(link => conversationIdFromHref(link.href));
+  }
+
   function canonicalMessageElement(element) {
     if (!(element instanceof Element)) return null;
     return element.closest(SEARCH_UNIT_SELECTOR)
@@ -121,6 +159,10 @@
   window.ChatGPTDomAdapter = Object.freeze({
     MESSAGE_SELECTOR,
     conversationRoot,
+    conversationIdFromHref,
+    sidebarRoot,
+    sidebarConversationLinks,
+    containsSidebarConversationLink,
     messageElements,
     messageIds,
     messageRole,

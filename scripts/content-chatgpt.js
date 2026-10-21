@@ -74,13 +74,11 @@
   }
 
   function allConvLinks() {
-    return Array.from(document.querySelectorAll('a[href*="/c/"]'))
-      .filter(link => !link.closest('.chatgpt-pro-panel'));
+    return window.ChatGPTDomAdapter.sidebarConversationLinks();
   }
 
   function extractId(a) {
-    const match = (a.getAttribute('href') || '').match(/\/c\/([a-zA-Z0-9-]+)/);
-    return match ? match[1] : null;
+    return window.ChatGPTDomAdapter.conversationIdFromHref(a?.href || a?.getAttribute?.('href'));
   }
 
   function removeMessageTimestamps() {
@@ -185,13 +183,9 @@
     return badge;
   }
 
-  function getSidebarTitleOffset(link) {
-    const linkRect = link.getBoundingClientRect();
-    if (!linkRect.width) return 12;
-
-    // ChatGPT indents Project conversations differently from regular chats.
-    // Measure the first visible title text instead of assuming one fixed left
-    // padding, so our timestamp follows the native title indentation exactly.
+  function getSidebarTitleHost(link) {
+    const semanticHost = link.querySelector('[data-thread-title]');
+    if (semanticHost) return semanticHost;
     const walker = document.createTreeWalker(link, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         if (!node.textContent?.trim()) return NodeFilter.FILTER_REJECT;
@@ -200,16 +194,7 @@
       }
     });
 
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      const range = document.createRange();
-      range.selectNodeContents(node);
-      const rect = range.getBoundingClientRect();
-      if (!rect.width || rect.left < linkRect.left || rect.left >= linkRect.right) continue;
-      return Math.max(0, Math.round(rect.left - linkRect.left));
-    }
-
-    const paddingLeft = Number.parseFloat(getComputedStyle(link).paddingLeft);
-    return Number.isFinite(paddingLeft) ? Math.max(0, Math.round(paddingLeft)) : 12;
+    return walker.nextNode()?.parentElement || link;
   }
 
   function injectBadges(link, rec) {
@@ -221,9 +206,10 @@
     if (rec.createTime) holder.appendChild(makeBadge(formatTime(rec.createTime)));
 
     if (!holder.childElementCount) return false;
+    const titleHost = getSidebarTitleHost(link);
     link.classList.add('chatgpt-pro-decorated');
-    link.style.setProperty('--chatgpt-pro-title-offset', `${getSidebarTitleOffset(link)}px`);
-    link.appendChild(holder);
+    titleHost.classList.add('chatgpt-pro-sidebar-title-host');
+    titleHost.appendChild(holder);
     return true;
   }
 
@@ -232,7 +218,7 @@
     document.querySelectorAll('.chatgpt-pro-decorated').forEach(el =>
       {
         el.classList.remove('chatgpt-pro-decorated');
-        el.style.removeProperty('--chatgpt-pro-title-offset');
+        el.querySelectorAll('.chatgpt-pro-sidebar-title-host').forEach(host => host.classList.remove('chatgpt-pro-sidebar-title-host'));
       }
     );
     S.stamped = new WeakSet();
@@ -1490,7 +1476,7 @@
     S.observer = new MutationObserver(mutations => {
       const sidebarRelevant = mutations.some(mutation =>
         Array.from(mutation.addedNodes).some(node =>
-          node.nodeType === 1 && (node.matches?.('a[href*="/c/"]') || node.querySelector?.('a[href*="/c/"]'))
+          node.nodeType === 1 && window.ChatGPTDomAdapter.containsSidebarConversationLink(node)
         )
       );
       if (sidebarRelevant) {
