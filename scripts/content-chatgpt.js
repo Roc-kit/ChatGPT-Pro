@@ -18,7 +18,7 @@
   const EXPORT_MAX_RETRIES = 3;
   const EXPORT_RETRY_DELAYS_MS = [1000, 3000, 8000];
   const MESSAGE_ROUTE_CHECK_MS = 500;
-  const MESSAGE_ROUTE_RETRY_DELAYS_MS = [100, 400, 1000, 2200];
+  const MESSAGE_ROUTE_RETRY_DELAYS_MS = [100, 400, 1000, 2200, 5000, 10000];
 
   const S = {
     ready: false,
@@ -130,6 +130,9 @@
     if (!message?.create_time) return false;
     const timestamp = createMessageTimestamp(message.create_time, window.ChatGPTDomAdapter.messageRole(messageEl));
     if (!timestamp) return false;
+    if (target.matches('.turn-action-controls')) {
+      timestamp.classList.add('chatgpt-pro-message-timestamp-controls');
+    }
     target.insertBefore(timestamp, target.firstChild);
     return true;
   }
@@ -174,7 +177,14 @@
     const observer = ensureMessageVisibilityObserver();
     let observed = 0;
     for (const messageEl of window.ChatGPTDomAdapter.messageElements()) {
-      if (messageEl.closest('.chatgpt-pro-panel') || S.observedMessageElements.has(messageEl)) continue;
+      if (messageEl.closest('.chatgpt-pro-panel')) continue;
+      const target = window.ChatGPTDomAdapter.timestampTarget(messageEl);
+      if (!target) continue;
+      if (target.matches('.turn-action-controls')) {
+        if (stampMessageTimestampElement(messageEl)) S.observedMessageElements.add(messageEl);
+        continue;
+      }
+      if (S.observedMessageElements.has(messageEl)) continue;
       S.observedMessageElements.add(messageEl);
       observer.observe(messageEl);
       observed++;
@@ -1818,7 +1828,10 @@
             'data-content-search-unit-key'
           ].includes(mutation.attributeName)) ||
           Array.from(mutation.addedNodes).some(node =>
-            node.nodeType === 1 && window.ChatGPTDomAdapter.containsMessageNode(node)
+            node.nodeType === 1 && (
+              window.ChatGPTDomAdapter.containsMessageNode(node) ||
+              window.ChatGPTDomAdapter.containsMessageDecorationTarget(node)
+            )
           )
         );
         if (messageRelevant) {

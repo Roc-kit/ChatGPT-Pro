@@ -141,9 +141,28 @@
 
   function timestampTarget(element) {
     if (!(element instanceof Element)) return null;
+    const selection = element.matches('[data-chatgpt-selection-message-id]')
+      ? element
+      : element.querySelector('[data-chatgpt-selection-message-id]');
+    if (selection && messageRole(element) === 'assistant') {
+      const main = selection.closest('main');
+      for (let parent = selection.parentElement; parent && parent !== main; parent = parent.parentElement) {
+        const controls = parent.querySelector(':scope > .turn-action-controls');
+        if (controls) return controls;
+      }
+      // The modern ChatGPT renderer mounts the action controls after the
+      // message body. Wait for that stable host instead of inserting into a
+      // React-managed content node that will be replaced during navigation.
+      if (element.closest(UNIT_SELECTOR) || element.matches(UNIT_SELECTOR)) return null;
+    }
     return element.matches('[data-chatgpt-selection-message-id], [data-message-id]')
       ? element
       : element.querySelector('[data-chatgpt-selection-message-id], [data-message-id]') || element;
+  }
+
+  function containsMessageDecorationTarget(node) {
+    if (!(node instanceof Element)) return false;
+    return node.matches('.turn-action-controls') || Boolean(node.querySelector('.turn-action-controls'));
   }
 
   function containsMessageNode(node) {
@@ -168,6 +187,7 @@
     messageRole,
     timestampTarget,
     containsMessageNode,
+    containsMessageDecorationTarget,
     findMessage
   });
 })();
