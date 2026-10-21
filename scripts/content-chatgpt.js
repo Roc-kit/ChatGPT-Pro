@@ -12,6 +12,12 @@
   const PANEL_MIN_HEIGHT = 280;
   const PANEL_COMPACT_WIDTH = 500;
   const MESSAGE_TIMESTAMP_SOURCE_ATTR = 'data-chatgpt-pro-message-timestamps-enabled';
+  const EXPORT_GROUP_SIZE = 50;
+  const EXPORT_REQUEST_GAP_MS = 900;
+  const EXPORT_GROUP_GAP_MS = 10 * 1000;
+  const EXPORT_RATE_LIMIT_DEFAULT_MS = 60 * 1000;
+  const EXPORT_MAX_RETRIES = 3;
+  const EXPORT_RETRY_DELAYS_MS = [1000, 3000, 8000];
 
   const S = {
     ready: false,
@@ -1104,6 +1110,40 @@
     return candidate;
   }
 
+  const sleep = ms => new Promise(resolve => window.setTimeout(resolve, ms));
+
+  async function waitForExport(ms, onProgress, progress) {
+    const deadline = Date.now() + ms;
+    do {
+      const remainingMs = Math.max(0, deadline - Date.now());
+      onProgress?.({ ...progress, remainingSeconds: Math.ceil(remainingMs / 1000) });
+      if (!remainingMs) break;
+      await sleep(Math.min(1000, remainingMs));
+    } while (Date.now() < deadline);
+  }
+
+  async function fetchConversationForExport(rec, progress, onProgress) {
+    for (let retry = 0; retry <= EXPORT_MAX_RETRIES; retry++) {
+      try {
+        onProgress?.({ ...progress, phase: retry ? 'retrying' : 'fetching', retry });
+        return await window.APIHandler.getConversation(rec.id);
+      } catch (error) {
+        if (retry >= EXPORT_MAX_RETRIES) throw error;
+        const rateLimited = error?.status === 429;
+        const waitMs = rateLimited
+          ? Math.max(1000, error.retryAfterMs || EXPORT_RATE_LIMIT_DEFAULT_MS)
+          : EXPORT_RETRY_DELAYS_MS[Math.min(retry, EXPORT_RETRY_DELAYS_MS.length - 1)];
+        await waitForExport(waitMs, onProgress, {
+          ...progress,
+          phase: rateLimited ? 'rate-limit' : 'retry-wait',
+          retry: retry + 1,
+          error: error?.message || String(error)
+        });
+      }
+    }
+    throw new Error('导出重试次数已用尽');
+  }
+
   async function exportConversationMarkdown(rec) {
     const data = await window.APIHandler.getConversation(rec.id);
     const markdown = buildConversationMarkdown(data, rec);
@@ -1119,11 +1159,18 @@
     const files = [];
     const used = new Set();
     const failures = [];
+    const totalGroups = Math.ceil(records.length / EXPORT_GROUP_SIZE);
     for (let index = 0; index < records.length; index++) {
-      onProgress?.(index + 1, records.length);
       const rec = records[index];
+      const progress = {
+        done: index,
+        total: records.length,
+        group: Math.floor(index / EXPORT_GROUP_SIZE) + 1,
+        totalGroups,
+        title: rec.title || rec.id
+      };
       try {
-        const data = await window.APIHandler.getConversation(rec.id);
+        const data = await fetchConversationForExport(rec, progress, onProgress);
         const base = exportBaseFilename(rec, data);
         if (format === 'json') {
           files.push({ name: uniqueFilename(`${base}.json`, used), text: buildConversationJson(data, rec) });
@@ -1132,6 +1179,25 @@
         }
       } catch (error) {
         failures.push(`${rec.title || rec.id} (${rec.id})：${error.message}`);
+      }
+      onProgress?.({ ...progress, phase: 'completed', done: index + 1, failures: failures.length });
+
+      const isLast = index === records.length - 1;
+      const isGroupEnd = (index + 1) % EXPORT_GROUP_SIZE === 0;
+      if (!isLast && isGroupEnd) {
+        await waitForExport(EXPORT_GROUP_GAP_MS, onProgress, {
+          ...progress,
+          phase: 'group-wait',
+          done: index + 1,
+          failures: failures.length
+        });
+      } else if (!isLast) {
+        await waitForExport(EXPORT_REQUEST_GAP_MS, onProgress, {
+          ...progress,
+          phase: 'pacing',
+          done: index + 1,
+          failures: failures.length
+        });
       }
     }
     if (!files.length) throw new Error(failures[0] || '没有可导出的聊天');
@@ -1244,8 +1310,19 @@
         if (!selected.length) return;
         batchButtons.forEach(item => { item.disabled = true; });
         try {
-          const result = await exportConversationBatch(selected, format, (done, total) => {
-            status.textContent = `正在导出 ${done} / ${total}…`;
+          const result = await exportConversationBatch(selected, format, progress => {
+            const base = `${progress.done} / ${progress.total} · 第 ${progress.group} / ${progress.totalGroups} 组`;
+            if (progress.phase === 'rate-limit') {
+              status.textContent = `请求受限 · ${progress.remainingSeconds} 秒后继续 · ${base}`;
+            } else if (progress.phase === 'group-wait') {
+              status.textContent = `本组完成 · ${progress.remainingSeconds} 秒后继续 · ${base}`;
+            } else if (progress.phase === 'retry-wait') {
+              status.textContent = `请求失败 · ${progress.remainingSeconds} 秒后重试 ${progress.retry} / ${EXPORT_MAX_RETRIES} · ${base}`;
+            } else if (progress.phase === 'retrying') {
+              status.textContent = `正在重试 ${progress.retry} / ${EXPORT_MAX_RETRIES} · ${base}`;
+            } else if (progress.phase !== 'pacing') {
+              status.textContent = `正在导出 ${base}…`;
+            }
           });
           status.textContent = result.failureCount
             ? `已导出 ${result.successCount} 个，失败 ${result.failureCount} 个 · ZIP 已生成`

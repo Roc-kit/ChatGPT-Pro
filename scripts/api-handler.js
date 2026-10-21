@@ -27,6 +27,14 @@ const APIHandler = (function () {
 
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+  function retryAfterMs(value) {
+    if (!value) return 0;
+    const seconds = Number(value);
+    if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+    const date = Date.parse(value);
+    return Number.isNaN(date) ? 0 : Math.max(0, date - Date.now());
+  }
+
   const store = {
     get: keys => new Promise(resolve => {
       if (!chrome?.storage?.local) { resolve({}); return; }
@@ -89,9 +97,16 @@ const APIHandler = (function () {
       if (resp.status === 401) {
         _token = null;
         _tokenFetchedAt = 0;
-        throw new Error('401_UNAUTHORIZED');
+        const error = new Error('401_UNAUTHORIZED');
+        error.status = 401;
+        throw error;
       }
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${url}`);
+      if (!resp.ok) {
+        const error = new Error(`HTTP ${resp.status}: ${url}`);
+        error.status = resp.status;
+        error.retryAfterMs = retryAfterMs(resp.headers.get('Retry-After'));
+        throw error;
+      }
       return resp.json();
     } finally {
       clearTimeout(timeout);
