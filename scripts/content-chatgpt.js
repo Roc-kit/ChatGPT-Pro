@@ -11,7 +11,6 @@
   const PANEL_MIN_WIDTH = 390;
   const PANEL_MIN_HEIGHT = 280;
   const PANEL_COMPACT_WIDTH = 500;
-  const MESSAGE_TIMESTAMP_SOURCE_ATTR = 'data-chatgpt-pro-message-timestamps-enabled';
   const EXPORT_GROUP_SIZE = 50;
   const EXPORT_REQUEST_GAP_MS = 900;
   const EXPORT_GROUP_GAP_MS = 10 * 1000;
@@ -29,6 +28,11 @@
     launcher: null,
     launcherMoved: false,
     currentExportMoved: false,
+    messageConversationId: null,
+    messageConversation: null,
+    messageConversationPromise: null,
+    messageVisibilityObserver: null,
+    observedMessageElements: new WeakSet(),
     settings: {
       enabled: true,
       showSidebarTime: false,
@@ -81,14 +85,12 @@
 
   function removeMessageTimestamps() {
     document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').forEach(el => el.remove());
-  }
-
-  function setMessageTimestampSourceEnabled(enabled) {
-    if (enabled) {
-      document.documentElement.setAttribute(MESSAGE_TIMESTAMP_SOURCE_ATTR, '1');
-    } else {
-      document.documentElement.removeAttribute(MESSAGE_TIMESTAMP_SOURCE_ATTR);
-    }
+    S.messageVisibilityObserver?.disconnect();
+    S.messageVisibilityObserver = null;
+    S.observedMessageElements = new WeakSet();
+    S.messageConversationId = null;
+    S.messageConversation = null;
+    S.messageConversationPromise = null;
   }
 
   function createMessageTimestamp(value, role = '') {
@@ -105,28 +107,71 @@
     return span;
   }
 
-  function stampMessageTimestampElements() {
-    let stamped = 0;
-    for (const messageEl of document.querySelectorAll('[data-message-id]')) {
-      if (messageEl.closest('.chatgpt-pro-panel')) continue;
-      if (messageEl.querySelector(':scope > [data-chatgpt-pro-message-timestamp]')) continue;
-      const value = Number(messageEl.getAttribute('data-chatgpt-pro-message-create-time'));
-      if (!Number.isFinite(value) || value <= 0) continue;
-      const role = messageEl.getAttribute('data-message-author-role') || '';
-      const timestamp = createMessageTimestamp(value, role);
-      if (!timestamp) continue;
-      messageEl.insertBefore(timestamp, messageEl.firstChild);
-      stamped++;
+  function conversationMessageForElement(data, messageEl) {
+    for (const id of window.ChatGPTDomAdapter.messageIds(messageEl)) {
+      const message = data?.mapping?.[id]?.message;
+      if (message?.create_time) return message;
     }
-    return stamped;
+    return null;
   }
 
-  function stampMessageTimestamps() {
+  function stampMessageTimestampElement(messageEl) {
+    if (!S.messageConversation || !(messageEl instanceof Element)) return false;
+    const target = window.ChatGPTDomAdapter.timestampTarget(messageEl);
+    if (!target || target.querySelector(':scope > [data-chatgpt-pro-message-timestamp]')) return false;
+    const message = conversationMessageForElement(S.messageConversation, messageEl);
+    if (!message?.create_time) return false;
+    const timestamp = createMessageTimestamp(message.create_time, window.ChatGPTDomAdapter.messageRole(messageEl));
+    if (!timestamp) return false;
+    target.insertBefore(timestamp, target.firstChild);
+    return true;
+  }
+
+  function ensureMessageVisibilityObserver() {
+    if (S.messageVisibilityObserver) return S.messageVisibilityObserver;
+    S.messageVisibilityObserver = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        stampMessageTimestampElement(entry.target);
+        S.messageVisibilityObserver?.unobserve(entry.target);
+      }
+    }, { root: null, threshold: 0 });
+    return S.messageVisibilityObserver;
+  }
+
+  async function stampMessageTimestamps() {
     if (!S.settings.enabled || !S.settings.showMessageTimestamps) {
       removeMessageTimestamps();
       return 0;
     }
-    return stampMessageTimestampElements();
+    const conversationId = currentConversationId();
+    if (!conversationId) return 0;
+    if (S.messageConversationId !== conversationId) {
+      removeMessageTimestamps();
+      S.messageConversationId = conversationId;
+    }
+    if (!S.messageConversation) {
+      S.messageConversationPromise ||= window.APIHandler.getConversation(conversationId);
+      try {
+        const data = await S.messageConversationPromise;
+        if (currentConversationId() !== conversationId || S.messageConversationId !== conversationId) return 0;
+        S.messageConversation = data;
+      } catch (error) {
+        log('Message timestamp data load failed:', error.message);
+        S.messageConversationPromise = null;
+        return 0;
+      }
+    }
+
+    const observer = ensureMessageVisibilityObserver();
+    let observed = 0;
+    for (const messageEl of window.ChatGPTDomAdapter.messageElements()) {
+      if (messageEl.closest('.chatgpt-pro-panel') || S.observedMessageElements.has(messageEl)) continue;
+      S.observedMessageElements.add(messageEl);
+      observer.observe(messageEl);
+      observed++;
+    }
+    return observed;
   }
 
   function makeBadge(text) {
@@ -1458,18 +1503,21 @@
 
       if (S.settings.showMessageTimestamps) {
         const messageRelevant = mutations.some(mutation =>
-          (mutation.type === 'attributes' && mutation.attributeName === 'data-chatgpt-pro-message-create-time') ||
+          (mutation.type === 'attributes' && [
+            'data-chatgpt-selection-message-id',
+            'data-chatgpt-search-message-ids',
+            'data-message-id',
+            'data-chatgpt-search-unit-key',
+            'data-content-search-unit-key'
+          ].includes(mutation.attributeName)) ||
           Array.from(mutation.addedNodes).some(node =>
-            node.nodeType === 1 && (
-              node.matches?.('[data-message-id], section[data-turn-id]') ||
-              node.querySelector?.('[data-message-id]')
-            )
+            node.nodeType === 1 && window.ChatGPTDomAdapter.containsMessageNode(node)
           )
         );
         if (messageRelevant) {
           clearTimeout(messageTimer);
           messageTimer = setTimeout(() => {
-            stampMessageTimestamps();
+            stampMessageTimestamps().catch(error => log('Message timestamp refresh failed:', error.message));
           }, 100);
         }
       }
@@ -1478,7 +1526,13 @@
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-chatgpt-pro-message-create-time']
+      attributeFilter: [
+        'data-chatgpt-selection-message-id',
+        'data-chatgpt-search-message-ids',
+        'data-message-id',
+        'data-chatgpt-search-unit-key',
+        'data-content-search-unit-key'
+      ]
     });
   }
 
@@ -1558,7 +1612,6 @@
         } else {
           removeAllBadges();
           removeMessageTimestamps();
-          setMessageTimestampSourceEnabled(false);
           removeFloatingButton();
         }
       }
@@ -1574,9 +1627,8 @@
       }
       if (changes.showMessageTimestamps) {
         S.settings.showMessageTimestamps = changes.showMessageTimestamps.newValue;
-        setMessageTimestampSourceEnabled(S.settings.showMessageTimestamps);
         if (S.settings.showMessageTimestamps) {
-          stampMessageTimestamps();
+          stampMessageTimestamps().catch(error => log('Message timestamp refresh failed:', error.message));
         } else {
           removeMessageTimestamps();
         }
@@ -1595,7 +1647,6 @@
   async function init() {
     await loadSettings();
     if (!S.settings.enabled) { S.ready = true; return; }
-    setMessageTimestampSourceEnabled(S.settings.showMessageTimestamps);
     ensureFloatingButton();
     setupOutsideClose();
     setupObserver();
@@ -1607,7 +1658,7 @@
       }
     }
     if (S.settings.showMessageTimestamps) {
-      stampMessageTimestamps();
+      stampMessageTimestamps().catch(error => log('Message timestamp refresh failed:', error.message));
     }
     setInterval(() => {
       if (!S.settings.enabled) return;
@@ -1615,7 +1666,7 @@
       ensureCurrentChatExportButton();
       stampAll();
       if (S.settings.showMessageTimestamps) {
-        stampMessageTimestamps();
+        stampMessageTimestamps().catch(error => log('Message timestamp refresh failed:', error.message));
       }
     }, RECHECK_MS);
     setInterval(backgroundSyncConversationList, BACKGROUND_SYNC_MS);

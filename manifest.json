@@ -19,13 +19,8 @@
   "content_scripts": [
     {
       "matches": ["https://chatgpt.com/*"],
-      "js": ["scripts/message-timestamp-main.js"],
-      "run_at": "document_idle",
-      "world": "MAIN"
-    },
-    {
-      "matches": ["https://chatgpt.com/*"],
       "js": [
+        "scripts/chatgpt-dom-adapter.js",
         "scripts/api-handler.js",
         "scripts/content-chatgpt.js"
       ],
