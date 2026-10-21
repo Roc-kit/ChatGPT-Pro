@@ -17,6 +17,8 @@
   const EXPORT_RATE_LIMIT_DEFAULT_MS = 60 * 1000;
   const EXPORT_MAX_RETRIES = 3;
   const EXPORT_RETRY_DELAYS_MS = [1000, 3000, 8000];
+  const MESSAGE_ROUTE_CHECK_MS = 500;
+  const MESSAGE_ROUTE_RETRY_DELAYS_MS = [100, 400, 1000, 2200];
 
   const S = {
     ready: false,
@@ -33,6 +35,8 @@
     messageConversationPromise: null,
     messageVisibilityObserver: null,
     observedMessageElements: new WeakSet(),
+    observedConversationId: undefined,
+    messageRouteRetryTimers: [],
     settings: {
       enabled: true,
       showSidebarTime: false,
@@ -91,6 +95,11 @@
     S.messageConversationPromise = null;
   }
 
+  function clearMessageRouteRetryTimers() {
+    S.messageRouteRetryTimers.forEach(timer => clearTimeout(timer));
+    S.messageRouteRetryTimers = [];
+  }
+
   function createMessageTimestamp(value, role = '') {
     const text = formatMessageTime(value);
     if (!text) return null;
@@ -130,8 +139,9 @@
     S.messageVisibilityObserver = new IntersectionObserver(entries => {
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
-        stampMessageTimestampElement(entry.target);
+        const stamped = stampMessageTimestampElement(entry.target);
         S.messageVisibilityObserver?.unobserve(entry.target);
+        if (!stamped) S.observedMessageElements.delete(entry.target);
       }
     }, { root: null, threshold: 0 });
     return S.messageVisibilityObserver;
@@ -170,6 +180,35 @@
       observed++;
     }
     return observed;
+  }
+
+  function refreshMessageTimestampsForRoute(force = false) {
+    const conversationId = currentConversationId();
+    if (!force && conversationId === S.observedConversationId) return false;
+
+    S.observedConversationId = conversationId;
+    clearMessageRouteRetryTimers();
+    removeMessageTimestamps();
+    if (S.settings.enabled) ensureCurrentChatExportButton();
+
+    if (!S.settings.enabled || !S.settings.showMessageTimestamps || !conversationId) return true;
+    for (const delay of MESSAGE_ROUTE_RETRY_DELAYS_MS) {
+      const timer = window.setTimeout(() => {
+        S.messageRouteRetryTimers = S.messageRouteRetryTimers.filter(item => item !== timer);
+        if (currentConversationId() !== conversationId) return;
+        stampMessageTimestamps().catch(error => log('Message timestamp route refresh failed:', error.message));
+        resumePendingSearchJump().catch(error => log('Search result jump failed:', error.message));
+      }, delay);
+      S.messageRouteRetryTimers.push(timer);
+    }
+    return true;
+  }
+
+  function setupConversationRouteTracking() {
+    const checkRoute = () => refreshMessageTimestampsForRoute(false);
+    window.addEventListener('popstate', checkRoute);
+    window.addEventListener('hashchange', checkRoute);
+    window.setInterval(checkRoute, MESSAGE_ROUTE_CHECK_MS);
   }
 
   function makeBadge(text) {
@@ -1755,6 +1794,7 @@
     let sidebarTimer = null;
     let messageTimer = null;
     S.observer = new MutationObserver(mutations => {
+      refreshMessageTimestampsForRoute(false);
       const sidebarRelevant = mutations.some(mutation =>
         Array.from(mutation.addedNodes).some(node =>
           node.nodeType === 1 && window.ChatGPTDomAdapter.containsSidebarConversationLink(node)
@@ -1878,6 +1918,7 @@
           ensureFloatingButton();
           restamp = true;
         } else {
+          clearMessageRouteRetryTimers();
           removeAllBadges();
           removeMessageTimestamps();
           removeFloatingButton();
@@ -1896,8 +1937,9 @@
       if (changes.showMessageTimestamps) {
         S.settings.showMessageTimestamps = changes.showMessageTimestamps.newValue;
         if (S.settings.showMessageTimestamps) {
-          stampMessageTimestamps().catch(error => log('Message timestamp refresh failed:', error.message));
+          refreshMessageTimestampsForRoute(true);
         } else {
+          clearMessageRouteRetryTimers();
           removeMessageTimestamps();
         }
       }
@@ -1918,6 +1960,7 @@
     ensureFloatingButton();
     setupOutsideClose();
     setupObserver();
+    setupConversationRouteTracking();
     if (S.settings.showSidebarTime) {
       try {
         await reloadTimestampMap(false);
@@ -1926,7 +1969,9 @@
       }
     }
     if (S.settings.showMessageTimestamps) {
-      stampMessageTimestamps().catch(error => log('Message timestamp refresh failed:', error.message));
+      refreshMessageTimestampsForRoute(true);
+    } else {
+      S.observedConversationId = currentConversationId();
     }
     setInterval(() => {
       if (!S.settings.enabled) return;
