@@ -89,8 +89,6 @@
     [/^同步失败，已保留本地数据：(.+)$/, m => `Sync failed; local data retained: ${translateText(m[1])}`],
     [/^图片下载 HTTP (\d+)$/, m => `Image download HTTP ${m[1]}`],
     [/^无权写入(.+)$/, m => `Not allowed to write ${translateText(m[1])}`],
-    [/^当前账号已索引 (\d+) \/ (\d+) 个 · 未归属旧索引 (\d+) 个$/, m =>
-      `Indexed ${m[1]} / ${m[2]} for this account · ${m[3]} unassigned legacy entries`],
     [/^首次建立全文索引需点击授权；不会自动抓取正文。已有索引可搜索 · 当前 (\d+) 条$/, m =>
       `Authorize to build a full-text index; chat bodies are not fetched automatically. Existing index is searchable · ${m[1]} indexed`],
     [/^选择 (.+)$/, m => `${t('选择')} ${m[1]}`],
@@ -109,16 +107,11 @@
     [/^ · 等待结束，正在恢复$/, () => ' · Resuming'],
     [/^(.+)中…$/, m => `${translateText(m[1])} in progress…`],
     [/^(.+)失败：(.+)$/, m => `${translateText(m[1])} failed: ${translateText(m[2])}`],
-    [/^任务不可用：(.+)$/, m => `Task unavailable: ${translateText(m[1])}`],
     [/^自动更新设置失败：(.+)$/, m => `Failed to update automatic indexing: ${translateText(m[1])}`],
     [/^索引启动失败：(.+)$/, m => `Index start failed: ${translateText(m[1])}`],
-    [/^完成 · (\d+) 条聊天记录$/, m => `Done · ${m[1]} chats`],
     [/^(.+) · ZIP (\d+) 卷$/, m => `${translateText(m[1])} · ${m[2]} ZIP parts`],
-    [/^当前账号 (\d+) 条(?: · 未归属旧索引 (\d+) 条)?$/, m => `${m[1]} account chats${m[2] ? ` · ${m[2]} legacy entries` : ''}`],
     [/^本地已有 (\d+) 条，正在增量检查最新数据…$/, m => `${m[1]} local chats · checking for updates…`],
     [/^(.+) · 已完成增量同步$/, m => `${translateText(m[1])} · ${t('已完成增量同步')}`],
-    [/^已发起下载 (\d+) \/ (\d+) 卷（最近一次导出任务）$/, m => `Started downloading ${m[1]} / ${m[2]} ZIP parts (latest export)`],
-    [/^已持久化 (\d+) 卷 · 成功 (\d+) 个、失败 (\d+) 个（浏览器下载需单独确认）$/, m => `${m[1]} saved parts · ${m[2]} succeeded, ${m[3]} failed (check browser downloads)`],
     [/^(正在归档|正在永久删除) (\d+) \/ (\d+) · 成功 (\d+)、失败 (\d+)$/, m => `${m[1] === '正在归档' ? 'Archiving' : 'Deleting'} ${m[2]} / ${m[3]} · ${m[4]} succeeded, ${m[5]} failed`],
     [/^(归档|永久删除)完成：成功 (\d+)、失败 (\d+)(（点击查看失败清单）)?$/, m => `${t(m[1])} completed: ${m[2]} succeeded, ${m[3]} failed${m[4] ? ' (click for failures)' : ''}`],
     [/^(归档|永久删除)中止：(.+)$/, m => `${t(m[1])} stopped: ${translateText(m[2])}`],
@@ -127,9 +120,9 @@
   function valueVerb(text) { return text.startsWith('正在归档') ? 'Archiving' : 'Deleting'; }
   function dynamicVariant(index, match) {
     if (index === 6) return match[0].startsWith('正在归档') ? 'archive' : 'delete';
-    if (index === 65) return match[1] === '正在归档' ? 'archive' : 'delete';
-    if (index === 66) return `${match[1] === '归档' ? 'archive' : 'delete'}${match[4] ? 'WithFailures' : ''}`;
-    if (index === 9 || index === 60) return match[2] ? 'full' : 'short';
+    if (index === 59) return match[1] === '正在归档' ? 'archive' : 'delete';
+    if (index === 60) return `${match[1] === '归档' ? 'archive' : 'delete'}${match[4] ? 'WithFailures' : ''}`;
+    if (index === 9) return match[2] ? 'full' : 'short';
     if (index === 10) return match[5] ? 'full' : 'short';
     if (index === 27) return match[2] ? 'full' : 'short';
     return 'default';

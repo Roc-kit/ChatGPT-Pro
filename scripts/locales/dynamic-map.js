@@ -116,9 +116,6 @@ window.ChatGPTProDynamicMessageKeys = [
     "default": "status.notAllowedToWrite"
   },
   {
-    "default": "status.indexedForThisAccountUnassignedLegacyEntries_37"
-  },
-  {
     "default": "status.authorizeToBuildAFullTextIndex"
   },
   {
@@ -170,35 +167,19 @@ window.ChatGPTProDynamicMessageKeys = [
     "default": "status.failed"
   },
   {
-    "default": "status.taskUnavailable_55"
-  },
-  {
     "default": "status.failedToUpdateAutomaticIndexing"
   },
   {
     "default": "status.indexStartFailed"
   },
   {
-    "default": "status.doneChats"
-  },
-  {
     "default": "status.zipParts"
-  },
-  {
-    "full": "status.accountChatsLegacyEntries",
-    "short": "status.accountChats_60"
   },
   {
     "default": "status.localChatsCheckingForUpdates"
   },
   {
     "default": "status.incrementalSyncComplete"
-  },
-  {
-    "default": "status.startedDownloadingZIPPartsLatestExport"
-  },
-  {
-    "default": "status.savedPartsSucceededFailedCheckBrowserDownloads"
   },
   {
     "archive": "status.archivingSucceededFailed_65",

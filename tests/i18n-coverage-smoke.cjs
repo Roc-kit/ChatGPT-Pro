@@ -15,7 +15,7 @@ const packs = environment.ChatGPTProLocalePacks;
 const stableKeys = Object.keys(keys);
 assert(stableKeys.length >= 400, 'static and dynamic UI/status keys must be preserved');
 const dynamicKeys = environment.ChatGPTProDynamicMessageKeys;
-assert.equal(dynamicKeys.length, 69, 'all recognized dynamic UI templates must have stable keys');
+assert.equal(dynamicKeys.length, 63, 'dynamic UI templates must have no redundant rules');
 for (const variants of dynamicKeys) {
   for (const key of Object.values(variants)) {
     assert(Object.prototype.hasOwnProperty.call(keys, key), `missing dynamic catalog key ${key}`);
