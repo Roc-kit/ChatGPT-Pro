@@ -1621,6 +1621,10 @@
         <span class="chatgpt-pro-panel-status">正在读取本地目录…</span>
         <div class="chatgpt-pro-batch-actions" hidden>
           <span class="chatgpt-pro-batch-count">已选 0</span>
+          <label title="导出前增量检查聊天目录；仅更新有变化的完整缓存" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:11px">
+            <input class="chatgpt-pro-export-check-latest" type="checkbox" style="width:auto;margin:0">
+            检查更新
+          </label>
           <button type="button" data-batch-format="md">导出 MD</button>
           <button type="button" data-batch-format="json">导出 JSON</button>
         </div>
@@ -1699,6 +1703,7 @@
     const projectFilter = panel.querySelector('.chatgpt-pro-project-filter');
     const selectAll = panel.querySelector('.chatgpt-pro-select-all input');
     const batchActions = panel.querySelector('.chatgpt-pro-batch-actions');
+    const exportCheckLatest = panel.querySelector('.chatgpt-pro-export-check-latest');
     const batchCount = panel.querySelector('.chatgpt-pro-batch-count');
     const batchButtons = Array.from(panel.querySelectorAll('[data-batch-format]'));
     let activeView = 'directory';
@@ -1874,11 +1879,20 @@
       button.addEventListener('click', async () => {
         if (!selectedIds.size || button.disabled) return;
         const format = button.dataset.batchFormat === 'json' ? 'json' : 'md';
-        const selected = currentVisibleRecords()
+        let selected = currentVisibleRecords()
           .filter(rec => selectedIds.has(rec.id));
         if (!selected.length) return;
         batchButtons.forEach(item => { item.disabled = true; });
+        exportCheckLatest.disabled = true;
         try {
+          if (exportCheckLatest.checked) {
+            status.textContent = '正在检查所选聊天的目录版本…';
+            // Bypass the short directory sync throttle, but do not force a
+            // full historical rescan. Changed conversations move to the top.
+            const fresh = await window.APIHandler.syncConversationList(false, { checkLatest: true });
+            const freshById = new Map(fresh.map(record => [record.id, record]));
+            selected = selected.map(record => freshById.get(record.id) || record);
+          }
           const result = await exportConversationBatch(selected, format, progress => {
             const base = `${progress.done} / ${progress.total} · 第 ${progress.group} / ${progress.totalGroups} 组`;
             if (progress.phase === 'rate-limit') {
@@ -1904,6 +1918,7 @@
           status.textContent = `批量导出失败：${error.message}`;
         } finally {
           batchButtons.forEach(item => { item.disabled = false; });
+          exportCheckLatest.disabled = false;
         }
       });
     }

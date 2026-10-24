@@ -475,7 +475,7 @@ const APIHandler = (function () {
     }
   }
 
-  async function syncConversationList(forceFull = false) {
+  async function syncConversationList(forceFull = false, options = {}) {
     // Do not return an earlier account's in-flight result after switching users.
     const expectedAccountId = await getAccountId(true);
     if (_syncPromise) {
@@ -487,7 +487,7 @@ const APIHandler = (function () {
       if (await getAccountId(true) !== expectedAccountId) throw new Error('登录账号已切换，请重新同步');
       return result;
     }
-    if (!forceFull) {
+    if (!forceFull && options.checkLatest !== true) {
       const accountId = expectedAccountId;
       const key = `${K_ACCOUNT_DIRECTORY_TS}${accountId}`;
       const state = await store.get([key]);

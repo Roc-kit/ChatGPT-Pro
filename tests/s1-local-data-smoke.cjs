@@ -151,6 +151,7 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     let activeAccount = 'acct-a';
     let missingIdentity = false;
     let switchMidSync = false;
+    let changedRemoteAccountA = false;
     let detailRequests = 0;
     const sentUrls = [];
     window.fetch = async (input, options) => {
@@ -161,8 +162,11 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
         json = { user: missingIdentity ? {} : { id: activeAccount }, accessToken: 'test-token' };
       } else if (url.includes('/backend-api/conversations')) {
         const id = switchMidSync ? 'race-old-account' : 'remote-' + activeAccount;
-        json = { items: [{ id, title: activeAccount,
-          update_time: 1700000003 }], total: 1 };
+        const items = [{ id, title: activeAccount, update_time: 1700000003 }];
+        if (changedRemoteAccountA && activeAccount === 'acct-a') {
+          items.unshift({ id: 'cached-0', title: 'newly updated', update_time: 1700000004 });
+        }
+        json = { items, total: items.length };
         if (switchMidSync) { activeAccount = 'acct-b'; switchMidSync = false; }
       } else if (url.includes('/backend-api/gizmos/snorlax/sidebar')) {
         json = { items: [] };
@@ -306,6 +310,24 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     } catch (error) {
       check(/索引版本/.test(error.message), 'stale search cannot overwrite newer complete JSON');
     }
+    // S2-3: normally recent directory state is reused; an explicit latest
+    // check bypasses that short throttle and refreshes only changed versions.
+    activeAccount = 'acct-a';
+    await window.APIHandler.getAccountId(true);
+    const directoryRequestCount = () => sentUrls.filter(url => url.includes('/backend-api/conversations?')).length;
+    const beforeNormal = directoryRequestCount();
+    await window.APIHandler.syncConversationList(false);
+    check(directoryRequestCount() === beforeNormal, 'default sync honors local directory throttle');
+    changedRemoteAccountA = true;
+    const latest = await window.APIHandler.syncConversationList(false, { checkLatest: true });
+    check(directoryRequestCount() > beforeNormal, 'explicit latest-check contacts directory endpoint');
+    check(latest.some(row => row.id === 'cached-0' && row.updateTime === 1700000004000),
+      'changed directory version updated');
+    const beforeExportDetails = detailRequests;
+    await window.APIHandler.getConversation('cached-1');
+    check(detailRequests === beforeExportDetails, 'unchanged full cache not refetched after latest check');
+    await window.APIHandler.getConversation('cached-0');
+    check(detailRequests === beforeExportDetails + 1, 'changed record alone triggers detail request');
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }
