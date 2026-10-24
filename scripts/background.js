@@ -286,6 +286,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       message: String(message.message || '首次索引准备中断').slice(0, 250)
     }),
     localDataMarkOfficialGone: () => ChatGPTProLocalData.markOfficialGone(message.accountId, message.id),
+    localDataHideArchived: () => ChatGPTProLocalData.hideArchivedConversation(message.accountId, message.id),
     localDataClearLocalOnly: () => ChatGPTProLocalData.clearLocalOnlyConversation(message.accountId, message.id),
     taskVolumeChunk: () => ChatGPTProLocalData.uploadExportChunk(
       message.accountId, message.id, message.owner, message.token,

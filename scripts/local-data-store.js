@@ -230,6 +230,17 @@ globalThis.ChatGPTProLocalData = (() => {
     });
   }
 
+  // Archive removes the entry from the extension's visible directory, while
+  // retaining any indexed text and full raw JSON for offline search/export.
+  async function hideArchivedConversation(accountId, id) {
+    validateAccount(accountId);
+    validateId(id);
+    return transaction([STORES.directory], 'readwrite', async stores => {
+      await requested(stores[STORES.directory].delete([accountId, id]));
+      return { hidden: true, id };
+    });
+  }
+
   async function clearLocalOnlyConversation(accountId, id) {
     validateAccount(accountId);
     validateId(id);
@@ -1019,7 +1030,7 @@ globalThis.ChatGPTProLocalData = (() => {
     putConversation, getConversation, getStats, getLegacyMetadata,
     getIndexPolicy, setIndexSetupPhase, setAutoIndexEnabled, clearAccountData,
     grantIndexConsent, recordFullDirectoryScan, finishInitialIndex,
-    markOfficialGone, clearLocalOnlyConversation,
+    markOfficialGone, hideArchivedConversation, clearLocalOnlyConversation,
     createTask, getTask, listTasks, claimTask, updateTaskPhase,
     heartbeatTask, checkpointTask, controlTask,
     saveExportVolume, getExportVolume,

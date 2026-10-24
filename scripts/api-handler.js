@@ -733,6 +733,86 @@ const APIHandler = (function () {
     return options.withSource === true ? result : result.data;
   }
 
+  // ChatGPT's own conversation mutation endpoint, as used by the reference
+  // extensions. All writes are user-initiated and use our shared 429 cooldown.
+  async function setConversationState(id, operation, expectedAccountId) {
+    if (!['archive', 'delete'].includes(operation) || !id || !expectedAccountId) {
+      throw new Error('无效的对话操作');
+    }
+    const body = operation === 'archive' ? { is_archived: true } : { is_visible: false };
+    const url = `${baseUrl()}/conversation/${encodeURIComponent(id)}`;
+    for (let attempt = 0; attempt <= CFG.MAX_RETRIES; attempt++) {
+      await waitForSharedCooldown(expectedAccountId);
+      const identity = await getSessionIdentity(true);
+      if (identity.accountId !== expectedAccountId) throw new Error('登录账号已切换，操作已停止');
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), CFG.TIMEOUT_MS);
+      try {
+        const response = await fetch(url, {
+          method: 'PATCH', credentials: 'include', signal: ctrl.signal,
+          headers: {
+            'Authorization': `Bearer ${identity.token}`,
+            'Accept': 'application/json', 'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(body)
+        });
+        if (response.ok) {
+          if (await getAccountId(true) !== expectedAccountId) {
+            throw new Error('登录账号已切换，请核对远端操作结果');
+          }
+          return;
+        }
+        const error = new Error(`ChatGPT 操作失败：HTTP ${response.status}`);
+        error.status = response.status;
+        if (response.status === 429) {
+          await localDataMessage({ action: 'directoryRateLimited', accountId: expectedAccountId,
+            retryAfterMs: retryAfterMs(response.headers.get('Retry-After')) });
+          if (attempt < CFG.MAX_RETRIES) continue;
+        }
+        if (response.status === 401 || response.status === 403 || response.status === 404) throw error;
+        if (response.status >= 500 && attempt < CFG.MAX_RETRIES) {
+          await sleep(CFG.RETRY_BASE_MS * Math.pow(2, attempt));
+          continue;
+        }
+        throw error;
+      } catch (error) {
+        if (attempt >= CFG.MAX_RETRIES || error.status || /登录账号已切换/.test(error.message)) throw error;
+        await sleep(CFG.RETRY_BASE_MS * Math.pow(2, attempt));
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  // Resolve file asset pointers through the authenticated ChatGPT endpoint.
+  // A pointer in raw conversation JSON is not an image download URL.
+  async function getConversationImageUrl(conversationId, fileId, accountId) {
+    if (!/^[A-Za-z0-9_.-]+$/.test(fileId) || !conversationId) throw new Error('无效的图片文件标识');
+    if (await getAccountId(true) !== accountId) throw new Error('登录账号已切换');
+    const id = encodeURIComponent(fileId);
+    const conversation = encodeURIComponent(conversationId);
+    const paths = [
+      `/conversation/${conversation}/attachment/${id}/download`,
+      `/files/download/${id}?inline=true&download_intent=false&check_context_scopes_for_conversation_id=${conversation}`,
+      `/files/download/${id}?conversation_id=${conversation}&inline=false&download_intent=false`,
+      `/files/download/${id}`
+    ];
+    let lastError;
+    for (const path of paths) {
+      try {
+        const response = await fetchAuthedJson(await getToken(), `${baseUrl()}${path}`);
+        if (typeof response?.download_url === 'string') {
+          const target = new URL(response.download_url, baseUrl());
+          if (target.protocol === 'https:') return { ...response, download_url: target.href };
+        }
+      } catch (error) {
+        lastError = error;
+        if (error.status === 401 || error.status === 403 || error.status === 429) throw error;
+      }
+    }
+    throw lastError || new Error('ChatGPT 未提供可下载的图片链接');
+  }
+
   async function clearCache() {
     // Force the next directory revalidation, not a destructive deletion of
     // another account's or an unassigned legacy directory.
@@ -747,6 +827,8 @@ const APIHandler = (function () {
     getConversationTimestamps,
     getAccountId,
     getConversation,
+    setConversationState,
+    getConversationImageUrl,
     clearCache
   };
 })();

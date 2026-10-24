@@ -2115,6 +2115,8 @@
           </label>
           <button type="button" data-batch-format="md">导出 MD</button>
           <button type="button" data-batch-format="json">导出 JSON</button>
+          <button type="button" data-batch-action="archive">归档</button>
+          <button type="button" data-batch-action="delete">删除</button>
         </div>
       </div>
       <div class="chatgpt-pro-panel-list" data-panel-content="directory">
@@ -2199,6 +2201,7 @@
     const exportCheckLatest = panel.querySelector('.chatgpt-pro-export-check-latest');
     const batchCount = panel.querySelector('.chatgpt-pro-batch-count');
     const batchButtons = Array.from(panel.querySelectorAll('[data-batch-format]'));
+    const mutationButtons = Array.from(panel.querySelectorAll('[data-batch-action]'));
     let activeView = 'directory';
     let sortDirection = 'newest';
     let currentRecords = [];
@@ -2500,6 +2503,73 @@
         } finally {
           batchButtons.forEach(item => { item.disabled = false; });
           exportCheckLatest.disabled = false;
+        }
+      });
+    }
+    for (const button of mutationButtons) {
+      button.addEventListener('click', async () => {
+        const action = button.dataset.batchAction;
+        const chosen = currentVisibleRecords().filter(rec => selectedIds.has(rec.id));
+        const selected = chosen.filter(rec => rec.remoteState !== 'local-only');
+        if (!selected.length) {
+          status.textContent = '所选记录已是仅本地状态，无法操作云端';
+          return;
+        }
+        const verb = action === 'delete' ? '永久删除' : '归档';
+        const explanation = action === 'delete'
+          ? '删除 ChatGPT 云端对话不可撤销。扩展会先验证完整 JSON 已保存到本地，删除后保留本地索引和原文。'
+          : '归档只影响 ChatGPT 云端的对话列表，不会清理扩展本地数据。';
+        if (!window.confirm(`确定${verb}选中的 ${selected.length} 条对话？\n\n${explanation}\n\n操作可能持续一段时间，失败的条目会保留供重试。`)) return;
+        mutationButtons.concat(batchButtons).forEach(item => { item.disabled = true; });
+        let success = 0;
+        const failed = [];
+        try {
+          const accountId = await window.APIHandler.getAccountId(true);
+          for (const rec of selected) {
+            status.textContent = `正在${verb} ${success + failed.length + 1} / ${selected.length} · 成功 ${success}、失败 ${failed.length}`;
+            try {
+              if (action === 'delete') {
+                // A fulfilled network fetch is not enough: require the durable
+                // IndexedDB raw copy before requesting irreversible deletion.
+                await window.APIHandler.getConversation(rec.id);
+                const cached = await runtimeMessage({ action: 'localDataGetConversation',
+                  accountId, id: rec.id });
+                if (!cached.hit) throw new Error('完整原文尚未保存到本地，未执行云端删除');
+              }
+              await window.APIHandler.setConversationState(rec.id, action, accountId);
+              if (action === 'delete') {
+                const result = await runtimeMessage({ action: 'localDataMarkOfficialGone', accountId, id: rec.id });
+                if (!result.result?.marked) throw new Error('云端已删除，但本地状态标记失败，请检查缓存');
+                currentRecords = currentRecords.map(item => item.id === rec.id
+                  ? { ...item, remoteState: 'local-only' } : item);
+              } else {
+                await runtimeMessage({ action: 'localDataHideArchived', accountId, id: rec.id });
+                currentRecords = currentRecords.filter(item => item.id !== rec.id);
+              }
+              selectedIds.delete(rec.id);
+              success++;
+              renderCurrent();
+            } catch (error) {
+              failed.push(`${rec.title}: ${error.message}`);
+              if (/登录账号已切换|HTTP 401|HTTP 403/.test(error.message)) break;
+            }
+            // Keep mutations sequential to avoid spiking ChatGPT's API.
+            if (success + failed.length < selected.length) await sleep(750);
+          }
+          status.textContent = `${verb}完成：成功 ${success}、失败 ${failed.length}${failed.length ? '（点击查看失败清单）' : ''}`;
+          if (failed.length) {
+            status.title = failed.join('\n');
+            status.style.cursor = 'pointer';
+            status.onclick = () => window.alert(`失败记录：\n${failed.join('\n')}`);
+          } else {
+            status.removeAttribute('title');
+            status.style.cursor = '';
+            status.onclick = null;
+          }
+        } catch (error) {
+          status.textContent = `${verb}中止：${error.message}`;
+        } finally {
+          mutationButtons.concat(batchButtons).forEach(item => { item.disabled = false; });
         }
       });
     }

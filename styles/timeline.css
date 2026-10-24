@@ -115,6 +115,7 @@
   align-items: center !important;
   justify-content: space-between !important;
   gap: 12px !important;
+  flex-wrap: wrap !important;
   padding: 11px 12px !important;
   border-bottom: 1px solid rgba(127, 127, 127, 0.18) !important;
   font-size: 15px !important;
@@ -197,9 +198,11 @@
 }
 
 .chatgpt-pro-batch-actions {
-  flex: 0 0 auto !important;
+  flex: 1 0 100% !important;
   display: flex !important;
   align-items: center !important;
+  justify-content: flex-end !important;
+  flex-wrap: wrap !important;
   gap: 5px !important;
 }
 
