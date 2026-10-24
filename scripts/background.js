@@ -276,6 +276,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     indexPolicyConsent: () => ChatGPTProLocalData.grantIndexConsent(message.accountId),
     indexPolicyDirectoryVerified: () => ChatGPTProLocalData.recordFullDirectoryScan(message.accountId, message.records),
     indexPolicyFinishInitial: () => ChatGPTProLocalData.finishInitialIndex(message.accountId),
+    indexSetupLog: () => ChatGPTProLocalData.addLog(message.accountId, {
+      type: 'failure', code: 'initial-index-setup',
+      message: String(message.message || '首次索引准备中断').slice(0, 250)
+    }),
     localDataMarkOfficialGone: () => ChatGPTProLocalData.markOfficialGone(message.accountId, message.id),
     localDataClearLocalOnly: () => ChatGPTProLocalData.clearLocalOnlyConversation(message.accountId, message.id),
     taskVolumeChunk: () => ChatGPTProLocalData.uploadExportChunk(

@@ -1698,11 +1698,11 @@
     return runIndexTask(accountId, task.id, onProgress);
   }
 
-  async function updateIndexWithConsent(records, onProgress) {
+  async function updateIndexWithConsent(records, onProgress, consentConfirmedInPopup = false) {
     const accountId = await window.APIHandler.getAccountId(true);
     let policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
     if (!policy.consentAt) {
-      const accepted = window.confirm(
+      const accepted = consentConfirmedInPopup || window.confirm(
         '首次建立全文索引将遍历当前账号可读取的完整聊天目录，并按需抓取未缓存的对话正文。' +
         '原始 JSON 和搜索索引只保存在本机。首次完成后将自动增量更新。是否授权开始？'
       );
@@ -1762,10 +1762,11 @@
   // Its task controls must go through this authenticated content script.
   async function getTaskDashboard() {
     const accountId = await window.APIHandler.getAccountId();
-    const [tasksResult, logsResult, cooldownResult] = await Promise.all([
+    const [tasksResult, logsResult, cooldownResult, indexPolicyResult] = await Promise.all([
       runtimeMessage({ action: 'taskList', accountId }),
       runtimeMessage({ action: 'logList', accountId, limit: 12 }),
-      runtimeMessage({ action: 'detailStatus', accountId })
+      runtimeMessage({ action: 'detailStatus', accountId }),
+      runtimeMessage({ action: 'indexPolicyGet', accountId })
     ]);
     if (await window.APIHandler.getAccountId() !== accountId) {
       throw new Error('登录账号已切换，请重新打开任务管理');
@@ -1783,8 +1784,35 @@
         id: log.id, type: log.type, code: log.code,
         createdAt: log.createdAt, message: log.message
       })),
-      cooldownUntil: cooldownResult.result?.cooldownUntil || 0
+      cooldownUntil: cooldownResult.result?.cooldownUntil || 0,
+      indexPolicy: indexPolicyResult.result
     };
+  }
+
+  let popupIndexRequest = null;
+  async function beginIndexFromPopup(userConfirmedConsent) {
+    if (!S.settings.enabled) throw new Error('请先启用扩展');
+    const accountId = await window.APIHandler.getAccountId(true);
+    const policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
+    if (!policy?.consentAt && userConfirmedConsent !== true) {
+      throw new Error('首次全文索引必须由用户明确授权');
+    }
+    if (popupIndexRequest) return { queued: true, alreadyStarting: true };
+    // Finish quickly, without tying a long-running scan to Popup lifetime.
+    // The actual run stays in this ChatGPT content script and later uses the
+    // durable S3 queue/checkpoints. A canceled initial scan can be retried.
+    popupIndexRequest = Promise.resolve().then(async () => {
+      const records = policy.initialCompletedAt
+        ? await window.APIHandler.syncConversationList(false, { checkLatest: true })
+        : await window.APIHandler.getCachedConversationList();
+      return updateIndexWithConsent(records, null, userConfirmedConsent === true);
+    }).catch(async error => {
+      log('Popup index setup failed:', error.message);
+      await runtimeMessage({ action: 'indexSetupLog', accountId,
+        message: `首次索引准备失败：${error.message}` }).catch(() => {});
+    })
+      .finally(() => { popupIndexRequest = null; });
+    return { queued: true };
   }
 
   async function controlManagedTask(taskId, operation) {
@@ -2471,6 +2499,12 @@
       }
       if (msg.action === 'taskDashboard') {
         getTaskDashboard()
+          .then(result => respond({ success: true, ...result }))
+          .catch(error => respond({ success: false, error: error.message }));
+        return true;
+      }
+      if (msg.action === 'indexBegin') {
+        beginIndexFromPopup(msg.userConfirmedConsent === true)
           .then(result => respond({ success: true, ...result }))
           .catch(error => respond({ success: false, error: error.message }));
         return true;

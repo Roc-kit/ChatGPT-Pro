@@ -111,6 +111,10 @@
       <strong>本地任务</strong>
       <button id="taskRefresh" type="button">刷新</button>
     </div>
+    <div id="indexStartArea" style="margin-bottom:9px" hidden>
+      <button type="button" id="indexStart">建立全文索引（需授权）</button>
+      <div class="hint" id="indexConsentStatus">首次需要授权扫描当前账号全部可读取的聊天；完成后自动增量更新。</div>
+    </div>
     <div class="hint" id="taskFeedback" aria-live="polite">正在读取任务…</div>
     <div class="task-list" id="taskList"></div>
     <details id="taskLogsWrap">

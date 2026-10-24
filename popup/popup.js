@@ -18,7 +18,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const taskList = document.getElementById('taskList');
   const taskLogList = document.getElementById('taskLogList');
   const taskRefresh = document.getElementById('taskRefresh');
+  const indexStartArea = document.getElementById('indexStartArea');
+  const indexStart = document.getElementById('indexStart');
+  const indexConsentStatus = document.getElementById('indexConsentStatus');
   let taskLoading = false;
+  let indexConsentGranted = false;
 
   function sendToActiveChatGPT(message) {
     return new Promise((resolve, reject) => {
@@ -71,6 +75,19 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderTaskDashboard(data) {
+    const policy = data.indexPolicy || {};
+    indexConsentGranted = Boolean(policy.consentAt);
+    const initialDone = Boolean(policy.initialCompletedAt);
+    const unfinishedIndexTask = (data.tasks || []).find(task => task.type === 'index' &&
+      ['pending', 'running', 'paused'].includes(task.status));
+    indexStartArea.hidden = false;
+    indexStart.disabled = Boolean(unfinishedIndexTask);
+    indexStart.textContent = !policy.consentAt ? '建立全文索引（需授权）'
+      : initialDone ? '立即检查新增聊天' : '继续首次全文索引';
+    indexConsentStatus.textContent = unfinishedIndexTask
+      ? '索引任务已创建，请使用下方任务控制和进度查看'
+      : initialDone ? '首次索引已完成，之后自动检查增量变化'
+        : policy.consentAt ? '已授权，首次完整索引尚未完成' : '首次扫描需确认授权；原始 JSON 仅保存在本机';
     taskList.replaceChildren();
     for (const task of data.tasks || []) {
       const card = document.createElement('div');
@@ -148,6 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
           : '任务进度保存在本地，刷新标签页不会清空';
       }
     } catch (error) {
+      indexStartArea.hidden = true;
       taskList.replaceChildren();
       taskLogList.replaceChildren();
       taskFeedback.textContent = `任务不可用：${error.message}`;
@@ -157,6 +175,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   taskRefresh.addEventListener('click', () => loadTaskDashboard());
+  indexStart.addEventListener('click', async () => {
+    if (indexStart.disabled) return;
+    if (!indexConsentGranted && !window.confirm(
+      '首次全文索引会读取当前 ChatGPT 账号全部可读取的聊天目录，并按需获取未缓存的完整聊天正文。' +
+      '本机保存原始 JSON 和搜索索引，首次完成后自动增量更新。是否授权？'
+    )) return;
+    indexStart.disabled = true;
+    try {
+      const response = await sendToActiveChatGPT({ action: 'indexBegin', userConfirmedConsent: true });
+      taskFeedback.textContent = response.alreadyStarting
+        ? '索引任务正在当前标签页准备中'
+        : '已请求开始索引；请保持 ChatGPT 标签页打开，稍后刷新进度';
+    } catch (error) {
+      taskFeedback.textContent = `索引启动失败：${error.message}`;
+    } finally {
+      await loadTaskDashboard(true);
+    }
+  });
 
   function setToggle(el, on) {
     el.classList.toggle('active', on);

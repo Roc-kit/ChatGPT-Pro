@@ -17,8 +17,9 @@ const mock = `<script>
     { id: 'j', type: 'export-json', status: 'completed', done: 5, total: 5,
       successes: 5, failures: 0, savedVolumes: 1 }
   ];
-  window.__testState = { tasks, calls: [], currentUrl: 'https://chatgpt.com/c/example' };
-  window.confirm = () => true;
+  const indexPolicy = { consentAt: null, initialCompletedAt: null };
+  window.__testState = { tasks, calls: [], currentUrl: 'https://chatgpt.com/c/example', allowConsent: true };
+  window.confirm = () => window.__testState.allowConsent;
   window.chrome = {
     runtime: { lastError: null },
     storage: { local: {
@@ -34,8 +35,11 @@ const mock = `<script>
         if (msg.action === 'getStatus') {
           callback({ initialized: true, directoryCount: 120 });
         } else if (msg.action === 'taskDashboard') {
-          callback({ success: true, tasks, logs: [{ createdAt: Date.now(), type: 'rate-limit',
+          callback({ success: true, tasks, indexPolicy: { ...indexPolicy }, logs: [{ createdAt: Date.now(), type: 'rate-limit',
             code: '429', message: '请求冷却' }], cooldownUntil: 0 });
+        } else if (msg.action === 'indexBegin') {
+          if (msg.userConfirmedConsent) indexPolicy.consentAt = Date.now();
+          callback({ success: true, queued: true });
         } else if (msg.action === 'taskManage') {
           const job = tasks.find(item => item.id === msg.id);
           if (msg.operation === 'pause') job.status = 'paused';
@@ -130,6 +134,25 @@ server.listen(0, '127.0.0.1', async () => {
       check(window.__testState.calls.some(msg => msg.action === 'taskClearVolumes' && msg.id === 'j'),
         'manual cleanup targets the completed task');
       check(!selectAction(2, '下载分卷'), 'cleaned ZIP no longer offers download button');
+      window.__testState.tasks[0].status = 'completed';
+      document.querySelector('#taskRefresh').click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(!document.querySelector('#indexStart').disabled &&
+        document.querySelector('#indexStart').textContent.includes('需授权'),
+        'first index CTA requires consent and no active index job');
+      window.__testState.allowConsent = false;
+      const callsBeforeDenial = window.__testState.calls.length;
+      document.querySelector('#indexStart').click();
+      await new Promise(resolve => setTimeout(resolve, 20));
+      check(window.__testState.calls.length === callsBeforeDenial,
+        'rejecting popup consent cannot send index request');
+      window.__testState.allowConsent = true;
+      document.querySelector('#indexStart').click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(window.__testState.calls.some(msg => msg.action === 'indexBegin' && msg.userConfirmedConsent),
+        'explicitly approved popup consent is passed to signed-in tab');
+      check(document.querySelector('#indexStart').textContent === '继续首次全文索引',
+        'after consent popup offers to continue incomplete initial indexing');
       window.__testState.currentUrl = 'https://example.org/';
       document.querySelector('#taskRefresh').click();
       await new Promise(resolve => setTimeout(resolve, 50));
