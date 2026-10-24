@@ -496,6 +496,8 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check(restoredOne.success && restoredOne.result.size === partOne.size,
       'first complete ZIP is retrievable after it leaves the page memory');
     await send({ action: 'taskControl', accountId: 'acct-a', id: exportId, operation: 'pause' });
+    check(!(await send({ action: 'taskVolumeClear', accountId: 'acct-a', id: exportId })).success,
+      'paused export must be canceled or completed before ZIP cleanup');
     check(!(await send({ action: 'taskVolumeSave', accountId: 'acct-a', id: exportId,
       owner: 'zip-tab', token: zipToken, payload: {
         blob: partOne, filename: 'export_part002.zip', volume: 2, toIndex: 3,
@@ -514,6 +516,18 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check(completedExport.volumeCount === 2 && completedExport.successCount === 2 &&
       completedExport.failureCount === 1 && completedExport.exportEntries.length === 3,
       'recovery cursor, manifest and counts survived resume');
+    check(!(await send({ action: 'taskVolumeClear', accountId: 'acct-b', id: exportId })).success,
+      'other account cannot clear task ZIP volumes');
+    const clearedVolumes = await send({ action: 'taskVolumeClear', accountId: 'acct-a', id: exportId });
+    check(clearedVolumes.success && clearedVolumes.result.deleted === 2,
+      'explicit cleanup deletes exactly the two completed ZIP volumes');
+    check((await send({ action: 'taskVolumeGet', accountId: 'acct-a', id: exportId, volume: 1 })).result === null,
+      'cleaned ZIP cannot be downloaded');
+    const afterClear = (await send({ action: 'taskGet', accountId: 'acct-a', id: exportId })).result;
+    check(afterClear.status === 'completed' && afterClear.exportEntries.length === 3 && afterClear.volumesClearedAt,
+      'manual ZIP cleanup retains task status and manifest metadata');
+    check((await storage.getConversation('acct-a', 'same-id')).hit,
+      'cleaning ZIP does not delete lossless conversation raw cache');
     const chunkJob = await send({ action: 'taskCreate', accountId: 'acct-a', type: 'export-json',
       items: [{ id: 'upload-one' }, { id: 'upload-two' }] });
     const chunkClaim = await send({ action: 'taskClaim', accountId: 'acct-a',

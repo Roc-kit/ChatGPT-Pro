@@ -538,6 +538,41 @@ globalThis.ChatGPTProLocalData = (() => {
     return record?.accountId === accountId ? record : null;
   }
 
+  async function clearCompletedExportVolumes(accountId, id) {
+    validateAccount(accountId);
+    validateId(id);
+    return transaction([STORES.tasks, STORES.taskVolumes, STORES.taskVolumeChunks], 'readwrite', async stores => {
+      const taskStore = stores[STORES.tasks];
+      const task = await requested(taskStore.get(id));
+      if (!task || task.accountId !== accountId || !task.type.startsWith('export-')) {
+        throw new Error('当前账号下没有该导出任务');
+      }
+      if (!['completed', 'canceled', 'failed'].includes(task.status)) {
+        throw new Error('请先取消或结束任务，再清理已保存的 ZIP 分卷');
+      }
+      let deleted = 0;
+      const eraseRange = (store, range, count) => new Promise((resolve, reject) => {
+        const cursorRequest = store.openCursor(range);
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result;
+          if (!cursor) return resolve();
+          if (count) deleted++;
+          cursor.delete();
+          cursor.continue();
+        };
+        cursorRequest.onerror = () => reject(cursorRequest.error || new Error('ZIP 清理失败'));
+      });
+      await eraseRange(stores[STORES.taskVolumes],
+        IDBKeyRange.bound([id, 1], [id, Number.MAX_SAFE_INTEGER]), true);
+      await eraseRange(stores[STORES.taskVolumeChunks],
+        IDBKeyRange.bound([id, 1, 0], [id, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER]), false);
+      task.volumesClearedAt = Date.now();
+      task.updatedAt = Date.now();
+      await requested(taskStore.put(task));
+      return { deleted, volumesClearedAt: task.volumesClearedAt };
+    });
+  }
+
   async function readExportVolumeChunk(accountId, taskId, volume, offset, size = 256 * 1024) {
     if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(size) || size < 1 || size > 512 * 1024) {
       throw new Error('ZIP 下载区间无效');
@@ -725,6 +760,7 @@ globalThis.ChatGPTProLocalData = (() => {
     putConversation, getConversation, getStats, getLegacyMetadata,
     createTask, getTask, listTasks, claimTask, heartbeatTask, checkpointTask, controlTask,
     saveExportVolume, getExportVolume,
+    clearCompletedExportVolumes,
     readExportVolumeChunk, uploadExportChunk, finalizeExportChunks,
     acquireDetailSlot, heartbeatDetailSlot, releaseDetailSlot, getDetailSlotStatus,
     addLog, listLogs,

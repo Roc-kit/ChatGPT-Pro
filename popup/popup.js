@@ -14,6 +14,149 @@ document.addEventListener('DOMContentLoaded', () => {
   const count = document.getElementById('count');
   const apiStatus = document.getElementById('apiStatus');
   const apiStatusText = document.getElementById('apiStatusText');
+  const taskFeedback = document.getElementById('taskFeedback');
+  const taskList = document.getElementById('taskList');
+  const taskLogList = document.getElementById('taskLogList');
+  const taskRefresh = document.getElementById('taskRefresh');
+  let taskLoading = false;
+
+  function sendToActiveChatGPT(message) {
+    return new Promise((resolve, reject) => {
+      chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+        const tab = tabs?.[0];
+        let isChatGPT = false;
+        try { isChatGPT = new URL(tab?.url).hostname === 'chatgpt.com'; } catch { /* Not a ChatGPT tab. */ }
+        if (!isChatGPT || !tab?.id) {
+          reject(new Error('请切换到已登录的 ChatGPT 标签页'));
+          return;
+        }
+        chrome.tabs.sendMessage(tab.id, message, response => {
+          const transportError = chrome.runtime.lastError;
+          if (transportError) reject(new Error(transportError.message));
+          else if (!response?.success) reject(new Error(response?.error || '读取任务失败'));
+          else resolve(response);
+        });
+      });
+    });
+  }
+
+  const taskNames = { index: '全文索引', 'export-md': 'Markdown 导出', 'export-json': 'JSON 导出' };
+  const taskStates = {
+    pending: '待执行', running: '执行中', paused: '已暂停',
+    completed: '已完成', failed: '失败', canceled: '已取消'
+  };
+
+  function addTaskButton(container, label, handler) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      taskFeedback.textContent = `${label}中…`;
+      try {
+        const result = await handler();
+        taskFeedback.textContent = result?.initiated
+          ? `已发起 ${result.initiated} 个分卷下载，请检查浏览器下载提示`
+          : Number.isInteger(result?.deleted)
+            ? `已清理 ${result.deleted} 个本地 ZIP 分卷，原始聊天缓存和任务历史仍保留`
+          : `${label}操作已提交`;
+      } catch (error) {
+        taskFeedback.textContent = `${label}失败：${error.message}`;
+      } finally {
+        await loadTaskDashboard(true);
+        button.disabled = false;
+      }
+    });
+    container.appendChild(button);
+  }
+
+  function renderTaskDashboard(data) {
+    taskList.replaceChildren();
+    for (const task of data.tasks || []) {
+      const card = document.createElement('div');
+      card.className = 'task-card';
+      const meta = document.createElement('div');
+      meta.className = 'task-meta';
+      const name = document.createElement('strong');
+      name.textContent = taskNames[task.type] || '本地任务';
+      const state = document.createElement('small');
+      state.textContent = task.recoveryPending ? '等待恢复' : (taskStates[task.status] || task.status);
+      meta.append(name, state);
+
+      const progress = document.createElement('div');
+      progress.className = 'task-progress';
+      progress.setAttribute('role', 'progressbar');
+      progress.setAttribute('aria-valuemin', '0');
+      progress.setAttribute('aria-valuemax', String(task.total));
+      progress.setAttribute('aria-valuenow', String(task.done));
+      const fill = document.createElement('span');
+      fill.style.width = `${task.total ? Math.min(100, task.done / task.total * 100) : 0}%`;
+      progress.appendChild(fill);
+
+      const detail = document.createElement('div');
+      detail.className = 'hint';
+      const description = `${task.done}/${task.total} · 成功 ${task.successes} · 失败 ${task.failures}`;
+      detail.textContent = task.savedVolumes ? `${description} · ZIP ${task.savedVolumes} 卷` : description;
+
+      const actions = document.createElement('div');
+      actions.className = 'task-actions';
+      if (['pending', 'running'].includes(task.status)) {
+        addTaskButton(actions, '暂停', () => sendToActiveChatGPT({ action: 'taskManage', id: task.id, operation: 'pause' }));
+        addTaskButton(actions, '取消', () => sendToActiveChatGPT({ action: 'taskManage', id: task.id, operation: 'cancel' }));
+      } else if (task.status === 'paused') {
+        addTaskButton(actions, '继续', () => sendToActiveChatGPT({ action: 'taskManage', id: task.id, operation: 'resume' }));
+        addTaskButton(actions, '取消', () => sendToActiveChatGPT({ action: 'taskManage', id: task.id, operation: 'cancel' }));
+      }
+      if (task.savedVolumes > 0 && task.type.startsWith('export-')) {
+        addTaskButton(actions, '下载分卷', () => sendToActiveChatGPT({ action: 'taskDownloadVolumes', id: task.id }));
+        if (['completed', 'canceled', 'failed'].includes(task.status)) {
+          addTaskButton(actions, '清理分卷', () => {
+            if (!window.confirm('只清理扩展数据库中此任务保存的 ZIP 分卷？不会删除原始聊天缓存、全文索引、任务历史或已下载文件。')) {
+              return Promise.resolve({ deleted: 0 });
+            }
+            return sendToActiveChatGPT({ action: 'taskClearVolumes', id: task.id });
+          });
+        }
+      }
+      card.append(meta, progress, detail, actions);
+      taskList.appendChild(card);
+    }
+    if (!taskList.childElementCount) {
+      const empty = document.createElement('div');
+      empty.className = 'hint';
+      empty.textContent = '当前账号暂无任务';
+      taskList.appendChild(empty);
+    }
+    taskLogList.replaceChildren();
+    for (const log of data.logs || []) {
+      const entry = document.createElement('div');
+      entry.textContent = `${new Date(log.createdAt).toLocaleString()} · ${log.message || log.code || log.type}`;
+      taskLogList.appendChild(entry);
+    }
+    if (!taskLogList.childElementCount) taskLogList.textContent = '暂无记录';
+  }
+
+  async function loadTaskDashboard(keepFeedback = false) {
+    if (taskLoading) return;
+    taskLoading = true;
+    try {
+      const data = await sendToActiveChatGPT({ action: 'taskDashboard' });
+      renderTaskDashboard(data);
+      if (!keepFeedback) {
+        taskFeedback.textContent = data.cooldownUntil > Date.now()
+          ? `请求限流冷却中，至 ${new Date(data.cooldownUntil).toLocaleTimeString()}`
+          : '任务进度保存在本地，刷新标签页不会清空';
+      }
+    } catch (error) {
+      taskList.replaceChildren();
+      taskLogList.replaceChildren();
+      taskFeedback.textContent = `任务不可用：${error.message}`;
+    } finally {
+      taskLoading = false;
+    }
+  }
+
+  taskRefresh.addEventListener('click', () => loadTaskDashboard());
 
   function setToggle(el, on) {
     el.classList.toggle('active', on);
@@ -174,4 +317,6 @@ document.addEventListener('DOMContentLoaded', () => {
   syncOnPopupOpen();
   pollStatus();
   setInterval(pollStatus, 3000);
+  loadTaskDashboard();
+  setInterval(() => loadTaskDashboard(), 6000);
 });

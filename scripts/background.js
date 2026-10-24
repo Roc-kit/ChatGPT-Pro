@@ -263,6 +263,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     taskVolumeRead: () => ChatGPTProLocalData.readExportVolumeChunk(
       message.accountId, message.id, message.volume, message.offset, message.size
     ),
+    taskVolumeClear: () => ChatGPTProLocalData.clearCompletedExportVolumes(
+      message.accountId, message.id
+    ),
     taskVolumeChunk: () => ChatGPTProLocalData.uploadExportChunk(
       message.accountId, message.id, message.owner, message.token,
       message.volume, message.index, message.base64

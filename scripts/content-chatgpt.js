@@ -1699,6 +1699,74 @@
     }
   }
 
+  // Popup is an extension page and cannot read the ChatGPT login session.
+  // Its task controls must go through this authenticated content script.
+  async function getTaskDashboard() {
+    const accountId = await window.APIHandler.getAccountId();
+    const [tasksResult, logsResult, cooldownResult] = await Promise.all([
+      runtimeMessage({ action: 'taskList', accountId }),
+      runtimeMessage({ action: 'logList', accountId, limit: 12 }),
+      runtimeMessage({ action: 'detailStatus', accountId })
+    ]);
+    if (await window.APIHandler.getAccountId() !== accountId) {
+      throw new Error('登录账号已切换，请重新打开任务管理');
+    }
+    return {
+      tasks: (tasksResult.result || []).slice(0, 15).map(task => ({
+        id: task.id, type: task.type, status: task.status,
+        total: task.items?.length || 0, done: task.nextIndex || 0,
+        successes: task.successCount || 0, failures: task.failureCount || 0,
+        savedVolumes: task.volumesClearedAt ? 0 : (task.volumeCount || 0),
+        updatedAt: task.updatedAt, createdAt: task.createdAt,
+        recoveryPending: task.status === 'running' && task.lease?.expiresAt <= Date.now()
+      })),
+      logs: (logsResult.result || []).map(log => ({
+        id: log.id, type: log.type, code: log.code,
+        createdAt: log.createdAt, message: log.message
+      })),
+      cooldownUntil: cooldownResult.result?.cooldownUntil || 0
+    };
+  }
+
+  async function controlManagedTask(taskId, operation) {
+    if (!['pause', 'resume', 'cancel'].includes(operation)) throw new Error('任务操作无效');
+    const accountId = await window.APIHandler.getAccountId(true);
+    const taskReply = await runtimeMessage({ action: 'taskGet', accountId, id: taskId });
+    if (!taskReply.result) throw new Error('当前账号下找不到该任务');
+    const reply = await runtimeMessage({ action: 'taskControl', accountId, id: taskId, operation });
+    if (operation === 'resume' && reply.result.task?.status === 'pending') {
+      // The popup may close immediately. Schedule recovery on the page rather
+      // than depending on the popup lifetime or the MV3 worker staying awake.
+      window.setTimeout(() => {
+        const recover = taskReply.result.type === 'index' ? recoverIndexTasks : recoverExportTasks;
+        recover().catch(error => log('Task resume failed:', error.message));
+      }, 0);
+    }
+    return { status: reply.result.task.status, done: reply.result.task.nextIndex };
+  }
+
+  async function downloadManagedTaskVolumes(taskId) {
+    const accountId = await window.APIHandler.getAccountId(true);
+    const reply = await runtimeMessage({ action: 'taskGet', accountId, id: taskId });
+    const task = reply.result;
+    if (!task || !task.type.startsWith('export-') || !(task.volumeCount > 0)) {
+      throw new Error('当前账号下没有此任务的已保存分卷');
+    }
+    let initiated = 0;
+    for (let part = 1; part <= task.volumeCount; part++) {
+      if (await window.APIHandler.getAccountId() !== accountId) throw new Error('下载期间账号发生变化');
+      await downloadTaskZipVolume(accountId, taskId, part);
+      initiated++;
+    }
+    return { initiated };
+  }
+
+  async function clearManagedTaskVolumes(taskId) {
+    const accountId = await window.APIHandler.getAccountId(true);
+    const reply = await runtimeMessage({ action: 'taskVolumeClear', accountId, id: taskId });
+    return { deleted: reply.result.deleted };
+  }
+
   function searchResultTime(result) {
     const value = result.createTime || result.updateTime;
     return value ? formatMessageTime(value) : '';
@@ -2287,6 +2355,30 @@
           directoryCount: 0,
           enabled: S.settings.enabled
         }));
+        return true;
+      }
+      if (msg.action === 'taskDashboard') {
+        getTaskDashboard()
+          .then(result => respond({ success: true, ...result }))
+          .catch(error => respond({ success: false, error: error.message }));
+        return true;
+      }
+      if (msg.action === 'taskManage') {
+        controlManagedTask(msg.id, msg.operation)
+          .then(result => respond({ success: true, ...result }))
+          .catch(error => respond({ success: false, error: error.message }));
+        return true;
+      }
+      if (msg.action === 'taskDownloadVolumes') {
+        downloadManagedTaskVolumes(msg.id)
+          .then(result => respond({ success: true, ...result }))
+          .catch(error => respond({ success: false, error: error.message }));
+        return true;
+      }
+      if (msg.action === 'taskClearVolumes') {
+        clearManagedTaskVolumes(msg.id)
+          .then(result => respond({ success: true, ...result }))
+          .catch(error => respond({ success: false, error: error.message }));
         return true;
       }
       if (msg.action === 'openTimeline') {
