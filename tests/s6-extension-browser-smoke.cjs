@@ -188,6 +188,17 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
     'minimap visible without requiring eight messages');
+    const minimapSize = await cdp.eval(pageSession, `(() => {
+      const el = document.querySelector('.chatgpt-pro-minimap');
+      return { height: el.getBoundingClientRect().height,
+        width: el.getBoundingClientRect().width,
+        rail: el.querySelector('.chatgpt-pro-minimap-rail').getBoundingClientRect().height,
+        viewport: innerHeight };
+    })()`);
+    assert(minimapSize.height >= minimapSize.viewport * 0.78,
+      'minimap rail fills most of the viewport, even for short conversations');
+    assert(minimapSize.width >= 36 && minimapSize.rail > minimapSize.height * 0.85,
+      'minimap uses a wide vertical track rather than a compact pill');
     assert.equal(await cdp.eval(popupSession,
       `document.querySelector('#minimapToggle').getAttribute('aria-checked')`), 'true');
     await cdp.eval(popupSession, `document.querySelector('#minimapToggle').click()`);

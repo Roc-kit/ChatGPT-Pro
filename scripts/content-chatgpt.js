@@ -333,8 +333,19 @@
     }
     const signature = `${id}:${messages.map((element, index) =>
       window.ChatGPTDomAdapter.messageIds(element).join(',') || `position-${index}`).join('|')}`;
+    // A full-height rail can represent at most ~80 independently clickable
+    // positions. Sample evenly instead of requiring thousands of tiny rows.
+    const maxMarkers = 80;
+    const markerCount = Math.min(messages.length, maxMarkers);
+    const sampled = messages.length <= maxMarkers
+      ? messages.map((target, index) => ({ target, index }))
+      : Array.from({ length: markerCount }, (_, n) => {
+          const index = Math.round(n * (messages.length - 1) / (markerCount - 1));
+          return { target: messages[index], index };
+        });
     if (previous && S.minimap.signature === signature &&
-        S.minimap.entries.every((entry, index) => entry.target === messages[index])) {
+        S.minimap.entries.length === sampled.length &&
+        S.minimap.entries.every((entry, index) => entry.target === sampled[index].target)) {
       updateMinimapActive();
       return;
     }
@@ -350,7 +361,8 @@
     const rail = document.createElement('div');
     rail.className = 'chatgpt-pro-minimap-rail';
     const entries = [];
-    for (const [index, target] of messages.entries()) {
+    rail.style.gridTemplateRows = `repeat(${sampled.length}, minmax(0, 1fr))`;
+    for (const { target, index } of sampled) {
       const role = window.ChatGPTDomAdapter.messageRole(target);
       const marker = document.createElement('button');
       marker.type = 'button';
