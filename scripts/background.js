@@ -239,6 +239,26 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // The service worker persists coordination but never owns a long-running
+  // task loop: MV3 may suspend this worker between any two requests.
+  const taskHandlers = {
+    taskCreate: () => ChatGPTProLocalData.createTask(message.accountId, message.type, message.items, message.options),
+    taskGet: () => ChatGPTProLocalData.getTask(message.accountId, message.id),
+    taskList: () => ChatGPTProLocalData.listTasks(message.accountId),
+    taskClaim: () => ChatGPTProLocalData.claimTask(message.accountId, message.id, message.owner),
+    taskHeartbeat: () => ChatGPTProLocalData.heartbeatTask(message.accountId, message.id, message.owner, message.token),
+    taskCheckpoint: () => ChatGPTProLocalData.checkpointTask(
+      message.accountId, message.id, message.owner, message.token,
+      message.itemIndex, message.outcome, message.error
+    ),
+    taskControl: () => ChatGPTProLocalData.controlTask(message.accountId, message.id, message.operation)
+  };
+  if (Object.hasOwn(taskHandlers, message.action)) {
+    taskHandlers[message.action]()
+      .then(result => sendResponse({ success: true, result }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
   if (message.action === 'localDataPutConversation') {
     ChatGPTProLocalData.putConversation(message.accountId, message.record)
       .then(result => sendResponse({ success: true, ...result }))

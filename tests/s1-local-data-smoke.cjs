@@ -328,6 +328,76 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check(detailRequests === beforeExportDetails, 'unchanged full cache not refetched after latest check');
     await window.APIHandler.getConversation('cached-0');
     check(detailRequests === beforeExportDetails + 1, 'changed record alone triggers detail request');
+
+    // S3-1: tasks are persisted in IndexedDB, claims are atomic across tabs,
+    // a stale lease cannot checkpoint, and user pauses always take priority.
+    const tasks = await send({ action: 'taskCreate', accountId: 'acct-a', type: 'index',
+      items: [{ id: 'job-a' }, { id: 'job-b' }] });
+    check(tasks.success && tasks.result.items.length === 2 && tasks.result.status === 'pending', 'task creation');
+    const taskId = tasks.result.id;
+    const attempts = await Promise.all([
+      send({ action: 'taskClaim', accountId: 'acct-a', id: taskId, owner: 'tab-one' }),
+      send({ action: 'taskClaim', accountId: 'acct-a', id: taskId, owner: 'tab-two' })
+    ]);
+    check(attempts.filter(result => result.result.acquired).length === 1, 'only one tab gets lease');
+    const wonByOne = attempts[0].result.acquired;
+    const owner = wonByOne ? 'tab-one' : 'tab-two';
+    const other = wonByOne ? 'tab-two' : 'tab-one';
+    const token = attempts.find(result => result.result.acquired).result.token;
+    check((await send({ action: 'taskList', accountId: 'acct-b' })).result.length === 0, 'task list account isolated');
+    check((await send({ action: 'taskGet', accountId: 'acct-b', id: taskId })).result === null, 'task read account isolated');
+    check(!(await send({ action: 'taskClaim', accountId: 'acct-b', id: taskId, owner: other })).success,
+      'other account cannot claim task');
+    check((await send({ action: 'taskCheckpoint', accountId: 'acct-a', id: taskId, owner, token,
+      itemIndex: 0, outcome: 'success' })).result.task.nextIndex === 1, 'durable first checkpoint');
+    check(!(await send({ action: 'taskCheckpoint', accountId: 'acct-a', id: taskId, owner, token,
+      itemIndex: 0, outcome: 'success' })).success, 'completed item cannot be checked twice');
+    await send({ action: 'taskControl', accountId: 'acct-a', id: taskId, operation: 'pause' });
+    check(!(await send({ action: 'taskClaim', accountId: 'acct-a', id: taskId, owner: other })).result.acquired,
+      'explicit pause blocks every tab');
+    check(!(await send({ action: 'taskCheckpoint', accountId: 'acct-a', id: taskId, owner, token,
+      itemIndex: 1, outcome: 'success' })).success, 'paused task rejects stale checkpoint');
+    await send({ action: 'taskControl', accountId: 'acct-a', id: taskId, operation: 'resume' });
+    const takeover = await send({ action: 'taskClaim', accountId: 'acct-a', id: taskId, owner: other });
+    check(takeover.result.acquired && takeover.result.token !== token, 'resume issues new lease token');
+    check(!(await send({ action: 'taskCheckpoint', accountId: 'acct-a', id: taskId, owner, token,
+      itemIndex: 1, outcome: 'success' })).success, 'fencing rejects original lease');
+    await send({ action: 'taskHeartbeat', accountId: 'acct-a', id: taskId, owner: other, token: takeover.result.token });
+    await send({ action: 'taskCheckpoint', accountId: 'acct-a', id: taskId, owner: other, token: takeover.result.token,
+      itemIndex: 1, outcome: 'failed', error: 'network outage' });
+    const completed = await send({ action: 'taskGet', accountId: 'acct-a', id: taskId });
+    check(completed.result.status === 'completed' && completed.result.nextIndex === 2 &&
+      completed.result.successCount === 1 && completed.result.failureCount === 1,
+      'completed task retains progress and error counts');
+    const cancellable = await send({ action: 'taskCreate', accountId: 'acct-a', type: 'export-json',
+      items: [{ id: 'cancel-item' }] });
+    await send({ action: 'taskControl', accountId: 'acct-a', id: cancellable.result.id, operation: 'cancel' });
+    check(!(await send({ action: 'taskClaim', accountId: 'acct-a', id: cancellable.result.id, owner })).result.acquired,
+      'canceled task cannot start');
+    const expiring = await send({ action: 'taskCreate', accountId: 'acct-a', type: 'index',
+      items: [{ id: 'expire-item' }] });
+    const expiringId = expiring.result.id;
+    const oldOwner = await send({ action: 'taskClaim', accountId: 'acct-a', id: expiringId, owner: 'abandoned-tab' });
+    const expiryDb = await storage.openDb();
+    await new Promise((resolve, reject) => {
+      const tx = expiryDb.transaction('tasks', 'readwrite');
+      const store = tx.objectStore('tasks');
+      const get = store.get(expiringId);
+      get.onsuccess = () => {
+        const record = get.result;
+        record.lease.expiresAt = Date.now() - 100;
+        store.put(record);
+      };
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    expiryDb.close();
+    const reclaimed = await send({ action: 'taskClaim', accountId: 'acct-a', id: expiringId, owner: 'restarted-tab' });
+    check(reclaimed.result.acquired && reclaimed.result.token !== oldOwner.result.token,
+      'expired lease permits another tab to resume');
+    check(!(await send({ action: 'taskHeartbeat', accountId: 'acct-a', id: expiringId,
+      owner: 'abandoned-tab', token: oldOwner.result.token })).success,
+      'expired executor cannot renew an old lease');
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }

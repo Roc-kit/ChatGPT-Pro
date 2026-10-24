@@ -316,10 +316,139 @@ globalThis.ChatGPTProLocalData = (() => {
     });
   }
 
+  const TASK_LEASE_MS = 30 * 1000;
+  const TASK_TYPES = new Set(['index', 'export-md', 'export-json']);
+
+  function cleanTaskItems(items) {
+    if (!Array.isArray(items) || !items.length) throw new Error('任务内容不能为空');
+    const seen = new Set();
+    return items.map(item => {
+      const id = validateId(item?.id);
+      if (seen.has(id)) throw new Error('任务存在重复的对话 ID');
+      seen.add(id);
+      return {
+        id, title: String(item.title || '').slice(0, 300),
+        updateTime: normalizeTime(item.updateTime),
+        href: String(item.href || `/c/${id}`),
+        projectId: item.projectId || null, projectName: String(item.projectName || '')
+      };
+    });
+  }
+
+  async function createTask(accountId, type, items, options = {}) {
+    validateAccount(accountId);
+    if (!TASK_TYPES.has(type)) throw new Error('不支持的任务类型');
+    const records = cleanTaskItems(items);
+    const now = Date.now();
+    const task = {
+      id: crypto.randomUUID(), accountId, type, items: records,
+      status: 'pending', nextIndex: 0, successCount: 0, failureCount: 0,
+      errors: [], createdAt: now, updatedAt: now, lease: null, generation: 0,
+      options: { checkLatest: options.checkLatest === true }
+    };
+    await transaction([STORES.tasks], 'readwrite', stores => requested(stores[STORES.tasks].add(task)));
+    return task;
+  }
+
+  async function getTask(accountId, id) {
+    validateAccount(accountId);
+    validateId(id);
+    const task = await transaction([STORES.tasks], 'readonly', stores => requested(stores[STORES.tasks].get(id)));
+    return task?.accountId === accountId ? task : null;
+  }
+
+  async function listTasks(accountId) {
+    validateAccount(accountId);
+    const items = await transaction([STORES.tasks], 'readonly', stores =>
+      requested(stores[STORES.tasks].index('byAccount').getAll(IDBKeyRange.only(accountId))));
+    return items.sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+
+  function ensureLease(task, owner, token, now) {
+    if (!task || task.status !== 'running' || !task.lease ||
+        task.lease.owner !== owner || task.lease.token !== token || task.lease.expiresAt <= now) {
+      throw new Error('任务租约已失效，拒绝旧执行器写入');
+    }
+  }
+
+  async function mutateTask(accountId, id, handler) {
+    validateAccount(accountId);
+    validateId(id);
+    return transaction([STORES.tasks], 'readwrite', async stores => {
+      const store = stores[STORES.tasks];
+      const task = await requested(store.get(id));
+      if (!task || task.accountId !== accountId) throw new Error('找不到当前账号任务');
+      const result = handler(task, Date.now());
+      if (result?.changed) {
+        task.updatedAt = Date.now();
+        await requested(store.put(task));
+      }
+      return { task, ...result, changed: undefined };
+    });
+  }
+
+  async function claimTask(accountId, id, owner) {
+    validateId(owner);
+    return mutateTask(accountId, id, (task, now) => {
+      if (['paused', 'completed', 'failed', 'canceled'].includes(task.status)) return { acquired: false };
+      if (task.lease && task.lease.expiresAt > now && task.lease.owner !== owner) return { acquired: false };
+      if (task.lease?.owner === owner && task.lease.expiresAt > now) {
+        task.lease.expiresAt = now + TASK_LEASE_MS;
+        return { acquired: true, token: task.lease.token, changed: true };
+      }
+      task.generation++;
+      task.lease = { owner, token: crypto.randomUUID(), expiresAt: now + TASK_LEASE_MS };
+      task.status = 'running';
+      return { acquired: true, token: task.lease.token, changed: true };
+    });
+  }
+
+  async function heartbeatTask(accountId, id, owner, token) {
+    return mutateTask(accountId, id, (task, now) => {
+      ensureLease(task, owner, token, now);
+      task.lease.expiresAt = now + TASK_LEASE_MS;
+      return { changed: true };
+    });
+  }
+
+  async function checkpointTask(accountId, id, owner, token, itemIndex, outcome, error = '') {
+    if (!['success', 'failed'].includes(outcome)) throw new Error('无效的任务结果');
+    return mutateTask(accountId, id, (task, now) => {
+      ensureLease(task, owner, token, now);
+      if (itemIndex !== task.nextIndex || itemIndex >= task.items.length) throw new Error('任务检查点顺序不正确');
+      task.nextIndex++;
+      if (outcome === 'success') task.successCount++;
+      else {
+        task.failureCount++;
+        task.errors.push({ id: task.items[itemIndex].id, message: String(error).slice(0, 500) });
+      }
+      if (task.nextIndex === task.items.length) {
+        task.status = 'completed';
+        task.lease = null;
+      }
+      return { changed: true };
+    });
+  }
+
+  async function controlTask(accountId, id, action) {
+    if (!['pause', 'resume', 'cancel'].includes(action)) throw new Error('无效的任务操作');
+    return mutateTask(accountId, id, task => {
+      if (['completed', 'failed', 'canceled'].includes(task.status)) return { changed: false };
+      if (action === 'pause' && ['running', 'pending'].includes(task.status)) task.status = 'paused';
+      else if (action === 'resume' && task.status === 'paused') task.status = 'pending';
+      else if (action === 'cancel') task.status = 'canceled';
+      else return { changed: false };
+      task.lease = null;
+      task.generation++;
+      return { changed: true };
+    });
+  }
+
   return Object.freeze({
     openDb, upsertDirectory, getDirectory, getDirectoryRecord,
     putSearchRecord, getSearchMetadata, getSearchRecords, clearSearchIndex,
     putConversation, getConversation, getStats, getLegacyMetadata,
+    createTask, getTask, listTasks, claimTask, heartbeatTask, checkpointTask, controlTask,
     DB_NAME, DB_VERSION, LEGACY_SEARCH, UNASSIGNED_ACCOUNT, STORES
   });
 })();
