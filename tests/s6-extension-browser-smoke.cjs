@@ -667,11 +667,10 @@ async function main() {
       select.value = 'es'; select.dispatchEvent(new Event('change', { bubbles: true }));
     })()`);
     await eventually(async () => cdp.eval(popupSession,
-      `document.querySelector('.local-stats').textContent.includes('Conversas') ||
-       document.querySelector('.local-stats').textContent.includes('Conversaciones')`),
+      `document.querySelector('.local-stats').textContent.toLocaleLowerCase('es').includes('conversaciones')`),
     'Spanish Popup translation applied');
     await eventually(async () => cdp.eval(pageSession,
-      `document.querySelector('[data-panel-view="directory"]').textContent.includes('Conversaciones')`),
+      `document.querySelector('[data-panel-view="directory"]').textContent.toLocaleLowerCase('es').includes('conversaciones')`),
     'Spanish conversation panel translated without remounting');
     await cdp.eval(popupSession, `(() => {
       const select = document.querySelector('#languageSelect');
