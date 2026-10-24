@@ -246,6 +246,47 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
     'minimap switch immediately restores navigation');
+    await cdp.eval(pageSession, `(() => {
+      const main = document.querySelector('main');
+      for (let index = 0; index < 120; index++) {
+        const section = document.createElement('section');
+        section.setAttribute('data-message-id', 'minimap-test-' + index);
+        section.setAttribute('data-message-author-role', index % 2 ? 'assistant' : 'user');
+        section.setAttribute('data-minimap-test', '1');
+        section.textContent = 'Message number ' + index;
+        main.append(section);
+      }
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length >= 20`),
+    'long conversation renders a bounded navigation window');
+    const minimapAnchors = await cdp.eval(pageSession, `(() => {
+      const markers = [...document.querySelectorAll('.chatgpt-pro-minimap-marker')];
+      return { count: markers.length, first: markers[0].title,
+        last: markers.at(-1).title, top: document.querySelector('.chatgpt-pro-minimap').getBoundingClientRect().top };
+    })()`);
+    assert(minimapAnchors.count <= 49 && minimapAnchors.first.startsWith('1/122') &&
+      minimapAnchors.last.startsWith('122/122'), 'first and last chat messages remain pinned on a long rail');
+    await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-minimap-first').dispatchEvent(new Event('pointerenter'))`);
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-minimap-preview').hidden`), false,
+    'message navigation offers hover preview');
+    await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-minimap-toggle').click()`);
+    const collapsedPosition = await cdp.eval(pageSession, `(() => {
+      const rect = document.querySelector('.chatgpt-pro-minimap').getBoundingClientRect();
+      return { top: rect.top, height: rect.height };
+    })()`);
+    assert(Math.abs(collapsedPosition.top - minimapAnchors.top) < 2 && collapsedPosition.height <= 44,
+      `collapsing minimap keeps its toggle docked at top: expanded=${JSON.stringify(minimapAnchors)}, collapsed=${JSON.stringify(collapsedPosition)}`);
+    await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-minimap-toggle').click()`);
+    await cdp.eval(pageSession, `document.querySelectorAll('[data-minimap-test]').forEach(item => item.remove())`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
+    'minimap restores compact message count after DOM changes');
+    if (process.argv.includes('--minimap-only')) {
+      console.log('MINIMAP_PASS: bounded window, pinned first/last, hover preview, anchored collapse');
+      return;
+    }
     // Hover tooltips are not in the Popup's DOM, and dynamic updates must
     // still be translated after switching locale.
     await cdp.eval(popupSession, `(() => {

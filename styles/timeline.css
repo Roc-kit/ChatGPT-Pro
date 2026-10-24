@@ -651,10 +651,11 @@
 
 .chatgpt-pro-minimap {
   position: fixed !important;
+  box-sizing: border-box !important;
   z-index: 2147483644 !important;
-  top: 50% !important;
+  top: 7vh !important;
   right: 54px !important;
-  transform: translateY(-50%) !important;
+  transform: none !important;
   width: 38px !important;
   height: min(86vh, calc(100dvh - 24px)) !important;
   max-height: none !important;
@@ -686,7 +687,30 @@
   min-height: 0 !important;
   gap: 0 !important;
   overflow: hidden !important;
+  touch-action: none !important;
+  cursor: ns-resize !important;
 }
+.chatgpt-pro-minimap-rail:focus-visible { outline: 1px solid #0d9373 !important; }
+
+.chatgpt-pro-minimap-preview {
+  position: absolute !important;
+  right: 46px !important;
+  top: 12% !important;
+  width: min(280px, calc(100vw - 112px)) !important;
+  max-height: 150px !important;
+  padding: 10px 12px !important;
+  border: 1px solid rgba(127, 127, 127, .22) !important;
+  border-radius: 10px !important;
+  background: #fff !important;
+  color: #374151 !important;
+  box-shadow: 0 6px 24px rgba(0,0,0,.12) !important;
+  white-space: pre-line !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  font: 12px/1.5 system-ui, sans-serif !important;
+  pointer-events: none !important;
+}
+.chatgpt-pro-minimap-preview[hidden] { display: none !important; }
 
 .chatgpt-pro-minimap-marker {
   min-width: 0 !important;
@@ -704,12 +728,25 @@
 }
 
 .chatgpt-pro-minimap-user { background: #0d9373 !important; width: 100% !important; }
+.chatgpt-pro-minimap-first, .chatgpt-pro-minimap-last {
+  width: 100% !important;
+  height: 5px !important;
+  opacity: 1 !important;
+}
 .chatgpt-pro-minimap-active { opacity: 1 !important; outline: 1px solid #0d9373 !important; }
 .chatgpt-pro-minimap-collapsed {
-  height: 30px !important;
+  height: 34px !important;
   width: 27px !important;
+  top: 7vh !important;
 }
 .chatgpt-pro-minimap-collapsed .chatgpt-pro-minimap-rail { display: none !important; }
+.chatgpt-pro-minimap-collapsed .chatgpt-pro-minimap-preview { display: none !important; }
+
+html.dark .chatgpt-pro-minimap-preview,
+[data-theme="dark"] .chatgpt-pro-minimap-preview {
+  background: #25272c !important;
+  color: #f3f4f6 !important;
+}
 
 @media (max-width: 640px) {
   .chatgpt-pro-minimap { right: 48px !important; }
