@@ -6,14 +6,15 @@
   <title>ChatGPT Pro</title>
   <style>
     * { box-sizing: border-box; }
-    body { margin: 0; width: 340px; font: 13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#1f2937; background:#fff; }
-    .header { padding:15px 16px 13px; background:#10a37f; color:#fff; }
+    body { margin: 0; width: 352px; font: 13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#1f2937; background:#fff; }
+    .header { padding:16px 16px 14px; background:#10a37f; color:#fff; }
     .header-top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
     .header strong { font-size:16px; letter-spacing:-.3px; white-space:nowrap; }
     #extensionVersion { font-size:10px; font-weight:500; opacity:.85; }
-    #openChatGPT { flex:0 0 auto; width:auto; padding:7px 9px; font-size:11px; border-color:#ffffff99; color:#fff; background:transparent; }
-    #openChatGPT:hover { background:#ffffff20; }
-    .header .api-status { display:flex; align-items:center; gap:6px; margin-top:8px; font-size:11px; font-weight:600; }
+    #openChatGPT { display:inline-flex; width:auto; padding:2px 0; margin-top:8px; font-size:11px; border:0; border-radius:0; color:#fff; background:transparent; }
+    #openChatGPT:hover { text-decoration:underline; }
+    .header .api-status { display:flex; align-items:center; gap:6px; min-width:0; font-size:11px; font-weight:600; text-align:right; }
+    .header .api-status span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .header .api-status.ok { color:#fff; }
     .header .api-status.err { color:#fff3c7; }
     .header .api-status::before { content:''; flex:0 0 auto; width:6px; height:6px; border-radius:50%; background:currentColor; }
@@ -30,6 +31,7 @@
     .toggle.active::after { transform:translateX(19px); }
     .setting-row { min-height:38px; }
     .setting-row + .setting-row { border-top:1px solid #f0f2f1; }
+    .setting-row > span:first-child { line-height:1.3; }
     .local-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
     .local-stats > span { display:flex; flex-direction:column-reverse; align-items:center; gap:3px; padding:10px 3px; border-radius:8px; background:#f5f8f7; font-size:10px; color:#76857e; }
     .local-stats strong { color:#1f2937; font-size:20px; line-height:1.2; }
@@ -64,16 +66,24 @@
     .task-list { max-height:175px; overflow-y:auto; padding:0 16px; }
     .task-list:empty { display:none; }
     .task-overview { border-top:1px solid #edf1ef; }
-    .task-overview:has(.task-list:empty) { display:none; }
-    .management { background:#f9fbfa; }
-    .management-summary { display:flex; align-items:center; justify-content:space-between; gap:8px; cursor:pointer; padding:13px 16px; list-style:none; font-size:11px; color:#718179; }
+    .task-overview:has(.task-list:empty):has(#taskCooldownText[hidden]) { display:none; }
+    .management { background:#fff; border-bottom:1px solid #e5e7eb; }
+    .management-summary { display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; padding:13px 16px; list-style:none; color:#718179; }
     .management-summary::-webkit-details-marker { display:none; }
-    .management-summary strong { color:#0d9373; font-weight:600; }
-    .management[open] .management-summary strong::after { content:' ⌄'; }
-    .management:not([open]) .management-summary strong::after { content:' ›'; }
-    .management-body { padding:0 16px 13px; background:#fff; border-top:1px solid #edf1ef; }
+    .management-summary:focus-visible { outline:2px solid #10a37f; outline-offset:-3px; }
+    .summary-copy { display:flex; flex-direction:column; gap:3px; min-width:0; flex:1; }
+    .summary-copy strong { color:#1f2937; font-size:13px; font-weight:600; }
+    .summary-hint { color:#718179; font-size:11px; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .management-summary::after { content:''; display:block; flex:0 0 7px; width:7px; height:7px; border-right:1.5px solid #6b7280; border-bottom:1.5px solid #6b7280; transform:rotate(-45deg); transition:transform .15s ease; }
+    .management[open] .management-summary::after { transform:rotate(45deg); }
+    [dir="rtl"] .management:not([open]) .management-summary::after { transform:rotate(135deg); }
+    .management-body { padding:6px 16px 15px; background:#fff; border-top:1px solid #edf1ef; }
     .management-body .row { margin-top:10px; }
     .management-body #refresh { margin-top:10px; }
+    .subsection { margin-top:15px; padding-top:12px; border-top:1px solid #edf1ef; }
+    .subsection .label { margin-bottom:8px; }
+    .task-overview { border-top:0; }
+    .task-list { padding:0; }
     #taskFeedback { min-height:15px; }
     @media (prefers-color-scheme: dark) {
       body { background:#202123; color:#f3f4f6; }
@@ -82,8 +92,11 @@
       .local-stats > span { background:#2a2b2f; }
       .local-stats strong { color:#f3f4f6; }
       .setting-row + .setting-row { border-color:#374151; }
-      .management { background:#2a2b2f; }
+      .management { background:#202123; border-color:#374151; }
       .management-body { background:#202123; border-color:#374151; }
+      .summary-copy strong { color:#f3f4f6; }
+      .summary-hint { color:#9ca3af; }
+      .subsection { border-color:#374151; }
       select,button,input { border-color:#4b5563; }
       .template-preview { background:#2a2b2f; color:#cbd5e1; }
       .template-preview strong { color:#f3f4f6; }
@@ -96,9 +109,9 @@
   <div class="header">
     <div class="header-top">
       <strong>ChatGPT Pro <span id="extensionVersion">v3.0.0</span></strong>
-      <button id="openChatGPT" type="button">打开 ChatGPT ↗</button>
+      <div class="api-status ok" id="apiStatus"><span id="apiStatusText">正在初始化</span></div>
     </div>
-    <div class="api-status ok" id="apiStatus"><span id="apiStatusText">正在初始化</span></div>
+    <button id="openChatGPT" type="button">打开 ChatGPT ↗</button>
   </div>
   <div class="section">
     <div class="label">本地数据</div>
@@ -109,13 +122,10 @@
     </div>
   </div>
   <div class="section">
-    <div class="label">功能设置</div>
-    <div class="row setting-row"><span>启用扩展</span><div class="toggle active" id="toggle" role="switch" aria-checked="true"></div></div>
+    <div class="label">常用显示设置</div>
     <div class="row setting-row"><span>侧边栏显示时间</span><div class="toggle" id="sidebarTimeToggle" role="switch" aria-checked="false"></div></div>
     <div class="row setting-row"><span>聊天消息显示时间戳</span><div class="toggle" id="messageTimeToggle" role="switch" aria-checked="false"></div></div>
     <div class="row setting-row"><span>长对话快速导航（Minimap）</span><div class="toggle active" id="minimapToggle" role="switch" aria-checked="true" tabindex="0" aria-label="长对话快速导航（Minimap）"></div></div>
-    <div class="row setting-row"><span>后台新标签页打开</span><div class="toggle active" id="openInBackgroundToggle" role="switch" aria-checked="true"></div></div>
-    <div class="row setting-row"><span>点击弹窗外关闭</span><div class="toggle active" id="outsideCloseToggle" role="switch" aria-checked="true"></div></div>
     <div class="row setting-row"><span>时间戳字号</span><div class="timestamp-size-control"><input id="size" type="number" min="8" max="24" step="1" value="11" aria-label="时间戳字号（侧边栏及消息）"><span>px</span></div></div>
     <div class="row setting-row"><span>界面语言</span><select id="languageSelect" class="inline-select" aria-label="界面语言">
       <option value="auto">自动 / Browser</option>
@@ -127,8 +137,13 @@
       <option value="ru">Русский</option><option value="ja">日本語</option>
     </select></div>
   </div>
-  <div class="section">
-    <div class="label">导出文件名</div>
+  <details id="advancedSettings" class="management">
+    <summary class="management-summary"><span class="summary-copy"><strong>高级设置</strong><span class="summary-hint">后台打开、弹窗行为、导出文件名</span></span></summary>
+    <div class="management-body">
+    <div class="row setting-row"><span>启用扩展</span><div class="toggle active" id="toggle" role="switch" aria-checked="true"></div></div>
+    <div class="row setting-row"><span>后台新标签页打开</span><div class="toggle active" id="openInBackgroundToggle" role="switch" aria-checked="true"></div></div>
+    <div class="row setting-row"><span>点击弹窗外关闭</span><div class="toggle active" id="outsideCloseToggle" role="switch" aria-checked="true"></div></div>
+    <div class="subsection"><div class="label">导出文件名</div>
     <select id="filenamePreset">
       <option value="datetime_title">创建时间 + 对话标题</option>
       <option value="datetime_source_title">创建时间 + 来源 + 对话标题</option>
@@ -143,14 +158,16 @@
     </div>
     <div class="template-preview"><strong>文件名预览：</strong><span id="filenamePreview"></span></div>
     <div class="hint">支持创建/更新时间（精确到秒）：{created_datetime}、{updated_datetime}；也支持 {title}、{created_date}、{updated_date}、{source}、{conversation_id}。MD 和 JSON 共用规则。</div>
-  </div>
-  <div class="task-overview" id="taskOverview">
+    </div>
+    </div>
+  </details>
+  <details id="taskManager" class="management">
+    <summary class="management-summary"><span class="summary-copy"><strong>索引与数据管理</strong><span class="summary-hint" id="taskStatusText">当前没有运行中的任务</span></span></summary>
+    <div class="management-body">
+    <div class="task-overview" id="taskOverview">
     <div class="hint" id="taskCooldownText" role="status" hidden></div>
     <div class="task-list" id="taskList"></div>
-  </div>
-  <details id="taskManager" class="management">
-    <summary class="management-summary"><span id="taskStatusText">当前没有运行中的任务</span><strong>索引与数据管理</strong></summary>
-    <div class="management-body">
+    </div>
       <div class="row task-header"><strong>全文索引与缓存</strong><button id="taskRefresh" type="button">刷新状态</button></div>
     <div id="indexStartArea" style="margin-bottom:9px" hidden>
       <button type="button" id="indexStart">建立全文索引（需授权）</button>

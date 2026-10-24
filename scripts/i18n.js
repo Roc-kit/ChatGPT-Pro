@@ -67,6 +67,8 @@
     '重新下载最近一次已持久化的批量 ZIP 分卷':'Redownload latest saved bulk ZIP parts',
     '正在检查更新…':'Checking for updates…',
     '长对话快速导航（Minimap）':'Conversation minimap', '消息':'Message',
+    '常用显示设置':'Display settings', '高级设置':'Advanced settings',
+    '后台打开、弹窗行为、导出文件名':'Background tabs, panel behavior, export filenames',
     '时间戳字号':'Timestamp font size',
     '时间戳字号（侧边栏及消息）':'Timestamp font size (sidebar and messages)',
     '打开聊天目录':'Open conversations', '导出整个对话（Markdown）':'Export entire chat (Markdown)',

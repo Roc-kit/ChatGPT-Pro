@@ -324,10 +324,6 @@ document.addEventListener('DOMContentLoaded', () => {
     el.setAttribute('aria-checked', String(on));
   }
 
-  function setSidebarControlsEnabled(on) {
-    size.disabled = !on;
-  }
-
   const filenamePresets = {
     datetime_title: '{created_datetime}_{title}',
     datetime_source_title: '{created_datetime}_{source}_{title}',
@@ -383,7 +379,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setToggle(minimapToggle, values.showMinimap !== false);
     setToggle(openInBackgroundToggle, values.openInBackground !== false);
     setToggle(outsideCloseToggle, values.closeOnOutsideClick !== false);
-    setSidebarControlsEnabled(showSidebarTime);
     size.value = normalizeTimestampFontSize(values.fontSize);
     updateFilenameUi(values.exportFilenameTemplate || '{created_datetime}_{title}');
   });
@@ -421,7 +416,6 @@ document.addEventListener('DOMContentLoaded', () => {
   sidebarTimeToggle.addEventListener('click', () => {
     const showSidebarTime = !sidebarTimeToggle.classList.contains('active');
     setToggle(sidebarTimeToggle, showSidebarTime);
-    setSidebarControlsEnabled(showSidebarTime);
     chrome.storage.local.set({ showSidebarTime });
   });
   messageTimeToggle.addEventListener('click', () => {

@@ -177,6 +177,44 @@ async function main() {
     await cdp.send('Page.enable', {}, popupSession);
     await eventually(async () => cdp.eval(popupSession, `Boolean(document.querySelector('#indexStart'))`),
       'real installed popup loaded');
+    const collapsedLayout = await cdp.eval(popupSession, `(() => {
+      const advanced = document.querySelector('#advancedSettings');
+      const manager = document.querySelector('#taskManager');
+      return { advancedOpen: advanced.open, managerOpen: manager.open,
+        exportVisible: document.querySelector('#filenamePreset').checkVisibility(),
+        togglePresent: !!advanced.querySelector('#toggle'),
+        taskPresent: !!manager.querySelector('#taskList') };
+    })()`);
+    assert.deepEqual(collapsedLayout, { advancedOpen: false, managerOpen: false,
+      exportVisible: false, togglePresent: true, taskPresent: true },
+    'compact Popup keeps advanced settings and tasks in separate collapsed sections');
+    await cdp.eval(popupSession, `document.querySelector('#advancedSettings summary').click()`);
+    assert.equal(await cdp.eval(popupSession,
+      `document.querySelector('#advancedSettings').open && document.querySelector('#filenamePreset').getClientRects().length > 0`),
+      true, 'advanced disclosure reveals export naming and behavior controls');
+    await cdp.eval(popupSession, `document.querySelector('#advancedSettings summary').click()`);
+    await cdp.eval(popupSession, `document.querySelector('#taskManager summary').click()`);
+    assert.equal(await cdp.eval(popupSession,
+      `document.querySelector('#taskManager').open && document.querySelector('#taskRefresh').getClientRects().length > 0`),
+      true, 'index disclosure retains reachable task and cache controls');
+    if (process.argv.includes('--popup-layout-only')) {
+      await cdp.eval(popupSession, `(() => {
+        const select = document.querySelector('#languageSelect');
+        select.value = 'en'; select.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await eventually(async () => cdp.eval(popupSession,
+        `document.querySelector('#advancedSettings .summary-copy strong').textContent === 'Advanced settings'`),
+      'new advanced settings heading translates to English');
+      assert.equal(await cdp.eval(popupSession,
+        `document.querySelector('.section .label').textContent`), 'Local data');
+      assert.equal(await cdp.eval(popupSession,
+        `document.querySelector('#advancedSettings .summary-hint').textContent`),
+        'Background tabs, panel behavior, export filenames');
+      assert.equal(await cdp.eval(popupSession, `document.querySelector('#size').disabled`), false,
+        'timestamp size remains editable independently of timestamp toggles');
+      console.log('POPUP_LAYOUT_PASS: compact defaults, collapsible advanced/index sections, English labels, numeric timestamp control');
+      return;
+    }
     // Keep the real ChatGPT fixture as the active tab while inspecting the
     // extension Popup via CDP. This is equivalent to opening its toolbar Popup.
     await cdp.send('Target.activateTarget', { targetId: fixtureTarget });
