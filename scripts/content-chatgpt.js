@@ -45,6 +45,7 @@
       enabled: true,
       showSidebarTime: false,
       showMessageTimestamps: false,
+      showMinimap: true,
       fontSize: 'small',
       openInBackground: true,
       closeOnOutsideClick: true,
@@ -310,7 +311,7 @@
   }
 
   function syncConversationMinimap() {
-    const id = S.settings.enabled && currentConversationId();
+    const id = S.settings.enabled && S.settings.showMinimap && currentConversationId();
     const previous = document.querySelector('[data-chatgpt-pro-minimap]');
     if (!id) {
       previous?.remove();
@@ -320,10 +321,10 @@
       S.minimap.active = null;
       return;
     }
-    const messages = window.ChatGPTDomAdapter.messageElements()
-      .filter(element => ['user', 'assistant'].includes(window.ChatGPTDomAdapter.messageRole(element)));
-    // Short conversations do not need an extra overlay.
-    if (messages.length < 8) {
+    // Do not require role attributes: some ChatGPT views expose message IDs
+    // without the role, and filtering them all previously hid the minimap.
+    const messages = window.ChatGPTDomAdapter.messageElements();
+    if (messages.length < 2) {
       previous?.remove();
       S.minimap.signature = '';
       S.minimap.entries = [];
@@ -353,9 +354,10 @@
       const role = window.ChatGPTDomAdapter.messageRole(target);
       const marker = document.createElement('button');
       marker.type = 'button';
-      marker.className = `chatgpt-pro-minimap-marker chatgpt-pro-minimap-${role}`;
+      marker.className = `chatgpt-pro-minimap-marker chatgpt-pro-minimap-${role || 'unknown'}`;
       const preview = String(target.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 90);
-      marker.title = `${index + 1}/${messages.length} · ${role === 'user' ? '用户' : 'ChatGPT'}：${preview}`;
+      const speaker = role === 'user' ? '用户' : role === 'assistant' ? 'ChatGPT' : '消息';
+      marker.title = `${index + 1}/${messages.length} · ${speaker}：${preview}`;
       marker.setAttribute('aria-label', marker.title);
       marker.addEventListener('click', () => target.scrollIntoView({ behavior: 'smooth', block: 'center' }));
       rail.append(marker);
@@ -2934,13 +2936,14 @@
   async function loadSettings() {
     const values = await new Promise(resolve => {
       chrome.storage.local.get(
-        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'currentExportPositionY', 'panelSize', 'uiLanguage', 'minimapCollapsed'],
+        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'currentExportPositionY', 'panelSize', 'uiLanguage', 'minimapCollapsed'],
         data => resolve(data || {})
       );
     });
     if (values.enabled !== undefined) S.settings.enabled = values.enabled;
     if (values.showSidebarTime !== undefined) S.settings.showSidebarTime = values.showSidebarTime;
     if (values.showMessageTimestamps !== undefined) S.settings.showMessageTimestamps = values.showMessageTimestamps;
+    S.settings.showMinimap = values.showMinimap !== false;
     if (values.fontSize) S.settings.fontSize = values.fontSize;
     if (values.openInBackground !== undefined) S.settings.openInBackground = values.openInBackground;
     if (values.closeOnOutsideClick !== undefined) S.settings.closeOnOutsideClick = values.closeOnOutsideClick;
@@ -3076,6 +3079,10 @@
           removeMessageTimestamps();
         }
       }
+      if (changes.showMinimap) {
+        S.settings.showMinimap = changes.showMinimap.newValue !== false;
+        syncConversationMinimap();
+      }
       if (changes.openInBackground) S.settings.openInBackground = changes.openInBackground.newValue;
       if (changes.closeOnOutsideClick) S.settings.closeOnOutsideClick = changes.closeOnOutsideClick.newValue;
       if (changes.exportFilenameTemplate) S.settings.exportFilenameTemplate = changes.exportFilenameTemplate.newValue || '{created_datetime}_{title}';
@@ -3138,6 +3145,7 @@
     });
     S.ready = true;
     ensureCurrentChatExportButton();
+    syncConversationMinimap();
     window.setTimeout(() => resumePendingSearchJump().catch(error => log('Search result jump failed:', error.message)), 600);
   }
 

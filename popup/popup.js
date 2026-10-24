@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const toggle = document.getElementById('toggle');
   const sidebarTimeToggle = document.getElementById('sidebarTimeToggle');
   const messageTimeToggle = document.getElementById('messageTimeToggle');
+  const minimapToggle = document.getElementById('minimapToggle');
   const openInBackgroundToggle = document.getElementById('openInBackgroundToggle');
   const outsideCloseToggle = document.getElementById('outsideCloseToggle');
   const size = document.getElementById('size');
@@ -370,7 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
     filenamePreview.textContent = previewFilename(value);
   }
 
-  chrome.storage.local.get(['enabled', 'showSidebarTime', 'showMessageTimestamps', 'openInBackground', 'closeOnOutsideClick', 'fontSize', 'exportFilenameTemplate', 'uiLanguage'], values => {
+  chrome.storage.local.get(['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'openInBackground', 'closeOnOutsideClick', 'fontSize', 'exportFilenameTemplate', 'uiLanguage'], values => {
     languageSelect.value = values.uiLanguage || 'auto';
     i18n.setLanguage(languageSelect.value);
     i18n.setDirection(document.documentElement);
@@ -379,6 +380,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const showSidebarTime = values.showSidebarTime === true;
     setToggle(sidebarTimeToggle, showSidebarTime);
     setToggle(messageTimeToggle, values.showMessageTimestamps === true);
+    setToggle(minimapToggle, values.showMinimap !== false);
     setToggle(openInBackgroundToggle, values.openInBackground !== false);
     setToggle(outsideCloseToggle, values.closeOnOutsideClick !== false);
     setSidebarControlsEnabled(showSidebarTime);
@@ -426,6 +428,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const showMessageTimestamps = !messageTimeToggle.classList.contains('active');
     setToggle(messageTimeToggle, showMessageTimestamps);
     chrome.storage.local.set({ showMessageTimestamps });
+  });
+  minimapToggle.addEventListener('click', () => {
+    const showMinimap = !minimapToggle.classList.contains('active');
+    setToggle(minimapToggle, showMinimap);
+    chrome.storage.local.set({ showMinimap });
+  });
+  minimapToggle.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      minimapToggle.click();
+    }
   });
   openInBackgroundToggle.addEventListener('click', () => {
     const openInBackground = !openInBackgroundToggle.classList.contains('active');

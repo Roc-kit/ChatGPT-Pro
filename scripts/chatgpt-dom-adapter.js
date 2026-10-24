@@ -119,11 +119,15 @@
     const root = conversationRoot();
     const searchUnits = root.querySelectorAll(SEARCH_UNIT_SELECTOR);
     const contentUnits = searchUnits.length ? [] : root.querySelectorAll(CONTENT_UNIT_SELECTOR);
-    const candidates = searchUnits.length
+    let candidates = searchUnits.length
       ? searchUnits
       : (contentUnits.length
           ? contentUnits
           : root.querySelectorAll('[data-chatgpt-selection-message-id], [data-message-author-role][data-message-id], [data-turn-key], section[data-turn-id]'));
+    // ChatGPT can omit legacy message IDs while keeping turn containers.
+    if (!candidates.length) {
+      candidates = root.querySelectorAll('[data-testid^="conversation-turn-"], [data-testid="conversation-turn"], article');
+    }
     const seenNodes = new Set();
     const seenIds = new Set();
     const result = [];
