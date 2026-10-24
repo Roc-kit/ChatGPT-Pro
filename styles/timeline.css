@@ -261,6 +261,28 @@
   cursor: pointer !important;
 }
 
+/* ChatGPT's host styles reset native checkbox appearance. Without restoring
+   it, selection still works but the checkboxes are completely invisible. */
+.chatgpt-pro-panel input[type="checkbox"] {
+  -webkit-appearance: checkbox !important;
+  appearance: auto !important;
+  display: inline-block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 14px !important;
+  min-width: 14px !important;
+  height: 14px !important;
+  min-height: 14px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: initial !important;
+  background: initial !important;
+  box-shadow: none !important;
+  accent-color: #10a37f !important;
+  vertical-align: middle !important;
+  cursor: pointer !important;
+}
+
 .chatgpt-pro-export-column-title,
 .chatgpt-pro-row-export {
   text-align: center !important;

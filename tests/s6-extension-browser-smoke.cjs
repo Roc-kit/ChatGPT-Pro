@@ -12,7 +12,14 @@ const { spawn } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '..');
 const CHAT_ID = 's6-fixture-conversation';
 const CHAT_URL = `https://chatgpt.com/c/${CHAT_ID}`;
-const BODY = '<!doctype html><html><head><meta charset="utf-8"><title>S6 isolated fixture</title></head>' +
+// Mimic the host site's checkbox reset. The extension must restore native
+// checkbox paint, not merely create an invisible but clickable input.
+const HOST_CSS = `<style>input[type="checkbox"] {
+  appearance: none !important; -webkit-appearance: none !important;
+  background: transparent !important; border: 0 !important;
+  box-shadow: none !important;
+}</style>`;
+const BODY = '<!doctype html><html><head><meta charset="utf-8"><title>S6 isolated fixture</title>' + HOST_CSS + '</head>' +
   `<body><main><h1>Isolated ChatGPT fixture</h1><a href="/c/${CHAT_ID}">Fixture chat</a>` +
   `<section data-message-id="question" data-message-author-role="user"><p>s6 acceptance unique phrase</p></section>` +
   `<section data-message-id="answer" data-message-author-role="assistant"><p>hello from controlled fixture</p></section>` +
@@ -180,6 +187,63 @@ async function main() {
     await sleep(250);
     assert.equal(requests.details, 0, 'denied initial authorization must not fetch conversation body');
 
+    // Directory export does not depend on full-text indexing or its consent.
+    // Check that our checkbox style survives the host's appearance reset.
+    await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `Boolean(document.querySelector('.chatgpt-pro-row-checkbox'))`),
+    'unindexed directory rendered');
+    const controls = await cdp.eval(pageSession, `(() => {
+      return ['.chatgpt-pro-select-all input', '.chatgpt-pro-row-checkbox',
+        '.chatgpt-pro-export-check-latest', '.chatgpt-pro-legacy-search-toggle']
+        .map(selector => {
+          const input = document.querySelector(selector);
+          const css = getComputedStyle(input);
+          return { selector, appearance: css.appearance, display: css.display,
+            visibility: css.visibility, opacity: css.opacity,
+            width: input.getBoundingClientRect().width,
+            height: input.getBoundingClientRect().height };
+        });
+    })()`);
+    for (const control of controls) {
+      assert.match(control.appearance, /^(auto|checkbox)$/, `${control.selector}: native checkbox appearance restored`);
+      assert.notEqual(control.display, 'none', `${control.selector}: checkbox displayed`);
+      assert.equal(control.visibility, 'visible', `${control.selector}: checkbox visible`);
+      assert.equal(control.opacity, '1', `${control.selector}: checkbox opaque`);
+      if (['.chatgpt-pro-select-all input', '.chatgpt-pro-row-checkbox'].includes(control.selector)) {
+        assert(control.width >= 12 && control.height >= 12, `${control.selector}: checkbox has painted area`);
+      }
+    }
+    await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-row-checkbox').click()`);
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-select-all input').checked &&
+       document.querySelector('.chatgpt-pro-batch-count').textContent.includes('1')`), true,
+    'row checkbox still updates bulk selection and select-all state');
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-export-check-latest').getBoundingClientRect().width >= 12`), true,
+    'export check-latest checkbox is painted after selection reveals its toolbar');
+    await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-select-all input').click()`);
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-row-checkbox').checked`), false,
+    'select-all can clear row selection');
+
+    await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-row-export button').click()`);
+    await eventually(async () => fs.existsSync(path.join(downloadPath, 'Offline acceptance test.md')),
+      'Markdown exported with no full-text index');
+    await cdp.eval(pageSession, `document.querySelectorAll('.chatgpt-pro-row-export button')[1].click()`);
+    await eventually(async () => fs.existsSync(path.join(downloadPath, 'Offline acceptance test.json')),
+      'raw JSON exported with no full-text index');
+    assert.equal(requests.details, 1, 'unindexed single exports fetch uncached original JSON only once');
+    await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-row-checkbox').click()`);
+    await cdp.eval(pageSession, `document.querySelector('[data-batch-format="json"]').click()`);
+    await eventually(async () => fs.readdirSync(downloadPath).some(name => name.endsWith('.zip')),
+      'unindexed selection produced JSON ZIP', 24000);
+    assert.equal(requests.details, 1, 'unindexed batch export reuses the single-export cache');
+    for (const name of fs.readdirSync(downloadPath).filter(name => name.endsWith('.zip'))) {
+      fs.rmSync(path.join(downloadPath, name));
+    }
+    await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
+
     // The mock user explicitly approves initial indexing. The content script
     // performs the full directory/JSON/index task, not an inline popup mock.
     await cdp.eval(popupSession,
@@ -189,7 +253,7 @@ async function main() {
       return (await cdp.eval(popupSession,
         `document.querySelector('#indexConsentStatus').textContent`)).includes('已完成');
     }, 'initial index completion persisted in real MV3 IndexedDB', 24000);
-    assert.equal(requests.details, 1, 'first index fetched one uncached full JSON exactly once');
+    assert.equal(requests.details, 1, 'first index reused the complete raw JSON cached before consent');
     assert(requests.directory > 0 && requests.projectList > 0, 'real strict scan covered normal and project listings');
 
     // R8 original settings: switches propagate to the real content script and
