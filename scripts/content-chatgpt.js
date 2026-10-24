@@ -41,7 +41,7 @@
     observedMessageSignature: '',
     messageRouteRetryTimers: [],
     minimap: { id: null, signature: '', entries: [], collapsed: false, active: null, frame: 0,
-      cachedId: null, cachedMessages: null, lastCacheCheck: 0, checking: false, position: -1 },
+      cachedId: null, cachedMessages: null, lastCacheCheck: 0, checking: false },
     settings: {
       enabled: true,
       showSidebarTime: false,
@@ -391,7 +391,12 @@
     const scroller = conversationScrollContainer();
     // Lazy-rendered ends are reachable without requiring a DOM element yet.
     if (entry.index === 0 || entry.index === total - 1) {
-      scroller?.scrollTo?.({ top: entry.index === 0 ? 0 : scroller.scrollHeight, behavior: 'smooth' });
+      if (scroller) {
+        const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        const reversed = getComputedStyle(scroller).flexDirection === 'column-reverse';
+        const top = entry.index === 0 ? (reversed ? -max : 0) : (reversed ? 0 : max);
+        scroller.scrollTo?.({ top, behavior: 'smooth' });
+      }
       return;
     }
     if (entry.id) await jumpToSearchMessage(entry.id, entry.preview);
@@ -413,14 +418,14 @@
     // Do not require role attributes: some ChatGPT views expose message IDs
     // without the role, and filtering them all previously hid the minimap.
     const messages = window.ChatGPTDomAdapter.messageElements();
-    if (messages.length < 2) {
+    checkMinimapCache(id).catch(error => log('Minimap cache lookup failed:', error.message));
+    if (messages.length < 2 && !(S.minimap.cachedId === id && S.minimap.cachedMessages)) {
       previous?.remove();
       S.minimap.signature = '';
       S.minimap.entries = [];
       S.minimap.active = null;
       return;
     }
-    checkMinimapCache(id).catch(error => log('Minimap cache lookup failed:', error.message));
     const allEntries = minimapMessages(S.minimap.cachedId === id ? S.minimap.cachedMessages : null, messages);
     const seen = messages.findIndex(element => {
       const r = element.getBoundingClientRect();
