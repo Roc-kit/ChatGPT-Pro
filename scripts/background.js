@@ -251,7 +251,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       message.accountId, message.id, message.owner, message.token,
       message.itemIndex, message.outcome, message.error
     ),
-    taskControl: () => ChatGPTProLocalData.controlTask(message.accountId, message.id, message.operation)
+    taskControl: () => ChatGPTProLocalData.controlTask(message.accountId, message.id, message.operation),
+    taskVolumeSave: () => ChatGPTProLocalData.saveExportVolume(
+      message.accountId, message.id, message.owner, message.token, message.payload
+    ),
+    taskVolumeGet: () => ChatGPTProLocalData.getExportVolume(
+      message.accountId, message.id, message.volume
+    )
   };
   Object.assign(taskHandlers, {
     detailAcquire: () => ChatGPTProLocalData.acquireDetailSlot(message.accountId, message.owner),

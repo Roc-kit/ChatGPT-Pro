@@ -3,7 +3,7 @@ globalThis.ChatGPTProLocalData = (() => {
   'use strict';
 
   const DB_NAME = 'ChatGPTProSearch';
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
   // Version 1 stored full-text results here without an account identifier.
   // Keep it intact; never infer the owner of these records from the current login.
   const LEGACY_SEARCH = 'conversations';
@@ -14,6 +14,7 @@ globalThis.ChatGPTProLocalData = (() => {
     conversations: 'conversationData',
     search: 'searchIndex',
     tasks: 'tasks',
+    taskVolumes: 'taskVolumes',
     logs: 'logs'
   });
 
@@ -49,6 +50,10 @@ globalThis.ChatGPTProLocalData = (() => {
           : db.createObjectStore(STORES.tasks, { keyPath: 'id' });
         ensureIndex(tasks, 'byAccount', 'accountId');
         ensureIndex(tasks, 'byAccountStatus', ['accountId', 'status']);
+        const volumes = db.objectStoreNames.contains(STORES.taskVolumes)
+          ? tx.objectStore(STORES.taskVolumes)
+          : db.createObjectStore(STORES.taskVolumes, { keyPath: ['taskId', 'volume'] });
+        ensureIndex(volumes, 'byAccount', 'accountId');
         const logs = db.objectStoreNames.contains(STORES.logs)
           ? tx.objectStore(STORES.logs)
           : db.createObjectStore(STORES.logs, { keyPath: 'id', autoIncrement: true });
@@ -456,6 +461,76 @@ globalThis.ChatGPTProLocalData = (() => {
     });
   }
 
+  /** Persist the ZIP blob and its end-of-volume checkpoint atomically.
+   *  The task can resume without claiming an already prepared/downloaded part;
+   *  a browser download is not proof that Chrome actually saved the file.
+   */
+  async function saveExportVolume(accountId, id, owner, token, payload) {
+    validateAccount(accountId);
+    validateId(id);
+    if (!(payload?.blob instanceof Blob) || payload.blob.size === 0) throw new Error('分卷 ZIP 内容为空');
+    if (typeof payload.filename !== 'string' || !payload.filename.endsWith('.zip')) throw new Error('分卷文件名无效');
+    if (!Array.isArray(payload.entries) || !payload.entries.length) throw new Error('分卷清单不能为空');
+    return transaction([STORES.tasks, STORES.taskVolumes], 'readwrite', async stores => {
+      const taskStore = stores[STORES.tasks];
+      const task = await requested(taskStore.get(id));
+      if (!task || task.accountId !== accountId || !task.type.startsWith('export-')) {
+        throw new Error('无权写入该导出任务');
+      }
+      ensureLease(task, owner, token, Date.now());
+      const from = task.nextIndex;
+      const to = payload.toIndex;
+      if (!Number.isInteger(to) || to <= from || to > task.items.length ||
+          payload.entries.length !== to - from || payload.volume !== (task.volumeCount || 0) + 1) {
+        throw new Error('分卷进度或编号不正确');
+      }
+      for (let index = 0; index < payload.entries.length; index++) {
+        const entry = payload.entries[index];
+        if (entry.id !== task.items[from + index].id || !['success', 'failed'].includes(entry.status)) {
+          throw new Error('分卷清单与任务快照不符');
+        }
+      }
+      const key = [id, payload.volume];
+      if (await requested(stores[STORES.taskVolumes].get(key))) throw new Error('已有同编号分卷');
+      const record = {
+        accountId, taskId: id, volume: payload.volume, filename: payload.filename,
+        blob: payload.blob, createdAt: Date.now(), fromIndex: from, toIndex: to
+      };
+      await requested(stores[STORES.taskVolumes].add(record));
+      task.exportEntries ||= [];
+      for (const entry of payload.entries) {
+        const safe = {
+          id: entry.id, title: String(entry.title || '').slice(0, 300),
+          status: entry.status, volume: payload.volume,
+          filename: entry.status === 'success' ? String(entry.filename || '') : null,
+          bytes: entry.status === 'success' ? Number(entry.bytes || 0) : 0,
+          ...(entry.status === 'failed' ? { error: String(entry.error || '').slice(0, 500) } : {})
+        };
+        task.exportEntries.push(safe);
+        if (safe.status === 'success') task.successCount++;
+        else {
+          task.failureCount++;
+          task.errors.push({ id: safe.id, message: safe.error });
+        }
+      }
+      task.volumeCount = payload.volume;
+      task.nextIndex = to;
+      task.updatedAt = Date.now();
+      if (to === task.items.length) { task.status = 'completed'; task.lease = null; }
+      await requested(taskStore.put(task));
+      return { nextIndex: task.nextIndex, volumeCount: task.volumeCount, status: task.status };
+    });
+  }
+
+  async function getExportVolume(accountId, taskId, volume) {
+    validateAccount(accountId);
+    validateId(taskId);
+    if (!Number.isInteger(volume) || volume < 1) throw new Error('无效的分卷编号');
+    const record = await transaction([STORES.taskVolumes], 'readonly', stores =>
+      requested(stores[STORES.taskVolumes].get([taskId, volume])));
+    return record?.accountId === accountId ? record : null;
+  }
+
   const DETAIL_LEASE_MS = 45000;
 
   async function changeRequestState(accountId, handler) {
@@ -565,6 +640,7 @@ globalThis.ChatGPTProLocalData = (() => {
     putSearchRecord, getSearchMetadata, getSearchRecords, clearSearchIndex,
     putConversation, getConversation, getStats, getLegacyMetadata,
     createTask, getTask, listTasks, claimTask, heartbeatTask, checkpointTask, controlTask,
+    saveExportVolume, getExportVolume,
     acquireDetailSlot, heartbeatDetailSlot, releaseDetailSlot, getDetailSlotStatus,
     addLog, listLogs,
     DB_NAME, DB_VERSION, LEGACY_SEARCH, UNASSIGNED_ACCOUNT, STORES

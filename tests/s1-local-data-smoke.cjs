@@ -43,8 +43,9 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     const oldStats = await storage.getLegacyMetadata();
     check(oldStats.legacyCount === 1 && oldStats.unassignedCount === 1, 'lossless v1 migration');
     const upgradeDb = await storage.openDb();
-    check(upgradeDb.version === 2 && upgradeDb.objectStoreNames.contains('tasks')
-      && upgradeDb.objectStoreNames.contains('logs'), 'six new stores');
+    check(upgradeDb.version === 3 && upgradeDb.objectStoreNames.contains('tasks')
+      && upgradeDb.objectStoreNames.contains('logs') && upgradeDb.objectStoreNames.contains('taskVolumes'),
+      'v1 -> v3 upgrade retains legacy and creates persistent ZIP volume store');
     const legacyRecord = await req(upgradeDb.transaction('conversations').objectStore('conversations').get('old-chat'));
     check(legacyRecord.messages[0].text === 'legacy text remains searchable', 'v1 preserved as-is');
     upgradeDb.close();
@@ -462,6 +463,56 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     await storage.addLog('acct-a', { type: 'task', code: 'test', message: 'retention check' });
     check(!(await send({ action: 'logList', accountId: 'acct-a' })).result.some(log => log.code === 'expired-test'),
       'logs older than 30 days pruned by subsequent writes');
+
+    // S3-5: ZIP blobs and their cursor/manifest metadata must commit together.
+    const exportJob = await send({ action: 'taskCreate', accountId: 'acct-a', type: 'export-md',
+      items: [{ id: 'zip-a' }, { id: 'zip-b' }, { id: 'zip-c' }] });
+    check(exportJob.success, 'export task created');
+    const exportId = exportJob.result.id;
+    const exportClaim = await send({ action: 'taskClaim', accountId: 'acct-a',
+      id: exportId, owner: 'zip-tab' });
+    const zipToken = exportClaim.result.token;
+    const partOne = new Blob(['PK test one'], { type: 'application/zip' });
+    const firstZipPayload = {
+      blob: partOne, filename: 'export_part001.zip', volume: 1, toIndex: 2,
+      entries: [
+        { id: 'zip-a', title: 'first', status: 'success', filename: 'first.md', bytes: 20 },
+        { id: 'zip-b', title: 'second', status: 'failed', error: 'failed conversion' }
+      ]
+    };
+    check(!(await send({ action: 'taskVolumeSave', accountId: 'acct-b', id: exportId,
+      owner: 'zip-tab', token: zipToken, payload: firstZipPayload })).success,
+      'wrong account cannot write an export ZIP');
+    const firstZip = await send({ action: 'taskVolumeSave', accountId: 'acct-a', id: exportId,
+      owner: 'zip-tab', token: zipToken, payload: firstZipPayload });
+    check(firstZip.success && firstZip.result.nextIndex === 2, 'first ZIP and cursor persisted atomically');
+    check(!(await send({ action: 'taskVolumeSave', accountId: 'acct-a', id: exportId,
+      owner: 'zip-tab', token: zipToken, payload: firstZipPayload })).success,
+      'duplicate ZIP checkpoint rejected');
+    check((await send({ action: 'taskVolumeGet', accountId: 'acct-b', id: exportId, volume: 1 })).result === null,
+      'saved ZIP hidden from other accounts');
+    const restoredOne = await send({ action: 'taskVolumeGet', accountId: 'acct-a', id: exportId, volume: 1 });
+    check(restoredOne.success && restoredOne.result.blob.size === partOne.size,
+      'first complete ZIP is retrievable after it leaves the page memory');
+    await send({ action: 'taskControl', accountId: 'acct-a', id: exportId, operation: 'pause' });
+    check(!(await send({ action: 'taskVolumeSave', accountId: 'acct-a', id: exportId,
+      owner: 'zip-tab', token: zipToken, payload: {
+        blob: partOne, filename: 'export_part002.zip', volume: 2, toIndex: 3,
+        entries: [{ id: 'zip-c', status: 'success', filename: 'third.md' }]
+      } })).success, 'paused task rejects stale ZIP');
+    await send({ action: 'taskControl', accountId: 'acct-a', id: exportId, operation: 'resume' });
+    const resumedZip = await send({ action: 'taskClaim', accountId: 'acct-a', id: exportId, owner: 'new-zip-tab' });
+    const finalZip = await send({ action: 'taskVolumeSave', accountId: 'acct-a', id: exportId,
+      owner: 'new-zip-tab', token: resumedZip.result.token, payload: {
+        blob: new Blob(['PK test two'], { type: 'application/zip' }),
+        filename: 'export_part002.zip', volume: 2, toIndex: 3,
+        entries: [{ id: 'zip-c', title: 'third', status: 'success', filename: 'third.md', bytes: 20 }]
+      } });
+    check(finalZip.success && finalZip.result.status === 'completed', 'final persisted ZIP completes task');
+    const completedExport = (await send({ action: 'taskGet', accountId: 'acct-a', id: exportId })).result;
+    check(completedExport.volumeCount === 2 && completedExport.successCount === 2 &&
+      completedExport.failureCount === 1 && completedExport.exportEntries.length === 3,
+      'recovery cursor, manifest and counts survived resume');
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }
