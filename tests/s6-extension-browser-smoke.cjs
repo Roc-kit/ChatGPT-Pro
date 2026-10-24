@@ -184,6 +184,37 @@ async function main() {
     await eventually(async () => cdp.eval(popupSession,
       `document.querySelector('#indexStartArea').hidden === false`),
     'popup received real content-script task dashboard');
+    // Even a short chat with two rendered messages has a minimap when enabled.
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
+    'minimap visible without requiring eight messages');
+    assert.equal(await cdp.eval(popupSession,
+      `document.querySelector('#minimapToggle').getAttribute('aria-checked')`), 'true');
+    await cdp.eval(popupSession, `document.querySelector('#minimapToggle').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `!document.querySelector('[data-chatgpt-pro-minimap]')`), 'minimap switch hides navigation');
+    await cdp.eval(popupSession, `document.querySelector('#minimapToggle').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
+    'minimap switch immediately restores navigation');
+    // Hover tooltips are not in the Popup's DOM, and dynamic updates must
+    // still be translated after switching locale.
+    await cdp.eval(popupSession, `(() => {
+      const select = document.querySelector('#languageSelect');
+      select.value = 'en'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-current-images]')?.title === 'Download all conversation images (ZIP)'`),
+    'image download hover text translated outside panel');
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-current-export]').title`),
+      'Export entire chat (Markdown)');
+    await cdp.eval(pageSession, `(() => {
+      document.querySelector('[data-chatgpt-pro-current-images]').title = '正在下载图片 2 / 10';
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-current-images]').title === 'Downloading images 2 / 10'`),
+    'dynamic image download tooltip translated after attribute change');
     // Set a deterministic test language; production defaults to browser locale.
     await cdp.eval(popupSession, `(() => {
       const select = document.querySelector('#languageSelect');

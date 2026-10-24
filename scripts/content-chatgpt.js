@@ -375,6 +375,7 @@
     panel.classList.toggle('chatgpt-pro-minimap-collapsed', S.minimap.collapsed);
     previous?.remove();
     document.body.append(panel);
+    window.ChatGPTProI18n?.watch(panel);
     S.minimap.id = id;
     S.minimap.signature = signature;
     S.minimap.entries = entries;
@@ -628,6 +629,7 @@
     });
     document.body.appendChild(button);
     S.launcher = button;
+    window.ChatGPTProI18n?.watch(button);
     placeLauncher();
     setupLauncherDrag(button);
   }
@@ -753,6 +755,7 @@
       }
     });
     document.body.appendChild(button);
+    window.ChatGPTProI18n?.watch(button);
     placeCurrentChatExportButton(button);
     setupCurrentChatExportDrag(button);
     ensureCurrentChatImageButton();
@@ -780,6 +783,7 @@
       } finally { button.disabled = false; }
     });
     document.body.appendChild(button);
+    window.ChatGPTProI18n?.watch(button);
     placeCurrentChatExportButton();
   }
 
@@ -3091,6 +3095,9 @@
         window.ChatGPTProI18n?.setDirection(S.timeline);
         window.ChatGPTProI18n?.apply(S.timeline);
         window.ChatGPTProI18n?.apply(S.launcher);
+        window.ChatGPTProI18n?.apply(document.querySelector('[data-chatgpt-pro-current-export]'));
+        window.ChatGPTProI18n?.apply(document.querySelector('[data-chatgpt-pro-current-images]'));
+        window.ChatGPTProI18n?.apply(document.querySelector('[data-chatgpt-pro-minimap]'));
       }
       if (changes.panelSize?.newValue) S.settings.panelSize = changes.panelSize.newValue;
       if (restamp && S.settings.enabled) {

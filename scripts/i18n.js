@@ -65,7 +65,41 @@
     '成功':'Succeeded','已完成增量同步':'Incremental sync complete',
     '收起本地预览':'Hide local preview','正在读取索引状态…':'Loading index status…',
     '重新下载最近一次已持久化的批量 ZIP 分卷':'Redownload latest saved bulk ZIP parts',
-    '正在检查更新…':'Checking for updates…'
+    '正在检查更新…':'Checking for updates…',
+    '长对话快速导航（Minimap）':'Conversation minimap', '消息':'Message',
+    '打开聊天目录':'Open conversations', '导出整个对话（Markdown）':'Export entire chat (Markdown)',
+    '正在导出整个对话…':'Exporting entire conversation…', '已导出整个对话':'Conversation exported',
+    '下载当前对话所有图片 ZIP':'Download all conversation images (ZIP)',
+    '导出前增量检查聊天目录；仅更新有变化的完整缓存':'Check for updated conversations before exporting; reuse unchanged cache',
+    '官方明确删除标记，原始数据和导出保留在本地':'Deleted remotely; original data and exports remain local',
+    '只清理此对话的扩展本地原始 JSON、全文索引和目录':'Remove this chat from local JSON, full-text index, and directory only',
+    '已完成后台增量同步':'Background sync complete',
+    '已完成增量同步':'Incremental sync complete',
+    '正在核实完整聊天目录（项目和分页）…':'Verifying full chat directory (including projects)…',
+    '同步失败':'Sync failed','导出失败':'Export failed','图片下载失败':'Image download failed',
+    '清理失败':'Cleanup failed','仅本地导出失败':'Local export failed',
+    '索引更新失败':'Index update failed','索引状态读取失败':'Failed to read index status',
+    '批量导出失败':'Bulk export failed','全文搜索失败':'Full-text search failed',
+    '下载已保存分卷失败':'Failed to download saved ZIP parts',
+    '未归属历史索引 · 不可确认在线链接或完整导出':'Legacy index · online link and complete export unverified',
+    '仅本地 · 已确认官方删除':'Local only · confirmed remote deletion',
+    '远端状态待核实':'Remote status unverified',
+    '账号已变化；请重新授权或搜索当前账号':'Account changed; authorize or search again',
+    '登录账号已变化，本地搜索结果已清空':'Account changed; local search results cleared',
+    '正在搜索本地索引…':'Searching local index…',
+    '正在检查所选聊天的目录版本…':'Checking selected chat versions…',
+    '所选记录已是仅本地状态，无法操作云端':'Selected chats are local-only and cannot be changed remotely',
+    '当前账号没有已持久化的 ZIP 分卷':'No saved ZIP parts for this account',
+    '首次使用，正在建立本地目录…':'Building initial local directory…',
+    '开始下载图片':'Starting image downloads',
+    '失败记录':'Failed items', '当前账号暂无任务':'No current account tasks',
+    '请切换到已登录的 ChatGPT 标签页，或点击“打开 ChatGPT”':'Switch to a signed-in ChatGPT tab or open ChatGPT',
+    '本地任务':'Local task','等待恢复':'Waiting to resume',
+    '自动增量索引已开启':'Automatic incremental index enabled',
+    '自动增量索引已关闭；已有任务不受影响':'Automatic indexing disabled; current tasks are unaffected',
+    '刷新失败':'Refresh failed','正在重建本地目录…':'Rebuilding local directory…',
+    '完成':'Completed','还需':'Remaining','条聊天记录':'chats',
+    '归档':'Archive','删除':'Delete','永久删除':'Delete permanently'
   };
   const PACKS = {
     'en': EN,
@@ -357,6 +391,40 @@
     if (current === 'zh-CN') return key;
     return PACKS[current]?.[key] || fallback(key);
   }
+  // Explicit wildcard templates for extension-generated UI only. Do not
+  // translate arbitrary ChatGPT page content or the user's chat titles.
+  const DYNAMIC = [
+    [/^选择 (.+)$/, m => `${t('选择')} ${m[1]}`],
+    [/^标题筛选：(.+)$/, m => `${t('按标题筛选')}: ${m[1]}`],
+    [/^已选 (\d+)$/, m => `${t('选择')} ${m[1]}`],
+    [/^(\d+) 条聊天记录$/, m => `${m[1]} ${t('条聊天记录')}`],
+    [/^(\d+) 条 · (.+)$/, m => `${m[1]} chats · ${translateText(m[2])}`],
+    [/^(导出失败|图片下载失败|清理失败|仅本地导出失败|索引更新失败|索引状态读取失败|批量导出失败|全文搜索失败|同步失败|下载已保存分卷失败)：(.+)$/, m => `${t(m[1])}: ${translateText(m[2])}`],
+    [/^图片 ZIP 已生成：成功 (\d+)，失败 (\d+)；共 (\d+) 卷$/, m => `Image ZIP ready: ${m[1]} succeeded, ${m[2]} failed · ${m[3]} parts`],
+    [/^正在下载图片 (\d+) \/ (\d+)$/, m => `Downloading images ${m[1]} / ${m[2]}`],
+    [/^正在保存图片 ZIP (\d+) \/ (\d+)$/, m => `Saving image ZIP ${m[1]} / ${m[2]}`],
+    [/^正在导出 (.+)$/, m => `Exporting ${translateText(m[1])}`],
+    [/^打开 ChatGPT 失败：(.+)$/, m => `Failed to open ChatGPT: ${translateText(m[1])}`],
+    [/^账号请求冷却中 · 剩余 (\d+) 秒 · 到期后可自动继续$/, m => `Request cooldown · ${m[1]}s remaining · automatic resume`],
+    [/^ · 还需 (\d+) 秒$/, m => ` · ${m[1]}s remaining`],
+    [/^ · 等待结束，正在恢复$/, () => ' · Resuming'],
+    [/^(.+)中…$/, m => `${translateText(m[1])} in progress…`],
+    [/^(.+)失败：(.+)$/, m => `${translateText(m[1])} failed: ${translateText(m[2])}`],
+    [/^任务不可用：(.+)$/, m => `Task unavailable: ${translateText(m[1])}`],
+    [/^自动更新设置失败：(.+)$/, m => `Failed to update automatic indexing: ${translateText(m[1])}`],
+    [/^索引启动失败：(.+)$/, m => `Index start failed: ${translateText(m[1])}`],
+    [/^完成 · (\d+) 条聊天记录$/, m => `Done · ${m[1]} chats`],
+    [/^(.+) · ZIP (\d+) 卷$/, m => `${translateText(m[1])} · ${m[2]} ZIP parts`],
+    [/^当前账号 (\d+) 条(?: · 未归属旧索引 (\d+) 条)?$/, m => `${m[1]} account chats${m[2] ? ` · ${m[2]} legacy entries` : ''}`],
+    [/^本地已有 (\d+) 条，正在增量检查最新数据…$/, m => `${m[1]} local chats · checking for updates…`],
+    [/^(.+) · 已完成增量同步$/, m => `${translateText(m[1])} · ${t('已完成增量同步')}`],
+    [/^已发起下载 (\d+) \/ (\d+) 卷（最近一次导出任务）$/, m => `Started downloading ${m[1]} / ${m[2]} ZIP parts (latest export)`],
+    [/^已持久化 (\d+) 卷 · 成功 (\d+) 个、失败 (\d+) 个（浏览器下载需单独确认）$/, m => `${m[1]} saved parts · ${m[2]} succeeded, ${m[3]} failed (check browser downloads)`],
+    [/^(正在归档|正在永久删除) (\d+) \/ (\d+) · 成功 (\d+)、失败 (\d+)$/, m => `${m[1] === '正在归档' ? 'Archiving' : 'Deleting'} ${m[2]} / ${m[3]} · ${m[4]} succeeded, ${m[5]} failed`],
+    [/^(归档|永久删除)完成：成功 (\d+)、失败 (\d+)(（点击查看失败清单）)?$/, m => `${t(m[1])} completed: ${m[2]} succeeded, ${m[3]} failed${m[4] ? ' (click for failures)' : ''}`],
+    [/^(归档|永久删除)中止：(.+)$/, m => `${t(m[1])} stopped: ${translateText(m[2])}`],
+    [/^(\d+)\/(\d+) · (用户|ChatGPT|消息)：(.+)$/, m => `${m[1]}/${m[2]} · ${t(m[3])}: ${m[4]}`]
+  ];
   function translateText(source) {
     const value = source.trim();
     if (!value) return source;
@@ -368,14 +436,9 @@
           result = parts.map(part => t(part)).join(' · ');
         }
       }
-      const patterns = [
-        [/^已选 (\d+)$/, value => `${t('选择')} ${value}`],
-        [/^(\d+) 条聊天记录$/, value => `${value} ${t('聊天目录')}`],
-        [/^当前账号暂无任务$/, () => t('当前没有运行中的任务')]
-      ];
-      for (const [pattern, format] of patterns) {
+      if (current !== 'zh-CN') for (const [pattern, format] of DYNAMIC) {
         const match = value.match(pattern);
-        if (match && current !== 'zh-CN') { result = format(match[1]); break; }
+        if (match) { result = format(match); break; }
       }
     }
     if (result === value) return source;
@@ -423,10 +486,12 @@
     const observer = new MutationObserver(mutations => {
       for (const mutation of mutations) {
         if (mutation.type === 'characterData') apply(mutation.target);
+        else if (mutation.type === 'attributes') translateAttributes(mutation.target);
         else for (const node of mutation.addedNodes) apply(node);
       }
     });
-    observer.observe(root, { subtree:true, childList:true, characterData:true });
+    observer.observe(root, { subtree:true, childList:true, characterData:true,
+      attributes:true, attributeFilter:['title','aria-label','placeholder'] });
     return () => observer.disconnect();
   }
   function setLanguage(value) {
@@ -437,6 +502,6 @@
     if (root) { root.dir = current === 'ar' ? 'rtl' : 'ltr'; root.lang = current; }
   }
   setLanguage('auto');
-  scope.ChatGPTProI18n = { t, apply, watch, setLanguage, setDirection, resolveLanguage,
+  scope.ChatGPTProI18n = { t, translateText, apply, watch, setLanguage, setDirection, resolveLanguage,
     get language() { return current; }, get preferred() { return preferred; }, LANGUAGES };
 })(window);
