@@ -226,6 +226,8 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelector('[data-chatgpt-pro-current-images]').title === 'Downloading images 2 / 10'`),
     'dynamic image download tooltip translated after attribute change');
+    assert.equal(await cdp.eval(popupSession,
+      `document.querySelector('label[for="size"]')?.textContent || document.querySelector('#size').type`), 'number');
     await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
     await eventually(async () => cdp.eval(pageSession,
       `Boolean(document.querySelector('.chatgpt-pro-panel'))`), 'English panel opened');
@@ -337,6 +339,25 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').length === 2`),
     'user + assistant timestamps render from persisted JSON');
+    await cdp.eval(popupSession, `(() => {
+      const size = document.querySelector('#size');
+      size.value = '17'; size.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `getComputedStyle(document.querySelector('[data-chatgpt-pro-message-timestamp]')).fontSize === '17px'`),
+    'numeric font size immediately applies to in-chat timestamps');
+    assert.equal(await cdp.eval(pageSession, `(() => {
+      const sample = document.createElement('span'); sample.className = 'chatgpt-pro-badge';
+      document.body.append(sample);
+      const actual = getComputedStyle(sample).fontSize;
+      sample.remove(); return actual;
+    })()`), '17px', 'sidebar badges use exactly the same font size');
+    await cdp.eval(popupSession, `(() => {
+      const size = document.querySelector('#size');
+      size.value = '99'; size.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    assert.equal(await cdp.eval(popupSession, `document.querySelector('#size').value`), '24',
+      'custom font size remains within the supported range');
     assert.equal(requests.details, 1, 'timestamp decoration reuses cached JSON');
     await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
     await eventually(async () => cdp.eval(pageSession,

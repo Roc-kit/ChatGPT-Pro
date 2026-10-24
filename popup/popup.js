@@ -384,7 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setToggle(openInBackgroundToggle, values.openInBackground !== false);
     setToggle(outsideCloseToggle, values.closeOnOutsideClick !== false);
     setSidebarControlsEnabled(showSidebarTime);
-    size.value = values.fontSize || 'small';
+    size.value = normalizeTimestampFontSize(values.fontSize);
     updateFilenameUi(values.exportFilenameTemplate || '{created_datetime}_{title}');
   });
 
@@ -450,7 +450,17 @@ document.addEventListener('DOMContentLoaded', () => {
     setToggle(outsideCloseToggle, closeOnOutsideClick);
     chrome.storage.local.set({ closeOnOutsideClick });
   });
-  size.addEventListener('change', () => chrome.storage.local.set({ fontSize: size.value }));
+  function normalizeTimestampFontSize(value) {
+    const legacy = { small: 11, medium: 12, large: 13 };
+    const parsed = Number(legacy[value] || value);
+    return Number.isFinite(parsed) && parsed > 0
+      ? Math.max(8, Math.min(24, Math.round(parsed))) : 11;
+  }
+  size.addEventListener('change', () => {
+    const fontSize = normalizeTimestampFontSize(size.value);
+    size.value = fontSize;
+    chrome.storage.local.set({ fontSize });
+  });
   filenamePreset.addEventListener('change', () => {
     const preset = filenamePreset.value;
     customTemplateWrap.hidden = preset !== 'custom';

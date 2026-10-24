@@ -34,6 +34,9 @@
     .local-stats > span { display:flex; flex-direction:column-reverse; align-items:center; gap:3px; padding:10px 3px; border-radius:8px; background:#f5f8f7; font-size:10px; color:#76857e; }
     .local-stats strong { color:#1f2937; font-size:20px; line-height:1.2; }
     .inline-select { width:auto; max-width:155px; padding:6px 9px; font-size:11px; }
+    .timestamp-size-control { display:flex; align-items:center; gap:5px; flex:0 0 auto; }
+    .timestamp-size-control input { width:68px; padding:6px 8px; text-align:center; font-size:12px; }
+    .timestamp-size-control span { font-size:11px; color:#6b7280; }
     #languageSelect { max-width:183px; }
     [dir="rtl"] .header-top, [dir="rtl"] .row { text-align:right; }
     [dir="rtl"] .local-stats { direction:rtl; }
@@ -113,9 +116,7 @@
     <div class="row setting-row"><span>长对话快速导航（Minimap）</span><div class="toggle active" id="minimapToggle" role="switch" aria-checked="true" tabindex="0" aria-label="长对话快速导航（Minimap）"></div></div>
     <div class="row setting-row"><span>后台新标签页打开</span><div class="toggle active" id="openInBackgroundToggle" role="switch" aria-checked="true"></div></div>
     <div class="row setting-row"><span>点击弹窗外关闭</span><div class="toggle active" id="outsideCloseToggle" role="switch" aria-checked="true"></div></div>
-    <div class="row setting-row"><span>时间字号</span><select id="size" class="inline-select" aria-label="侧边栏时间字号">
-      <option value="small">小</option><option value="medium">中</option><option value="large">大</option>
-    </select></div>
+    <div class="row setting-row"><span>时间戳字号</span><div class="timestamp-size-control"><input id="size" type="number" min="8" max="24" step="1" value="11" aria-label="时间戳字号（侧边栏及消息）"><span>px</span></div></div>
     <div class="row setting-row"><span>界面语言</span><select id="languageSelect" class="inline-select" aria-label="界面语言">
       <option value="auto">自动 / Browser</option>
       <option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option>

@@ -46,7 +46,7 @@
       showSidebarTime: false,
       showMessageTimestamps: false,
       showMinimap: true,
-      fontSize: 'small',
+      fontSize: 11,
       openInBackground: true,
       closeOnOutsideClick: true,
       exportFilenameTemplate: '{created_datetime}_{title}',
@@ -57,6 +57,15 @@
   };
 
   const log = (...args) => console.log('[ChatGPT Pro]', ...args);
+
+  function applyTimestampFontSize(value) {
+    const legacy = { small: 11, medium: 12, large: 13 };
+    const parsed = Number(legacy[value] || value);
+    const fontSize = Number.isFinite(parsed) && parsed > 0
+      ? Math.max(8, Math.min(24, Math.round(parsed))) : 11;
+    S.settings.fontSize = fontSize;
+    document.documentElement.style.setProperty('--chatgpt-pro-timestamp-font-size', `${fontSize}px`);
+  }
 
   function timestampValue(value) {
     if (!value) return 0;
@@ -398,10 +407,7 @@
   function makeBadge(text) {
     const badge = document.createElement('span');
     badge.setAttribute('data-chatgpt-pro', '1');
-    badge.className = [
-      'chatgpt-pro-badge',
-      `chatgpt-pro-${S.settings.fontSize}`
-    ].filter(Boolean).join(' ');
+    badge.className = 'chatgpt-pro-badge';
     badge.textContent = text;
     return badge;
   }
@@ -2960,7 +2966,7 @@
     if (values.showSidebarTime !== undefined) S.settings.showSidebarTime = values.showSidebarTime;
     if (values.showMessageTimestamps !== undefined) S.settings.showMessageTimestamps = values.showMessageTimestamps;
     S.settings.showMinimap = values.showMinimap !== false;
-    if (values.fontSize) S.settings.fontSize = values.fontSize;
+    applyTimestampFontSize(values.fontSize);
     if (values.openInBackground !== undefined) S.settings.openInBackground = values.openInBackground;
     if (values.closeOnOutsideClick !== undefined) S.settings.closeOnOutsideClick = values.closeOnOutsideClick;
     if (values.exportFilenameTemplate) S.settings.exportFilenameTemplate = values.exportFilenameTemplate;
@@ -3076,7 +3082,7 @@
           removeFloatingButton();
         }
       }
-      if (changes.fontSize) { S.settings.fontSize = changes.fontSize.newValue; restamp = true; }
+      if (changes.fontSize) applyTimestampFontSize(changes.fontSize.newValue);
       if (changes.showSidebarTime) {
         S.settings.showSidebarTime = changes.showSidebarTime.newValue;
         if (S.settings.showSidebarTime) {

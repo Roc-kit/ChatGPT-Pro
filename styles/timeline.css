@@ -33,11 +33,8 @@
   color: #0d9373 !important;
   background: transparent !important;
   border: 0 !important;
+  font-size: var(--chatgpt-pro-timestamp-font-size, 11px) !important;
 }
-
-.chatgpt-pro-small { font-size: 11px !important; }
-.chatgpt-pro-medium { font-size: 12px !important; }
-.chatgpt-pro-large { font-size: 13px !important; }
 
 .chatgpt-pro-launcher {
   position: fixed !important;
@@ -163,7 +160,7 @@
   margin: 0 0 4px 0 !important;
   color: #6b7280 !important;
   font-family: ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace !important;
-  font-size: 11px !important;
+  font-size: var(--chatgpt-pro-timestamp-font-size, 11px) !important;
   font-weight: 500 !important;
   line-height: 1.35 !important;
   white-space: nowrap !important;

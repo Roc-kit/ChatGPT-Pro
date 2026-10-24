@@ -8,7 +8,7 @@ const DEFAULT_SETTINGS = {
   enabled: true,
   showSidebarTime: false,
   showMessageTimestamps: false,
-  fontSize: 'small',
+  fontSize: 11,
   openInBackground: true,
   closeOnOutsideClick: true,
   launcherPosition: { x: 0.94, y: 0.76 },
