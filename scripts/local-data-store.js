@@ -379,8 +379,60 @@ globalThis.ChatGPTProLocalData = (() => {
       requested(stores[STORES.accounts].get(accountId)));
     return {
       consentAt: account?.fullIndexConsentAt || null,
-      initialCompletedAt: account?.initialIndexCompletedAt || null
+      initialCompletedAt: account?.initialIndexCompletedAt || null,
+      autoEnabled: Boolean(account?.initialIndexCompletedAt && account.autoIncrementalIndex !== false)
     };
+  }
+
+  async function setAutoIndexEnabled(accountId, enabled) {
+    validateAccount(accountId);
+    if (typeof enabled !== 'boolean') throw new Error('自动更新开关必须是布尔值');
+    return transaction([STORES.accounts], 'readwrite', async stores => {
+      const store = stores[STORES.accounts];
+      const account = await requested(store.get(accountId));
+      if (!account?.initialIndexCompletedAt) throw new Error('请先完成首次全文索引');
+      account.autoIncrementalIndex = enabled;
+      await requested(store.put(account));
+      return { autoEnabled: enabled };
+    });
+  }
+
+  // Keep both clearing operations scoped to a confirmed account. A task that
+  // is actively writing may not race with a clear; paused jobs do not write.
+  async function clearAccountData(accountId, kind) {
+    validateAccount(accountId);
+    if (!['index', 'raw'].includes(kind)) throw new Error('未知的清理类型');
+    const target = kind === 'index' ? STORES.search : STORES.conversations;
+    return transaction([STORES.accounts, STORES.tasks, target], 'readwrite', async stores => {
+      const active = await requested(stores[STORES.tasks].index('byAccount').getAll(IDBKeyRange.only(accountId)));
+      if (active.some(task => ['pending', 'running'].includes(task.status))) {
+        throw new Error('当前账号有执行中或待执行的任务，请先暂停或取消任务再清理');
+      }
+      const store = stores[target];
+      const removed = await new Promise((resolve, reject) => {
+        let count = 0;
+        const request = store.index('byAccount').openCursor(IDBKeyRange.only(accountId));
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) return resolve(count);
+          cursor.delete();
+          count++;
+          cursor.continue();
+        };
+        request.onerror = () => reject(request.error || new Error('清理本地数据失败'));
+      });
+      if (kind === 'index') {
+        const accountStore = stores[STORES.accounts];
+        const account = await requested(accountStore.get(accountId)) || { id: accountId };
+        account.initialIndexCompletedAt = null;
+        account.fullDirectoryScannedAt = null;
+        account.autoIncrementalIndex = false;
+        // A fresh manually initiated first scan will establish a new snapshot.
+        delete account.firstIndexSnapshot;
+        await requested(accountStore.put(account));
+      }
+      return { removed, kind };
+    });
   }
 
   async function grantIndexConsent(accountId) {
@@ -452,7 +504,10 @@ globalThis.ChatGPTProLocalData = (() => {
         throw new Error('首次索引任务仍在执行或暂停');
       }
       if (missing.length) return { completed: false, remaining: missing.length, total: directory.length };
-      account.initialIndexCompletedAt ||= Date.now();
+      if (!account.initialIndexCompletedAt) {
+        account.initialIndexCompletedAt = Date.now();
+        account.autoIncrementalIndex = true;
+      }
       delete account.firstIndexSnapshot;
       await requested(accountStore.put(account));
       return { completed: true, remaining: 0, total: directory.length,
@@ -502,7 +557,13 @@ globalThis.ChatGPTProLocalData = (() => {
     };
     // A per-account type singleton prevents two tabs from each creating a
     // different active task before either can observe the other's taskList.
-    return transaction([STORES.tasks], 'readwrite', async stores => {
+    return transaction([STORES.tasks, STORES.accounts], 'readwrite', async stores => {
+      if (type === 'index' && options.automatic === true) {
+        const policy = await requested(stores[STORES.accounts].get(accountId));
+        if (!policy?.initialIndexCompletedAt || policy.autoIncrementalIndex === false) {
+          throw new Error('当前账号未启用自动全文索引');
+        }
+      }
       const store = stores[STORES.tasks];
       const existing = await requested(store.index('byAccount').getAll(IDBKeyRange.only(accountId)));
       const current = existing.find(item => item.type === type &&
@@ -906,7 +967,8 @@ globalThis.ChatGPTProLocalData = (() => {
     openDb, upsertDirectory, getDirectory, getDirectoryRecord,
     putSearchRecord, getSearchMetadata, getSearchRecords, clearSearchIndex,
     putConversation, getConversation, getStats, getLegacyMetadata,
-    getIndexPolicy, grantIndexConsent, recordFullDirectoryScan, finishInitialIndex,
+    getIndexPolicy, setAutoIndexEnabled, clearAccountData,
+    grantIndexConsent, recordFullDirectoryScan, finishInitialIndex,
     markOfficialGone, clearLocalOnlyConversation,
     createTask, getTask, listTasks, claimTask, heartbeatTask, checkpointTask, controlTask,
     saveExportVolume, getExportVolume,

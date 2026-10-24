@@ -1679,7 +1679,7 @@
     }
   }
 
-  async function updateFullTextIndex(records, onProgress) {
+  async function updateFullTextIndex(records, onProgress, options = {}) {
     const accountId = await window.APIHandler.getAccountId();
     const jobs = await indexTaskMessage('taskList', accountId);
     const existing = jobs.find(task => task.type === 'index' && ['pending', 'running', 'paused'].includes(task.status));
@@ -1693,7 +1693,9 @@
     const indexed = new Map((metadata.records || []).map(record => [record.id, Number(record.updateTime || 0)]));
     const pending = records.filter(record => indexed.get(record.id) !== timestampValue(record.updateTime));
     if (!pending.length) return { indexedCount: 0, skippedCount: records.length, failures: [] };
-    const task = await indexTaskMessage('taskCreate', accountId, { type: 'index', items: pending });
+    const task = await indexTaskMessage('taskCreate', accountId, {
+      type: 'index', items: pending, options: { automatic: options.automatic === true }
+    });
     if (task.status === 'paused') return { paused: true };
     return runIndexTask(accountId, task.id, onProgress);
   }
@@ -1737,8 +1739,9 @@
     }
     const policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
     if (!policy?.initialCompletedAt) return { skipped: 'initial-consent-or-index-incomplete' };
+    if (policy.autoEnabled === false) return { skipped: 'auto-disabled' };
     autoIndexLastCheckedByAccount.set(accountId, Date.now());
-    const result = await updateFullTextIndex(records);
+    const result = await updateFullTextIndex(records, null, { automatic: true });
     return { ...result, automatic: true };
   }
 
@@ -1764,11 +1767,12 @@
   // Its task controls must go through this authenticated content script.
   async function getTaskDashboard() {
     const accountId = await window.APIHandler.getAccountId();
-    const [tasksResult, logsResult, cooldownResult, indexPolicyResult] = await Promise.all([
+    const [tasksResult, logsResult, cooldownResult, indexPolicyResult, statsResult] = await Promise.all([
       runtimeMessage({ action: 'taskList', accountId }),
       runtimeMessage({ action: 'logList', accountId, limit: 12 }),
       runtimeMessage({ action: 'detailStatus', accountId }),
-      runtimeMessage({ action: 'indexPolicyGet', accountId })
+      runtimeMessage({ action: 'indexPolicyGet', accountId }),
+      runtimeMessage({ action: 'localDataStats', accountId })
     ]);
     if (await window.APIHandler.getAccountId() !== accountId) {
       throw new Error('登录账号已切换，请重新打开任务管理');
@@ -1787,8 +1791,18 @@
         createdAt: log.createdAt, message: log.message
       })),
       cooldownUntil: cooldownResult.result?.cooldownUntil || 0,
-      indexPolicy: indexPolicyResult.result
+      indexPolicy: indexPolicyResult.result,
+      stats: { directory: statsResult.directory, complete: statsResult.complete, indexed: statsResult.indexed }
     };
+  }
+
+  async function manageAccountLocalData(action, values = {}) {
+    const accountId = await window.APIHandler.getAccountId(true);
+    if (await window.APIHandler.getAccountId(true) !== accountId) {
+      throw new Error('登录账号发生变化，请重试');
+    }
+    const response = await runtimeMessage({ action, accountId, ...values });
+    return response.result;
   }
 
   let popupIndexRequest = null;
@@ -2501,6 +2515,18 @@
       }
       if (msg.action === 'taskDashboard') {
         getTaskDashboard()
+          .then(result => respond({ success: true, ...result }))
+          .catch(error => respond({ success: false, error: error.message }));
+        return true;
+      }
+      if (msg.action === 'indexAutoSet') {
+        manageAccountLocalData('indexPolicySetAuto', { enabled: msg.enabled })
+          .then(result => respond({ success: true, ...result }))
+          .catch(error => respond({ success: false, error: error.message }));
+        return true;
+      }
+      if (msg.action === 'clearAccountLocalData') {
+        manageAccountLocalData('localDataClearAccount', { kind: msg.kind })
           .then(result => respond({ success: true, ...result }))
           .catch(error => respond({ success: false, error: error.message }));
         return true;

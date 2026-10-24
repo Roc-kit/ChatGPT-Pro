@@ -273,6 +273,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       message.accountId, message.id
     ),
     indexPolicyGet: () => ChatGPTProLocalData.getIndexPolicy(message.accountId),
+    indexPolicySetAuto: () => ChatGPTProLocalData.setAutoIndexEnabled(message.accountId, message.enabled),
+    localDataClearAccount: () => ChatGPTProLocalData.clearAccountData(message.accountId, message.kind),
     indexPolicyConsent: () => ChatGPTProLocalData.grantIndexConsent(message.accountId),
     indexPolicyDirectoryVerified: () => ChatGPTProLocalData.recordFullDirectoryScan(message.accountId, message.records),
     indexPolicyFinishInitial: () => ChatGPTProLocalData.finishInitialIndex(message.accountId),

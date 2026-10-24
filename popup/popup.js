@@ -12,6 +12,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const refresh = document.getElementById('refresh');
   const refreshText = document.getElementById('refreshText');
   const count = document.getElementById('count');
+  const rawCount = document.getElementById('rawCount');
+  const indexedCount = document.getElementById('indexedCount');
+  const openChatGPT = document.getElementById('openChatGPT');
+  const autoIndexToggle = document.getElementById('autoIndexToggle');
+  const clearIndex = document.getElementById('clearIndex');
+  const clearRaw = document.getElementById('clearRaw');
   const apiStatus = document.getElementById('apiStatus');
   const apiStatusText = document.getElementById('apiStatusText');
   const taskFeedback = document.getElementById('taskFeedback');
@@ -23,25 +29,62 @@ document.addEventListener('DOMContentLoaded', () => {
   const indexConsentStatus = document.getElementById('indexConsentStatus');
   let taskLoading = false;
   let indexConsentGranted = false;
+  let dashboardStats = null;
 
-  function sendToActiveChatGPT(message) {
-    return new Promise((resolve, reject) => {
-      chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-        const tab = tabs?.[0];
-        let isChatGPT = false;
-        try { isChatGPT = new URL(tab?.url).hostname === 'chatgpt.com'; } catch { /* Not a ChatGPT tab. */ }
-        if (!isChatGPT || !tab?.id) {
-          reject(new Error('请切换到已登录的 ChatGPT 标签页'));
-          return;
-        }
-        chrome.tabs.sendMessage(tab.id, message, response => {
-          const transportError = chrome.runtime.lastError;
-          if (transportError) reject(new Error(transportError.message));
-          else if (!response?.success) reject(new Error(response?.error || '读取任务失败'));
-          else resolve(response);
+  document.getElementById('extensionVersion').textContent = `v${chrome.runtime.getManifest?.().version || '3.0.0'}`;
+
+  function findChatGPTTab() {
+    return new Promise(resolve => {
+      chrome.tabs.query({ active: true, currentWindow: true }, currentTabs => {
+        chrome.tabs.query({ url: 'https://chatgpt.com/*' }, tabs => {
+          const eligible = (tabs || []).filter(tab => {
+            try { return new URL(tab.url).hostname === 'chatgpt.com'; } catch { return false; }
+          });
+          const activeId = currentTabs?.[0]?.id;
+          resolve(eligible.find(tab => tab.id === activeId) || eligible.find(tab => tab.active) || eligible[0] || null);
         });
       });
     });
+  }
+
+  openChatGPT.addEventListener('click', async () => {
+    openChatGPT.disabled = true;
+    try {
+      const tab = await findChatGPTTab();
+      await new Promise((resolve, reject) => {
+        const callback = () => chrome.runtime.lastError
+          ? reject(new Error(chrome.runtime.lastError.message)) : resolve();
+        if (tab?.id) chrome.tabs.update(tab.id, { active: true }, callback);
+        else chrome.tabs.create({ url: 'https://chatgpt.com/', active: true }, callback);
+      });
+      if (tab?.windowId && chrome.windows?.update) chrome.windows.update(tab.windowId, { focused: true });
+    } catch (error) {
+      taskFeedback.textContent = `打开 ChatGPT 失败：${error.message}`;
+    } finally {
+      openChatGPT.disabled = false;
+    }
+  });
+
+  function sendToActiveChatGPT(message) {
+    return findChatGPTTab().then(tab => new Promise((resolve, reject) => {
+        if (!tab?.id) return reject(new Error('请切换到已登录的 ChatGPT 标签页，或点击“打开 ChatGPT”'));
+        chrome.tabs.sendMessage(tab.id, message, response => {
+          const transportError = chrome.runtime.lastError;
+          if (transportError) reject(new Error(transportError.message));
+          else if (!response || (message.action !== 'getStatus' && !response.success)) {
+            reject(new Error(response?.error || '读取任务失败'));
+          }
+          else resolve(response);
+        });
+    }));
+  }
+
+  function resetAccountPresentation() {
+    dashboardStats = null;
+    count.textContent = rawCount.textContent = indexedCount.textContent = '–';
+    autoIndexToggle.disabled = true;
+    setToggle(autoIndexToggle, false);
+    clearIndex.disabled = clearRaw.disabled = true;
   }
 
   const taskNames = { index: '全文索引', 'export-md': 'Markdown 导出', 'export-json': 'JSON 导出' };
@@ -78,6 +121,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const policy = data.indexPolicy || {};
     indexConsentGranted = Boolean(policy.consentAt);
     const initialDone = Boolean(policy.initialCompletedAt);
+    dashboardStats = data.stats || null;
+    count.textContent = Number.isInteger(data.stats?.directory) ? data.stats.directory : '–';
+    rawCount.textContent = Number.isInteger(data.stats?.complete) ? data.stats.complete : '–';
+    indexedCount.textContent = Number.isInteger(data.stats?.indexed) ? data.stats.indexed : '–';
+    autoIndexToggle.disabled = !initialDone;
+    setToggle(autoIndexToggle, initialDone && policy.autoEnabled !== false);
+    clearIndex.disabled = clearRaw.disabled = false;
     const unfinishedIndexTask = (data.tasks || []).find(task => task.type === 'index' &&
       ['pending', 'running', 'paused'].includes(task.status));
     indexStartArea.hidden = false;
@@ -86,7 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
       : initialDone ? '立即检查新增聊天' : '继续首次全文索引';
     indexConsentStatus.textContent = unfinishedIndexTask
       ? '索引任务已创建，请使用下方任务控制和进度查看'
-      : initialDone ? '首次索引已完成，之后自动检查增量变化'
+      : initialDone ? (policy.autoEnabled === false ? '首次索引已完成，自动更新已关闭' : '首次索引已完成，之后自动检查增量变化')
         : policy.consentAt ? '已授权，首次完整索引尚未完成' : '首次扫描需确认授权；原始 JSON 仅保存在本机';
     taskList.replaceChildren();
     for (const task of data.tasks || []) {
@@ -165,6 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
           : '任务进度保存在本地，刷新标签页不会清空';
       }
     } catch (error) {
+      resetAccountPresentation();
       indexStartArea.hidden = true;
       taskList.replaceChildren();
       taskLogList.replaceChildren();
@@ -173,6 +224,43 @@ document.addEventListener('DOMContentLoaded', () => {
       taskLoading = false;
     }
   }
+
+  autoIndexToggle.addEventListener('click', async () => {
+    if (autoIndexToggle.disabled) return;
+    autoIndexToggle.disabled = true;
+    const enabled = autoIndexToggle.getAttribute('aria-checked') !== 'true';
+    try {
+      await sendToActiveChatGPT({ action: 'indexAutoSet', enabled });
+      taskFeedback.textContent = enabled ? '自动增量索引已开启' : '自动增量索引已关闭；已有任务不受影响';
+    } catch (error) {
+      taskFeedback.textContent = `自动更新设置失败：${error.message}`;
+    } finally {
+      autoIndexToggle.disabled = false;
+      await loadTaskDashboard(true);
+    }
+  });
+
+  async function clearLocalData(kind, button) {
+    if (button.disabled) return;
+    const label = kind === 'index' ? '全文搜索索引' : '完整 JSON 缓存';
+    const estimated = dashboardStats?.[kind === 'index' ? 'indexed' : 'complete'];
+    if (!window.confirm(`仅清除当前已确认账号的 ${label}（约 ${estimated ?? '未知'} 条）？\n` +
+      (kind === 'index' ? '不会删除完整 JSON；自动更新会关闭，须手动重新建立索引。'
+        : '不会删除全文搜索索引；后续需要正文时将按需重新获取。') +
+      '\n已有下载文件、ZIP 分卷、其他账号及未归属旧索引均不受影响。')) return;
+    button.disabled = true;
+    try {
+      const result = await sendToActiveChatGPT({ action: 'clearAccountLocalData', kind });
+      taskFeedback.textContent = `已从当前账号清除 ${result.removed} 条${label}；其他数据保持不变`;
+    } catch (error) {
+      taskFeedback.textContent = `清除失败：${error.message}`;
+    } finally {
+      button.disabled = false;
+      await loadTaskDashboard(true);
+    }
+  }
+  clearIndex.addEventListener('click', () => clearLocalData('index', clearIndex));
+  clearRaw.addEventListener('click', () => clearLocalData('raw', clearRaw));
 
   taskRefresh.addEventListener('click', () => loadTaskDashboard());
   indexStart.addEventListener('click', async () => {
@@ -258,24 +346,13 @@ document.addEventListener('DOMContentLoaded', () => {
     apiStatusText.textContent = text;
   }
 
-  function pollStatus() {
-    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-      const tab = tabs[0];
-      if (!tab?.url?.includes('chatgpt.com')) {
-        count.textContent = '–';
-        setStatus(false, '请打开 ChatGPT');
-        return;
-      }
-      chrome.tabs.sendMessage(tab.id, { action: 'getStatus' }, response => {
-        if (chrome.runtime.lastError || !response) {
-          count.textContent = '?';
-          setStatus(false, '扩展尚未就绪');
-          return;
-        }
-        count.textContent = response.directoryCount ?? 0;
-        setStatus(Boolean(response.initialized), response.initialized ? '扩展已就绪' : '正在初始化');
-      });
-    });
+  async function pollStatus() {
+    try {
+      const response = await sendToActiveChatGPT({ action: 'getStatus' });
+      setStatus(Boolean(response.initialized), response.initialized ? '扩展已就绪' : '正在初始化');
+    } catch {
+      setStatus(false, '请打开 ChatGPT');
+    }
   }
 
   function syncOnPopupOpen() {
@@ -333,16 +410,13 @@ document.addEventListener('DOMContentLoaded', () => {
   refresh.addEventListener('click', () => {
     refresh.disabled = true;
     refreshText.textContent = '正在重建本地目录…';
-    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-      if (!tabs[0]) return reset();
-      chrome.tabs.sendMessage(tabs[0].id, { action: 'refresh' }, response => {
-        refreshText.textContent = response?.success
-          ? `完成 · ${response.count ?? 0} 条聊天记录`
-          : '刷新失败';
+    sendToActiveChatGPT({ action: 'refresh' })
+      .then(response => { refreshText.textContent = `完成 · ${response.count ?? 0} 条聊天记录`; })
+      .catch(() => { refreshText.textContent = '刷新失败'; })
+      .finally(() => {
         pollStatus();
         setTimeout(reset, 1800);
       });
-    });
   });
 
   function reset() {

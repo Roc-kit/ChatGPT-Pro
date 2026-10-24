@@ -17,8 +17,10 @@ const mock = `<script>
     { id: 'j', type: 'export-json', status: 'completed', done: 5, total: 5,
       successes: 5, failures: 0, savedVolumes: 1 }
   ];
-  const indexPolicy = { consentAt: null, initialCompletedAt: null };
-  window.__testState = { tasks, calls: [], currentUrl: 'https://chatgpt.com/c/example', allowConsent: true };
+  const indexPolicy = { consentAt: null, initialCompletedAt: null, autoEnabled: false };
+  const stats = { directory: 120, complete: 71, indexed: 43 };
+  window.__testState = { tasks, calls: [], currentUrl: 'https://chatgpt.com/c/example',
+    otherTabs: [], opened: [], noAuth: false, allowConsent: true };
   window.confirm = () => window.__testState.allowConsent;
   window.chrome = {
     runtime: { lastError: null },
@@ -28,15 +30,28 @@ const mock = `<script>
     } },
     tabs: {
       query(_query, callback) {
-        callback([{ id: 7, url: window.__testState.currentUrl }]);
+        callback([{ id: 7, active: true, currentWindow: true, url: window.__testState.currentUrl },
+          ...window.__testState.otherTabs]);
+      },
+      update(tabId, opts, callback) {
+        window.__testState.opened.push({ action: 'update', tabId, ...opts });
+        callback({ id: tabId });
+      },
+      create(opts, callback) {
+        window.__testState.opened.push({ action: 'create', ...opts });
+        window.__testState.otherTabs.push({ id: 19, active: false,
+          currentWindow: true, url: opts.url });
+        callback({ id: 19 });
       },
       sendMessage(_tabId, msg, callback) {
         window.__testState.calls.push({ ...msg });
         if (msg.action === 'getStatus') {
           callback({ initialized: true, directoryCount: 120 });
         } else if (msg.action === 'taskDashboard') {
-          callback({ success: true, tasks, indexPolicy: { ...indexPolicy }, logs: [{ createdAt: Date.now(), type: 'rate-limit',
-            code: '429', message: '请求冷却' }], cooldownUntil: 0 });
+          callback(window.__testState.noAuth ? { success: false, error: '账号无法确认' }
+            : { success: true, tasks, indexPolicy: { ...indexPolicy }, stats: { ...stats },
+              logs: [{ createdAt: Date.now(), type: 'rate-limit', code: '429',
+                message: '请求冷却' }], cooldownUntil: 0 });
         } else if (msg.action === 'indexBegin') {
           if (msg.userConfirmedConsent) indexPolicy.consentAt = Date.now();
           callback({ success: true, queued: true });
@@ -51,6 +66,21 @@ const mock = `<script>
         } else if (msg.action === 'taskClearVolumes') {
           tasks.find(item => item.id === msg.id).savedVolumes = 0;
           callback({ success: true, deleted: 1 });
+        } else if (msg.action === 'indexAutoSet') {
+          if (!indexPolicy.initialCompletedAt) callback({ success: false, error: '尚未完成索引' });
+          else {
+            indexPolicy.autoEnabled = msg.enabled;
+            callback({ success: true, autoEnabled: msg.enabled });
+          }
+        } else if (msg.action === 'clearAccountLocalData') {
+          const key = msg.kind === 'index' ? 'indexed' : 'complete';
+          const removed = stats[key];
+          stats[key] = 0;
+          if (msg.kind === 'index') {
+            indexPolicy.initialCompletedAt = null;
+            indexPolicy.autoEnabled = false;
+          }
+          callback({ success: true, removed });
         } else callback({ success: false, error: 'unexpected action' });
       }
     }
@@ -159,7 +189,64 @@ server.listen(0, '127.0.0.1', async () => {
       check(document.querySelector('#taskFeedback').textContent.includes('请切换到已登录'),
         'task management requires active ChatGPT tab');
       check(!document.querySelector('.task-card'), 'switching away clears old account task view');
-      return 'S3_POPUP_PASS: progress, pause/resume, download, logs and account-tab boundary';
+      check(document.querySelector('#count').textContent === '–' &&
+        document.querySelector('#rawCount').textContent === '–',
+        'no authenticated tab does not show old account statistics');
+      document.querySelector('#openChatGPT').click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(window.__testState.opened.length === 1 && window.__testState.opened[0].action === 'create',
+        'open action creates ChatGPT only when absent');
+      document.querySelector('#openChatGPT').click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(window.__testState.opened.length === 2 && window.__testState.opened[1].action === 'update' &&
+        window.__testState.opened[1].tabId === 19,
+        'open action reuses and activates existing ChatGPT tab');
+      document.querySelector('#taskRefresh').click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(document.querySelector('#count').textContent === '120' &&
+        document.querySelector('#rawCount').textContent === '71' &&
+        document.querySelector('#indexedCount').textContent === '43',
+        'three persisted account-scoped counts display off ChatGPT page');
+      indexPolicy.initialCompletedAt = Date.now();
+      indexPolicy.autoEnabled = true;
+      document.querySelector('#taskRefresh').click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(!document.querySelector('#autoIndexToggle').disabled &&
+        document.querySelector('#autoIndexToggle').getAttribute('aria-checked') === 'true',
+        'auto index switch reflects completed account policy');
+      document.querySelector('#autoIndexToggle').click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(indexPolicy.autoEnabled === false &&
+        window.__testState.calls.some(msg => msg.action === 'indexAutoSet' && msg.enabled === false),
+        'toggle off persists via authenticated tab');
+      document.querySelector('#autoIndexToggle').click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(indexPolicy.autoEnabled === true, 'toggle on persists');
+      window.__testState.allowConsent = false;
+      const beforeClear = window.__testState.calls.length;
+      document.querySelector('#clearIndex').click();
+      await new Promise(resolve => setTimeout(resolve, 20));
+      check(window.__testState.calls.length === beforeClear, 'clear requires secondary confirmation');
+      window.__testState.allowConsent = true;
+      document.querySelector('#clearRaw').click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(stats.complete === 0 && stats.indexed === 43 &&
+        document.querySelector('#taskFeedback').textContent.includes('71'),
+        'clear JSON reports number deleted but preserves search index');
+      document.querySelector('#clearIndex').click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(stats.indexed === 0 && indexPolicy.autoEnabled === false &&
+        document.querySelector('#taskFeedback').textContent.includes('43'),
+        'clear search reports exact count and shuts off auto-update');
+      window.__testState.noAuth = true;
+      document.querySelector('#taskRefresh').click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(document.querySelector('#count').textContent === '–' &&
+        document.querySelector('#rawCount').textContent === '–' &&
+        document.querySelector('#indexedCount').textContent === '–' &&
+        document.querySelector('#clearIndex').disabled,
+        'unknown identity cannot expose statistics or allow cleanup');
+      return 'S3_POPUP_PASS: tasks, open/reuse, scoped statistics, auto policy and independent clear';
     })().catch(error => 'S3_POPUP_FAIL: ' + error.message)`);
     output = result;
   } catch (error) {

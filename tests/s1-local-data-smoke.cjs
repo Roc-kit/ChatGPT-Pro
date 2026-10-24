@@ -700,6 +700,74 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     } catch (error) { check(/404/.test(error.message), 'ambiguous HTTP 404 does not silently succeed'); }
     check((await storage.getDirectoryRecord('acct-a', simulateMissingId)).remoteState !== 'local-only',
       'HTTP 404 alone never marks an offline-only record');
+
+    // Batch A: account-scoped auto-index policy and independent data clearing.
+    const initialPolicy = (await send({ action: 'indexPolicyGet', accountId: consentId })).result;
+    check(initialPolicy.autoEnabled === true, 'successful first scan defaults auto-update to on');
+    check((await send({ action: 'indexPolicySetAuto', accountId: consentId,
+      enabled: false })).result.autoEnabled === false, 'auto-index can be disabled for one account');
+    check((await send({ action: 'indexPolicyGet', accountId: consentId })).result.autoEnabled === false,
+      'disabled setting persists');
+    const automaticItem = [{ id: 'auto-one', updateTime: 1700000060 }];
+    check(!(await send({ action: 'taskCreate', accountId: consentId, type: 'index',
+      items: automaticItem, options: { automatic: true } })).success,
+      'automatic task must not be created when the switch is off');
+    check((await send({ action: 'indexPolicySetAuto', accountId: consentId,
+      enabled: true })).result.autoEnabled === true, 'auto-index can be restored explicitly');
+    const pendingAuto = await send({ action: 'taskCreate', accountId: consentId,
+      type: 'index', items: automaticItem, options: { automatic: true } });
+    check(pendingAuto.success && pendingAuto.result.status === 'pending',
+      'enabled switch admits an automatic index task');
+    check(!(await send({ action: 'localDataClearAccount', accountId: consentId, kind: 'index' })).success &&
+      !(await send({ action: 'localDataClearAccount', accountId: consentId, kind: 'raw' })).success,
+      'pending task blocks either destructive operation');
+    check((await send({ action: 'taskControl', accountId: consentId,
+      id: pendingAuto.result.id, operation: 'cancel' })).success,
+      'user can cancel the pending task before clearing');
+
+    const otherBefore = await storage.getStats('acct-a');
+    const consentBefore = await storage.getStats(consentId);
+    check(consentBefore.complete === 2 && consentBefore.indexed === 2,
+      'clear test starts with both complete JSON and searchable text');
+    const clearRaw = await send({ action: 'localDataClearAccount', accountId: consentId, kind: 'raw' });
+    check(clearRaw.success && clearRaw.result.removed === 2, 'raw clear reports exact number removed');
+    const afterRaw = await storage.getStats(consentId);
+    check(afterRaw.directory === consentBefore.directory && afterRaw.complete === 0 && afterRaw.indexed === 2 &&
+      !(await storage.getConversation(consentId, 'consent-a')).hit,
+      'clear raw preserves directory and full-text search but never fakes a JSON hit');
+    check((await send({ action: 'indexPolicyGet', accountId: consentId })).result.autoEnabled === true,
+      'clearing JSON alone leaves auto-index policy unchanged');
+    const clearIndex = await send({ action: 'localDataClearAccount', accountId: consentId, kind: 'index' });
+    check(clearIndex.success && clearIndex.result.removed === 2, 'index clear reports exact number removed');
+    const afterIndex = await storage.getStats(consentId);
+    const clearedPolicy = (await send({ action: 'indexPolicyGet', accountId: consentId })).result;
+    check(afterIndex.indexed === 0 && afterIndex.directory === consentBefore.directory &&
+      clearedPolicy.consentAt === initialPolicy.consentAt && !clearedPolicy.initialCompletedAt &&
+      clearedPolicy.autoEnabled === false,
+      'clear index retains original consent, resets completion and disables auto-update');
+    check(!(await send({ action: 'taskCreate', accountId: consentId, type: 'index',
+      items: automaticItem, options: { automatic: true } })).success,
+      'automatic reconstruction is blocked after index clear');
+    check(!(await send({ action: 'indexPolicyFinishInitial', accountId: consentId })).success,
+      'stale full-scan completion cannot be reused after index clearing');
+    check(JSON.stringify(await storage.getStats('acct-a')) === JSON.stringify(otherBefore) &&
+      (await storage.getLegacyMetadata()).legacyCount === 1,
+      'other account data and unassigned legacy index survive both clear operations');
+    check(!(await send({ action: 'localDataClearAccount', kind: 'index' })).success,
+      'unknown account cannot clear arbitrary local data');
+    check(!(await send({ action: 'indexPolicySetAuto', accountId: 'acct-new', enabled: true })).success,
+      'new unindexed account cannot enable automatic harvesting');
+    // Only a newly requested initial scan, not reopening a tab, re-enables auto-update.
+    check((await send({ action: 'indexPolicyDirectoryVerified', accountId: consentId,
+      records: snapshot })).success, 'consented account may manually scan again');
+    for (const item of snapshot) {
+      await storage.putConversation(consentId, { id: item.id, updateTime: item.updateTime,
+        raw: { id: item.id, mapping: {} }, searchRecord: { id: item.id, messages: [] } });
+    }
+    check((await send({ action: 'indexPolicyFinishInitial', accountId: consentId })).result.completed &&
+      (await send({ action: 'indexPolicyGet', accountId: consentId })).result.autoEnabled,
+      'fresh user-initiated full indexing restores auto-update default');
+
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }

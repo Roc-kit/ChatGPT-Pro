@@ -2,6 +2,20 @@
 
 依据：2026-10-24 冻结的 Q1–Q9 重构计划，实施顺序 S1 → S6。此文档只记录实施结果，不改变产品范围。
 
+## 2026-10-24：剩余工作批次 A（Popup 设置与账号清理）
+
+**状态：批次 A 的 P0-1～P0-4 已开发并通过隔离测试。** 对应独立提交主题：`feat(popup): complete account-scoped local index controls`。
+
+- `popup/popup.html` / `popup/popup.js`：增加打开/复用 ChatGPT 标签页的入口；在非 ChatGPT 页面也能连接已有标签的当前登录账号；并列显示目录、完整 JSON、已索引数量。没有可验证账号时清空数值并禁用清理操作。
+- `scripts/local-data-store.js` / `scripts/background.js`：复用现有 `accounts` 中的首次索引策略，首次完成后自动更新默认开启，用户可按账号关闭。清索引与清 JSON 是两个按账号隔离的事务操作，均返回删除量；任务仍在运行或待执行时拒绝清理。清索引保留授权，重置首次完成及扫描快照，关闭自动更新；清 JSON 保留索引和目录，不伪造缓存命中。其他账号、未归属旧版索引、ZIP 分卷不受影响。
+- `scripts/content-chatgpt.js`：Popup 通过已认证页面访问当前账号统计与清理；自动增量索引受开关约束，自动任务创建时再次事务化检查持久状态，避免清索引后竞态重建；手动任务不受关闭开关影响。
+- `tests/s1-local-data-smoke.cjs`：新增真实 Chrome IndexedDB 回归，覆盖开关持久化、自动任务拒绝、任务期间清理拒绝、两类清理互不影响、账号隔离、未归属索引保护、手动重建后恢复自动更新。
+- `tests/s3-popup-dashboard-smoke.cjs`：新增浏览器 Popup 交互覆盖，确认新建/复用标签、非 ChatGPT 页面展示三项数据、关闭/开启、二次确认、删除量反馈及账号无效后清空数据。
+
+验收命令：`node tests/s1-local-data-smoke.cjs`、`node tests/s3-popup-dashboard-smoke.cjs`、`node tests/s3-index-runner-smoke.cjs`、受影响文件的 `node --check` 和 `git diff --check` 均通过；既有其他未提交内容没有纳入本批功能。
+
+**后续：** 批次 B（目录/项目请求与详情共享 429 冷却、连续失败暂停）尚未实施；最终真实账号下载权限与性能基线等仍按剩余工作文档验收，不宣布整个重构结束。
+
 ## 2026-10-24：S1-1 本地存储基础设施
 
 状态：**本功能单元完成**；S1 尚未整体结束，S2–S6 未开始。
