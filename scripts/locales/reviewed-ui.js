@@ -1212,6 +1212,230 @@ L’indexation initiale parcourra toutes les conversations accessibles de ce com
 初回のインデックス作成では、この ChatGPT アカウントからアクセスできるすべてのチャット一覧を取得し、キャッシュにないチャットの全文を必要に応じて読み込みます。元の JSON と検索インデックスはこの端末にのみ保存され、以降は変更分を自動更新します。許可しますか？
 初回のインデックス作成では、アカウントからアクセスできるチャットをすべて確認し、キャッシュにない内容を取得します。元の JSON と検索インデックスはこの端末にのみ保存され、以降の変更は自動更新されます。開始を許可しますか？`.split('\n')
       }
+    },
+    {
+      keys: `ui.firstScanRequiresYourConsentIncrementalUpdatesFollow
+ui.usuallyUnnecessaryTheLocalDirectoryChecksOnlyNew
+ui.initialScanRequiresConsentOriginalJSONStaysLocal
+ui.initialIndexCompleteCheckingChangesAutomatically
+ui.initialIndexCompletedAutomaticUpdatesDisabled
+ui.consentGrantedInitialIndexingIncomplete
+ui.indexTaskCreatedViewTaskControlsForProgress
+ui.scanningAllChatsAndProjectsForIndexing
+ui.searchingLocalIndex
+ui.enterKeywordsToSearchTheLocalIndex
+ui.buildingInitialLocalDirectory
+ui.checkingSelectedChatVersions
+ui.noSavedZIPPartsForTheCurrentAccount
+ui.consentNotGrantedInitialIndexingNotStarted
+ui.indexPausedResumeItInTaskManager
+ui.indexingIsRunningInAnotherTab
+ui.anotherTaskIsRunningIndexingIsQueued
+ui.automaticIncrementalIndexingEnabled
+ui.automaticIndexingDisabledRunningTasksUnaffected
+ui.indexingRequestedKeepChatGPTOpenAndCheckTask`.split('\n'),
+      translations: {
+        'zh-TW': `首次掃描需要你的授權；完成後會自動更新新增或變更的對話。
+通常不需要使用：對話目錄已保存在本機，平時只檢查新增或變更的對話。
+首次掃描需取得授權；原始 JSON 只會儲存在本機。
+首次索引已完成，之後會自動檢查增量變更。
+首次索引已完成，但自動更新已關閉。
+已授權，但首次完整索引尚未完成。
+索引工作已建立；請在下方查看進度及操作選項。
+正在掃描所有對話與專案（包含分頁），準備建立索引…
+正在搜尋本機索引…
+輸入關鍵字以搜尋已儲存的本機索引。
+首次使用，正在建立本機對話目錄…
+正在核對所選對話的目錄版本…
+目前帳號沒有已儲存的 ZIP 分卷。
+尚未授權，因此沒有開始首次完整索引。
+索引工作已暫停；請到工作管理中繼續。
+索引工作正在另一個分頁執行。
+此帳號已有其他工作正在執行；索引工作將排入佇列。
+自動增量索引已開啟。
+自動增量索引已關閉；正在執行的工作不受影響。
+已送出建立索引的請求。請保持 ChatGPT 分頁開啟，稍後重新整理進度。`.split('\n'),
+        es: `La primera exploración requiere tu autorización. Después, las conversaciones nuevas o modificadas se actualizarán automáticamente.
+Normalmente no es necesario: la lista de conversaciones se guarda en este dispositivo y solo se comprueban los cambios.
+La primera exploración requiere autorización. El JSON original solo se guarda en este dispositivo.
+La indexación inicial ha terminado. A partir de ahora se comprobarán los cambios automáticamente.
+La indexación inicial ha terminado, pero las actualizaciones automáticas están desactivadas.
+Autorización concedida; la indexación inicial todavía no ha terminado.
+Tarea de indexación creada. Consulta el progreso y los controles más abajo.
+Explorando conversaciones y proyectos, incluidas sus páginas, para preparar el índice…
+Buscando en el índice local…
+Escribe palabras clave para buscar en el índice guardado en este dispositivo.
+Primer uso: creando la lista local de conversaciones…
+Comprobando la versión de las conversaciones seleccionadas…
+Esta cuenta no tiene partes ZIP guardadas.
+No se ha iniciado la primera indexación completa porque todavía no se ha autorizado.
+La indexación está en pausa. Reanúdala desde el gestor de tareas.
+La indexación se está ejecutando en otra pestaña.
+Esta cuenta ya tiene otra tarea activa; la indexación quedará en cola.
+La indexación incremental automática está activada.
+La indexación automática está desactivada; las tareas en curso no se verán afectadas.
+Se ha solicitado el inicio de la indexación. Mantén abierta la pestaña de ChatGPT y vuelve a consultar el progreso más tarde.`.split('\n'),
+        hi: `पहली बार चैट स्कैन करने के लिए आपकी अनुमति चाहिए। उसके बाद नई या बदली हुई चैट अपने-आप अपडेट होंगी।
+आम तौर पर इसकी ज़रूरत नहीं है: चैट सूची इस डिवाइस पर सेव रहती है और केवल नई या बदली हुई चैट जाँची जाती हैं।
+पहले स्कैन के लिए अनुमति ज़रूरी है। मूल JSON केवल इस डिवाइस पर सेव होगा।
+पहली इंडेक्सिंग पूरी हो गई है। आगे से बदलाव अपने-आप जाँचे जाएँगे।
+पहली इंडेक्सिंग पूरी हो गई है, लेकिन अपने-आप अपडेट होना बंद है।
+अनुमति मिल गई है, पर पहली पूरी इंडेक्सिंग अभी बाकी है।
+इंडेक्सिंग का कार्य बन गया है। नीचे से प्रगति देखें और कार्य नियंत्रित करें।
+इंडेक्सिंग की तैयारी के लिए सभी चैट और प्रोजेक्ट, उनके पेज सहित, स्कैन किए जा रहे हैं…
+स्थानीय इंडेक्स में खोज जारी है…
+इस डिवाइस पर सेव इंडेक्स में खोजने के लिए शब्द लिखें।
+पहली बार उपयोग: स्थानीय चैट सूची बनाई जा रही है…
+चुनी गई चैट के सूची संस्करण जाँचे जा रहे हैं…
+इस खाते में ZIP के कोई सेव किए हुए हिस्से नहीं हैं।
+अनुमति न मिलने से पहली पूरी इंडेक्सिंग शुरू नहीं हुई।
+इंडेक्सिंग रुकी हुई है। कार्य प्रबंधक से दोबारा शुरू करें।
+इंडेक्सिंग किसी दूसरे टैब में चल रही है।
+इस खाते में एक और कार्य चल रहा है; इंडेक्सिंग कतार में रहेगी।
+अपने-आप होने वाली क्रमिक इंडेक्सिंग चालू है।
+अपने-आप इंडेक्स अपडेट होना बंद है; चल रहे कार्यों पर असर नहीं पड़ेगा।
+इंडेक्सिंग शुरू करने का अनुरोध भेज दिया गया है। ChatGPT टैब खुला रखें और कुछ देर बाद प्रगति फिर देखें।`.split('\n'),
+        ar: `يتطلب الفحص الأول موافقتك. وبعد اكتماله، ستُحدَّث المحادثات الجديدة أو المعدّلة تلقائيًا.
+غالبًا لا حاجة لهذا الخيار؛ فقائمة المحادثات محفوظة على الجهاز، وتُفحص المحادثات الجديدة أو المعدّلة فقط.
+يلزم الإذن لإجراء الفحص الأول، وسيُحفظ ملف JSON الأصلي على هذا الجهاز فقط.
+اكتملت الفهرسة الأولى، وسيجري التحقق من التغييرات تلقائيًا لاحقًا.
+اكتملت الفهرسة الأولى، لكن التحديث التلقائي متوقف.
+تم منح الإذن، ولم تكتمل الفهرسة الأولى بعد.
+تم إنشاء مهمة الفهرسة. يمكنك متابعة التقدم والتحكم بالمهمة أدناه.
+جارٍ فحص جميع المحادثات والمشاريع وصفحاتها لإعداد الفهرس…
+جارٍ البحث في الفهرس المحلي…
+أدخل كلمات للبحث في الفهرس المحفوظ على هذا الجهاز.
+هذه أول مرة للاستخدام؛ جارٍ إنشاء قائمة المحادثات المحلية…
+جارٍ التحقق من إصدارات المحادثات المحددة…
+لا توجد أجزاء ZIP محفوظة لهذا الحساب.
+لم تبدأ الفهرسة الكاملة الأولى لعدم منح الإذن.
+مهمة الفهرسة متوقفة مؤقتًا؛ استأنفها من إدارة المهام.
+تعمل مهمة الفهرسة في علامة تبويب أخرى.
+توجد مهمة أخرى قيد التنفيذ لهذا الحساب؛ ستنتظر الفهرسة في قائمة الانتظار.
+تم تفعيل الفهرسة التزايدية التلقائية.
+تم إيقاف التحديث التلقائي للفهرس؛ لن تتأثر المهام الجارية.
+تم إرسال طلب بدء الفهرسة. أبقِ علامة تبويب ChatGPT مفتوحة وتحقق من التقدم لاحقًا.`.split('\n'),
+        'pt-BR': `A primeira verificação exige sua autorização. Depois, conversas novas ou alteradas serão atualizadas automaticamente.
+Normalmente não é necessário: a lista de conversas fica salva neste dispositivo, e apenas novidades ou alterações são verificadas.
+A primeira verificação exige autorização. O JSON original permanece somente neste dispositivo.
+A indexação inicial foi concluída. As alterações serão verificadas automaticamente daqui em diante.
+A indexação inicial foi concluída, mas a atualização automática está desativada.
+Autorização concedida; a indexação inicial ainda não terminou.
+A tarefa de indexação foi criada. Acompanhe o progresso e os controles abaixo.
+Verificando todas as conversas e projetos, incluindo as páginas, para preparar o índice…
+Pesquisando no índice local…
+Digite palavras-chave para pesquisar no índice salvo neste dispositivo.
+Primeiro uso: criando a lista local de conversas…
+Verificando as versões das conversas selecionadas…
+Esta conta não possui partes ZIP salvas.
+A primeira indexação completa não foi iniciada porque ainda não houve autorização.
+A indexação está pausada. Retome pelo gerenciador de tarefas.
+A indexação está em execução em outra aba.
+Outra tarefa já está em execução nesta conta; a indexação ficará na fila.
+A indexação incremental automática está ativada.
+A atualização automática do índice está desativada; tarefas em andamento não serão afetadas.
+A solicitação para iniciar a indexação foi enviada. Mantenha a aba do ChatGPT aberta e verifique o progresso mais tarde.`.split('\n'),
+        bn: `প্রথমবার স্ক্যান করতে আপনার অনুমতি লাগবে। এরপর নতুন বা পরিবর্তিত চ্যাট স্বয়ংক্রিয়ভাবে হালনাগাদ হবে।
+সাধারণত এটির দরকার হয় না: চ্যাটের তালিকা এই ডিভাইসে সংরক্ষিত থাকে, শুধু নতুন বা পরিবর্তিত চ্যাট পরীক্ষা করা হয়।
+প্রথম স্ক্যানের জন্য অনুমতি প্রয়োজন। মূল JSON শুধু এই ডিভাইসে সংরক্ষিত থাকবে।
+প্রথম ইনডেক্স তৈরি সম্পন্ন হয়েছে। এরপর পরিবর্তন স্বয়ংক্রিয়ভাবে পরীক্ষা করা হবে।
+প্রথম ইনডেক্স তৈরি সম্পন্ন হয়েছে, তবে স্বয়ংক্রিয় হালনাগাদ বন্ধ আছে।
+অনুমতি দেওয়া হয়েছে, কিন্তু প্রথম পূর্ণ ইনডেক্স এখনও সম্পন্ন হয়নি।
+ইনডেক্স তৈরির কাজ শুরু করা হয়েছে। নিচে অগ্রগতি দেখুন ও কাজ নিয়ন্ত্রণ করুন।
+ইনডেক্স তৈরির প্রস্তুতির জন্য সব চ্যাট ও প্রজেক্টের পৃষ্ঠা পরীক্ষা করা হচ্ছে…
+স্থানীয় ইনডেক্সে খোঁজা হচ্ছে…
+এই ডিভাইসে সংরক্ষিত ইনডেক্সে খুঁজতে শব্দ লিখুন।
+প্রথম ব্যবহার: স্থানীয় চ্যাটের তালিকা তৈরি হচ্ছে…
+নির্বাচিত চ্যাটের তালিকার সংস্করণ পরীক্ষা করা হচ্ছে…
+এই অ্যাকাউন্টে কোনো সংরক্ষিত ZIP অংশ নেই।
+অনুমতি দেওয়া হয়নি, তাই প্রথম পূর্ণ ইনডেক্স তৈরি শুরু হয়নি।
+ইনডেক্স তৈরির কাজ বিরতিতে আছে; কাজ ব্যবস্থাপনা থেকে আবার শুরু করুন।
+ইনডেক্স তৈরির কাজ অন্য একটি ট্যাবে চলছে।
+এই অ্যাকাউন্টে আরেকটি কাজ চলছে; ইনডেক্স তৈরির কাজ সারিতে অপেক্ষা করবে।
+স্বয়ংক্রিয়ভাবে পরিবর্তিত তথ্য ইনডেক্স করার ব্যবস্থা চালু আছে।
+স্বয়ংক্রিয় ইনডেক্স হালনাগাদ বন্ধ আছে; চলমান কাজের ওপর প্রভাব পড়বে না।
+ইনডেক্স তৈরি শুরুর অনুরোধ পাঠানো হয়েছে। ChatGPT ট্যাব খোলা রাখুন এবং কিছুক্ষণ পরে অগ্রগতি দেখুন।`.split('\n'),
+        id: `Pemindaian pertama memerlukan izin Anda. Setelah selesai, percakapan baru atau yang berubah akan diperbarui otomatis.
+Biasanya tidak diperlukan: daftar percakapan sudah tersimpan di perangkat ini, dan hanya percakapan baru atau yang berubah yang diperiksa.
+Pemindaian pertama memerlukan izin. JSON asli hanya disimpan di perangkat ini.
+Pengindeksan awal selesai. Perubahan berikutnya akan diperiksa secara otomatis.
+Pengindeksan awal selesai, tetapi pembaruan otomatis dinonaktifkan.
+Izin telah diberikan, tetapi pengindeksan awal belum selesai.
+Tugas pengindeksan dibuat. Lihat progres dan kontrolnya di bawah.
+Memindai semua percakapan dan proyek beserta halamannya untuk menyiapkan indeks…
+Mencari dalam indeks lokal…
+Masukkan kata kunci untuk mencari dalam indeks yang tersimpan di perangkat ini.
+Penggunaan pertama: membuat daftar percakapan lokal…
+Memeriksa versi daftar percakapan yang dipilih…
+Akun ini tidak memiliki bagian ZIP yang tersimpan.
+Pengindeksan lengkap pertama belum dimulai karena izin belum diberikan.
+Pengindeksan dijeda. Lanjutkan melalui Pengelola Tugas.
+Pengindeksan sedang berjalan di tab lain.
+Ada tugas lain yang berjalan di akun ini; pengindeksan akan masuk antrean.
+Pengindeksan bertahap otomatis telah diaktifkan.
+Pembaruan indeks otomatis dinonaktifkan; tugas yang sedang berjalan tidak terpengaruh.
+Permintaan memulai pengindeksan telah dikirim. Biarkan tab ChatGPT terbuka dan periksa progres nanti.`.split('\n'),
+        fr: `La première analyse nécessite votre autorisation. Ensuite, les conversations nouvelles ou modifiées seront mises à jour automatiquement.
+Normalement inutile : la liste des conversations est enregistrée sur cet appareil et seuls les ajouts ou changements sont vérifiés.
+La première analyse nécessite une autorisation. Le JSON d’origine reste uniquement sur cet appareil.
+L’indexation initiale est terminée. Les changements seront désormais vérifiés automatiquement.
+L’indexation initiale est terminée, mais les mises à jour automatiques sont désactivées.
+L’autorisation a été accordée, mais l’indexation initiale n’est pas encore terminée.
+La tâche d’indexation a été créée. Consultez sa progression et ses commandes ci-dessous.
+Analyse de toutes les conversations et de tous les projets, pages comprises, pour préparer l’index…
+Recherche dans l’index local…
+Saisissez des mots-clés pour rechercher dans l’index conservé sur cet appareil.
+Première utilisation : création de la liste locale des conversations…
+Vérification des versions des conversations sélectionnées…
+Aucune partie ZIP enregistrée pour ce compte.
+La première indexation complète n’a pas commencé, faute d’autorisation.
+L’indexation est en pause. Reprenez-la dans le gestionnaire des tâches.
+L’indexation est en cours dans un autre onglet.
+Une autre tâche est active pour ce compte ; l’indexation sera mise en file d’attente.
+L’indexation incrémentielle automatique est activée.
+La mise à jour automatique de l’index est désactivée ; les tâches en cours ne sont pas affectées.
+La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet ChatGPT ouvert et vérifiez la progression plus tard.`.split('\n'),
+        ru: `Для первого сканирования требуется ваше разрешение. После него новые и изменённые чаты будут обновляться автоматически.
+Обычно это не требуется: список чатов хранится на устройстве, поэтому проверяются только новые и изменённые чаты.
+Для первого сканирования нужно разрешение. Исходный JSON сохраняется только на этом устройстве.
+Первичная индексация завершена. Теперь изменения будут проверяться автоматически.
+Первичная индексация завершена, но автоматическое обновление выключено.
+Разрешение получено, но первичная индексация ещё не завершена.
+Задача индексации создана. Её ход и элементы управления доступны ниже.
+Проверка всех чатов и проектов, включая страницы, для подготовки индекса…
+Поиск по локальному индексу…
+Введите ключевые слова для поиска по индексу, сохранённому на этом устройстве.
+Первый запуск: создаётся локальный список чатов…
+Проверка версий выбранных чатов…
+Для этой учётной записи нет сохранённых частей ZIP.
+Первичная полная индексация не началась, так как разрешение ещё не получено.
+Индексация приостановлена. Продолжите её в управлении задачами.
+Индексация выполняется в другой вкладке.
+Для этой учётной записи уже выполняется другая задача; индексация будет ждать в очереди.
+Автоматическая индексация изменений включена.
+Автоматическое обновление индекса выключено; выполняемые задачи не затронуты.
+Запрос на запуск индексации отправлен. Оставьте вкладку ChatGPT открытой и проверьте ход выполнения позже.`.split('\n'),
+        ja: `初回のスキャンには許可が必要です。完了後は、新規または変更されたチャットを自動更新します。
+通常は不要です。チャット一覧は端末に保存され、普段は新規または変更されたチャットだけを確認します。
+初回スキャンには許可が必要です。元の JSON はこの端末にのみ保存されます。
+初回のインデックス作成が完了しました。以降は変更分を自動確認します。
+初回のインデックス作成は完了しましたが、自動更新は無効です。
+許可されていますが、初回のインデックス作成はまだ完了していません。
+インデックス作成タスクを登録しました。進行状況と操作ボタンは下で確認できます。
+インデックス作成の準備として、すべてのチャットとプロジェクトをページ単位で確認中…
+ローカルインデックスを検索中…
+端末に保存されたインデックスを検索するキーワードを入力してください。
+初回利用のため、ローカルのチャット一覧を作成中…
+選択したチャットの一覧データのバージョンを確認中…
+このアカウントには保存済みの ZIP 分割ファイルがありません。
+許可されていないため、初回の全件インデックス作成は開始していません。
+インデックス作成が一時停止中です。タスク管理から再開してください。
+別のタブでインデックス作成が実行中です。
+このアカウントでは別のタスクが実行中のため、インデックス作成は順番待ちになります。
+差分の自動インデックス作成が有効になりました。
+インデックスの自動更新を無効にしました。実行中のタスクには影響しません。
+インデックス作成の開始を要求しました。ChatGPT のタブを開いたままにして、後ほど進行状況を更新してください。`.split('\n')
+      }
     }
   ];
   for (const block of blocks) {

@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 108, 'reviewed interface and critical data-deletion copy includes 108 strings');
+assert.equal(keys.length, 128, 'reviewed interface, safety and indexing copy includes 128 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -42,7 +42,9 @@ const samples = [
   ['bn', 'ui.fullTextSearch', 'সম্পূর্ণ টেক্সটে খুঁজুন'],
   ['zh-TW', 'ui.indexDataManagement', '索引與資料管理'],
   ['ja', 'ui.completeJSONNotSavedLocallyRemoteDeletionCanceled',
-    '完全な JSON がローカルに保存されていないため、クラウド上のチャットは削除していません。']
+    '完全な JSON がローカルに保存されていないため、クラウド上のチャットは削除していません。'],
+  ['ja', 'ui.indexingIsRunningInAnotherTab', '別のタブでインデックス作成が実行中です。'],
+  ['es', 'ui.indexPausedResumeItInTaskManager', 'La indexación está en pausa. Reanúdala desde el gestor de tareas.']
 ];
 for (const [locale, key, expected] of samples) {
   i18n.setLanguage(locale);
