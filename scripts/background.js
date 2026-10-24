@@ -266,6 +266,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     taskVolumeClear: () => ChatGPTProLocalData.clearCompletedExportVolumes(
       message.accountId, message.id
     ),
+    indexPolicyGet: () => ChatGPTProLocalData.getIndexPolicy(message.accountId),
+    indexPolicyConsent: () => ChatGPTProLocalData.grantIndexConsent(message.accountId),
+    indexPolicyDirectoryVerified: () => ChatGPTProLocalData.recordFullDirectoryScan(message.accountId, message.records),
+    indexPolicyFinishInitial: () => ChatGPTProLocalData.finishInitialIndex(message.accountId),
     taskVolumeChunk: () => ChatGPTProLocalData.uploadExportChunk(
       message.accountId, message.id, message.owner, message.token,
       message.volume, message.index, message.base64

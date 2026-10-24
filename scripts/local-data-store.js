@@ -321,6 +321,78 @@ globalThis.ChatGPTProLocalData = (() => {
     });
   }
 
+  async function getIndexPolicy(accountId) {
+    validateAccount(accountId);
+    const account = await transaction([STORES.accounts], 'readonly', stores =>
+      requested(stores[STORES.accounts].get(accountId)));
+    return {
+      consentAt: account?.fullIndexConsentAt || null,
+      initialCompletedAt: account?.initialIndexCompletedAt || null
+    };
+  }
+
+  async function grantIndexConsent(accountId) {
+    validateAccount(accountId);
+    return transaction([STORES.accounts], 'readwrite', async stores => {
+      const store = stores[STORES.accounts];
+      const account = await requested(store.get(accountId)) || { id: accountId };
+      account.fullIndexConsentAt ||= Date.now();
+      await requested(store.put(account));
+      return { consentAt: account.fullIndexConsentAt,
+        initialCompletedAt: account.initialIndexCompletedAt || null };
+    });
+  }
+
+  async function recordFullDirectoryScan(accountId, records) {
+    validateAccount(accountId);
+    if (!Array.isArray(records)) throw new Error('首次全量目录快照必须是数组');
+    const snapshot = records.map(item => ({
+      id: validateId(item?.id), updateTime: normalizeTime(item.updateTime)
+    }));
+    if (new Set(snapshot.map(item => item.id)).size !== snapshot.length) {
+      throw new Error('首次全量目录快照含重复 ID');
+    }
+    return transaction([STORES.accounts], 'readwrite', async stores => {
+      const store = stores[STORES.accounts];
+      const account = await requested(store.get(accountId));
+      if (!account?.fullIndexConsentAt) throw new Error('未授权首次全量索引');
+      account.fullDirectoryScannedAt = Date.now();
+      account.firstIndexSnapshot = snapshot;
+      await requested(store.put(account));
+      return { fullDirectoryScannedAt: account.fullDirectoryScannedAt, total: snapshot.length };
+    });
+  }
+
+  async function finishInitialIndex(accountId) {
+    validateAccount(accountId);
+    return transaction([STORES.accounts, STORES.search, STORES.tasks], 'readwrite', async stores => {
+      const accountStore = stores[STORES.accounts];
+      const account = await requested(accountStore.get(accountId));
+      if (!account?.fullIndexConsentAt) throw new Error('尚未授权首次全量索引');
+      if (!account?.fullDirectoryScannedAt || account.fullDirectoryScannedAt < account.fullIndexConsentAt) {
+        throw new Error('尚未完成可验证的首次全量目录扫描');
+      }
+      if (!Array.isArray(account.firstIndexSnapshot)) throw new Error('缺少已核实的全量目录快照');
+      const directory = account.firstIndexSnapshot;
+      const indexed = await requested(stores[STORES.search].index('byAccount').getAll(IDBKeyRange.only(accountId)));
+      const byId = new Map(indexed.map(entry => [entry.id, entry]));
+      const missing = directory.filter(record => {
+        const entry = byId.get(record.id);
+        return !entry || entry.dataVersion !== normalizeTime(record.updateTime);
+      });
+      const openTasks = await requested(stores[STORES.tasks].index('byAccount').getAll(IDBKeyRange.only(accountId)));
+      if (openTasks.some(task => task.type === 'index' && ['pending', 'running', 'paused'].includes(task.status))) {
+        throw new Error('首次索引任务仍在执行或暂停');
+      }
+      if (missing.length) return { completed: false, remaining: missing.length, total: directory.length };
+      account.initialIndexCompletedAt ||= Date.now();
+      delete account.firstIndexSnapshot;
+      await requested(accountStore.put(account));
+      return { completed: true, remaining: 0, total: directory.length,
+        initialCompletedAt: account.initialIndexCompletedAt };
+    });
+  }
+
   async function getLegacyMetadata() {
     return transaction([LEGACY_SEARCH, STORES.search], 'readonly', async stores => {
       const [legacyCount, unassignedCount] = await Promise.all([
@@ -767,6 +839,7 @@ globalThis.ChatGPTProLocalData = (() => {
     openDb, upsertDirectory, getDirectory, getDirectoryRecord,
     putSearchRecord, getSearchMetadata, getSearchRecords, clearSearchIndex,
     putConversation, getConversation, getStats, getLegacyMetadata,
+    getIndexPolicy, grantIndexConsent, recordFullDirectoryScan, finishInitialIndex,
     createTask, getTask, listTasks, claimTask, heartbeatTask, checkpointTask, controlTask,
     saveExportVolume, getExportVolume,
     clearCompletedExportVolumes,

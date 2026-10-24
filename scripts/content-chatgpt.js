@@ -387,7 +387,8 @@
   async function backgroundSyncConversationList() {
     if (!S.settings.enabled || document.hidden) return;
     try {
-      await incrementalSyncConversationList('已完成后台增量同步');
+      const records = await incrementalSyncConversationList('已完成后台增量同步');
+      await maybeAutoIncrementalIndex(records);
     } catch (error) {
       log('Background sync failed:', error.message);
     }
@@ -1681,6 +1682,48 @@
     return runIndexTask(accountId, task.id, onProgress);
   }
 
+  async function updateIndexWithConsent(records, onProgress) {
+    const accountId = await window.APIHandler.getAccountId(true);
+    let policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
+    if (!policy.consentAt) {
+      const accepted = window.confirm(
+        '首次建立全文索引将遍历当前账号可读取的完整聊天目录，并按需抓取未缓存的对话正文。' +
+        '原始 JSON 和搜索索引只保存在本机。首次完成后将自动增量更新。是否授权开始？'
+      );
+      if (!accepted) return { consentDeclined: true };
+      policy = (await runtimeMessage({ action: 'indexPolicyConsent', accountId })).result;
+    }
+    let targetRecords = records;
+    if (!policy.initialCompletedAt) {
+      onProgress?.({ phase: 'initial-directory' });
+      targetRecords = await window.APIHandler.syncConversationList(true, { requireComplete: true });
+      if (await window.APIHandler.getAccountId(true) !== accountId) {
+        throw new Error('登录账号已切换，首次索引已停止');
+      }
+      await runtimeMessage({ action: 'indexPolicyDirectoryVerified', accountId, records: targetRecords });
+    }
+    const result = await updateFullTextIndex(targetRecords, onProgress);
+    if (!policy.initialCompletedAt && !result.paused && !result.busy) {
+      const finished = (await runtimeMessage({ action: 'indexPolicyFinishInitial', accountId })).result;
+      result.initialCompleted = finished.completed;
+      result.initialRemaining = finished.remaining || 0;
+    }
+    return result;
+  }
+
+  let autoIndexLastCheckedAt = 0;
+  const AUTO_INDEX_MIN_CHECK_MS = 5 * 60 * 1000;
+  async function maybeAutoIncrementalIndex(records) {
+    if (!S.settings.enabled || document.hidden || !records?.length) return { skipped: 'inactive' };
+    if (Date.now() - autoIndexLastCheckedAt < AUTO_INDEX_MIN_CHECK_MS) return { skipped: 'recent' };
+    const accountId = await window.APIHandler.getAccountId();
+    const policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
+    if (!policy?.initialCompletedAt) return { skipped: 'initial-consent-or-index-incomplete' };
+    autoIndexLastCheckedAt = Date.now();
+    const result = await updateFullTextIndex(records);
+    return { ...result, automatic: true };
+  }
+
   let recoveringIndexTasks = false;
   async function recoverIndexTasks() {
     if (recoveringIndexTasks || !S.settings.enabled) return;
@@ -2018,10 +2061,14 @@
     const refreshSearchIndexStatus = async () => {
       try {
         const accountId = await window.APIHandler.getAccountId();
-        const [response, legacy] = await Promise.all([
+        const [response, legacy, policy] = await Promise.all([
           runtimeMessage({ action: 'searchIndexMetadata', accountId }),
-          runtimeMessage({ action: 'localDataLegacyStats' })
+          runtimeMessage({ action: 'localDataLegacyStats' }),
+          runtimeMessage({ action: 'indexPolicyGet', accountId })
         ]);
+        searchIndexUpdate.textContent = !policy.result?.consentAt
+          ? '首次索引（需授权）'
+          : policy.result.initialCompletedAt ? '更新索引' : '继续首次索引';
         searchIndexStatus.textContent = `当前账号已索引 ${response.records?.length || 0} / ${currentRecords.length} 个 · 未归属旧索引 ${legacy.legacyCount || 0} 个`;
       } catch (error) {
         searchIndexStatus.textContent = `索引状态读取失败：${error.message}`;
@@ -2078,9 +2125,11 @@
       if (searchIndexUpdate.disabled) return;
       searchIndexUpdate.disabled = true;
       try {
-        const result = await updateFullTextIndex(currentRecords, progress => {
+        const result = await updateIndexWithConsent(currentRecords, progress => {
           const base = `${progress.done} / ${progress.total}`;
-          if (progress.phase === 'paused') {
+          if (progress.phase === 'initial-directory') {
+            searchIndexStatus.textContent = '正在核实完整聊天目录（项目和分页）…';
+          } else if (progress.phase === 'paused') {
             searchIndexStatus.textContent = '索引任务已暂停，请在任务管理中继续';
           } else if (progress.phase === 'running-elsewhere') {
             searchIndexStatus.textContent = progress.busyReason === 'account-busy'
@@ -2096,10 +2145,14 @@
             searchIndexStatus.textContent = `正在更新索引 ${base}`;
           }
         });
-        if (!result.busy && !result.paused) {
+        if (result.consentDeclined) searchIndexStatus.textContent = '未授权，未开始首次全量索引';
+        else if (!result.busy && !result.paused) {
           searchIndexStatus.textContent = result.failures.length
             ? `新增/更新 ${result.indexedCount} 个，失败 ${result.failures.length} 个`
-            : `索引已是最新 · 更新 ${result.indexedCount} 个，跳过 ${result.skippedCount} 个`;
+            : result.initialCompleted === false
+              ? `首次索引仍有 ${result.initialRemaining} 条待补全，可再次继续`
+              : `索引已是最新 · 更新 ${result.indexedCount} 个，跳过 ${result.skippedCount} 个`;
+          if (result.initialCompleted) searchIndexUpdate.textContent = '更新索引';
         }
       } catch (error) {
         searchIndexStatus.textContent = `索引更新失败：${error.message}`;
@@ -2475,6 +2528,9 @@
       }
     }, RECHECK_MS);
     setInterval(backgroundSyncConversationList, BACKGROUND_SYNC_MS);
+    // Resume ordinary incremental indexing automatically only AFTER the user
+    // authorized and completed the first full index. Never auto-consent.
+    window.setTimeout(() => backgroundSyncConversationList(), 3000);
     // On tab restart, an expired running lease can be reclaimed. Paused jobs
     // are intentionally excluded; no long-lived MV3 worker is required.
     window.setInterval(() => recoverIndexTasks().catch(error => log('Index recovery failed:', error.message)), 15000);

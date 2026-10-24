@@ -581,6 +581,49 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check(!(await send({ action: 'taskVolumeRead', accountId: 'acct-b',
       id: chunkJob.result.id, volume: 1, offset: 0, size: 128 })).success,
       'download stream is account isolated');
+
+    // S4: consent is account-scoped and cannot be inferred from directory or
+    // existing search data. Completion is based on the strictly scanned IDs.
+    const consentId = 'acct-consent';
+    await storage.upsertDirectory(consentId, [
+      { id: 'consent-a', updateTime: 1700000011 },
+      { id: 'consent-b', updateTime: 1700000012 },
+      { id: 'historical-local-only', updateTime: 1700000000 }
+    ]);
+    const policyBefore = await send({ action: 'indexPolicyGet', accountId: consentId });
+    check(policyBefore.success && !policyBefore.result.consentAt && !policyBefore.result.initialCompletedAt,
+      'new accounts do not grant initial full index consent automatically');
+    check(!(await send({ action: 'indexPolicyFinishInitial', accountId: consentId })).success,
+      'unconsented account cannot claim initial index completion');
+    const consentGrant = await send({ action: 'indexPolicyConsent', accountId: consentId });
+    check(consentGrant.success && consentGrant.result.consentAt > 0, 'explicit initial consent persists');
+    const consentAgain = await send({ action: 'indexPolicyConsent', accountId: consentId });
+    check(consentAgain.result.consentAt === consentGrant.result.consentAt,
+      'repeated consent request does not reset the original authorization timestamp');
+    check(!(await send({ action: 'indexPolicyFinishInitial', accountId: consentId })).success,
+      'consent alone never marks full index complete');
+    const snapshot = [
+      { id: 'consent-a', updateTime: 1700000011 },
+      { id: 'consent-b', updateTime: 1700000012 }
+    ];
+    check((await send({ action: 'indexPolicyDirectoryVerified', accountId: consentId,
+      records: snapshot })).result.total === 2, 'only explicitly scanned remote items enter the initial snapshot');
+    await storage.putConversation(consentId, { id: 'consent-a', updateTime: 1700000011,
+      raw: { id: 'consent-a', mapping: {} },
+      searchRecord: { id: 'consent-a', messages: [] } });
+    const incompleteIndex = await send({ action: 'indexPolicyFinishInitial', accountId: consentId });
+    check(!incompleteIndex.result.completed && incompleteIndex.result.remaining === 1,
+      'one unindexed official conversation blocks completion');
+    await storage.putConversation(consentId, { id: 'consent-b', updateTime: 1700000012,
+      raw: { id: 'consent-b', mapping: {} },
+      searchRecord: { id: 'consent-b', messages: [] } });
+    const finishedIndex = await send({ action: 'indexPolicyFinishInitial', accountId: consentId });
+    check(finishedIndex.result.completed && finishedIndex.result.total === 2,
+      'verified snapshot indexes complete without requiring historical unverified directory');
+    check((await send({ action: 'indexPolicyGet', accountId: consentId })).result.initialCompletedAt > 0,
+      'initial completion flag persists for automatic incremental eligibility');
+    check(!(await send({ action: 'indexPolicyGet', accountId: 'acct-b' })).result.consentAt,
+      'another account never inherits consent');
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }

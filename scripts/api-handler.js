@@ -242,7 +242,7 @@ const APIHandler = (function () {
     return response.records.map(sanitizeStoredRecord).filter(Boolean);
   }
 
-  async function writeDirectory(records, accountId = null) {
+  async function writeDirectory(records, accountId = null, syncedOnly = false) {
     accountId ||= await getAccountId();
     const clean = records.map(sanitizeStoredRecord).filter(Boolean);
     clean.sort((a, b) => timestampValue(b.updateTime) - timestampValue(a.updateTime));
@@ -251,7 +251,9 @@ const APIHandler = (function () {
     if (await getAccountId(true) !== accountId) throw new Error('登录账号已切换，请重新同步');
     await localDataMessage({ action: 'localDataUpsertDirectory', accountId, records: clean });
     await store.set({ [`${K_ACCOUNT_DIRECTORY_TS}${accountId}`]: Date.now() });
-    return readDirectory(accountId);
+    // A verified initial scan must use only the IDs seen in that exhaustive
+    // response, not the union of older local directory records.
+    return syncedOnly ? clean : readDirectory(accountId);
   }
 
   function buildTimestampMap(records) {
@@ -269,7 +271,7 @@ const APIHandler = (function () {
     return map;
   }
 
-  async function fetchRegularIncremental(token, cachedMap, forceFull) {
+  async function fetchRegularIncremental(token, cachedMap, forceFull, strictFull = false) {
     const changed = [];
     let offset = 0;
     let total = Infinity;
@@ -295,14 +297,24 @@ const APIHandler = (function () {
         changed.push(rec);
       }
 
-      if (reachedKnownBoundary || items.length < CFG.PAGE_SIZE) break;
+      if (reachedKnownBoundary) break;
+      if (items.length < CFG.PAGE_SIZE) {
+        if (strictFull && total !== Infinity && offset + items.length < total) {
+          throw new Error('首次全量目录分页提前结束，不能确认完整');
+        }
+        break;
+      }
+      if (strictFull && page === CFG.MAX_PAGES - 1 &&
+          (total === Infinity || offset + items.length < total)) {
+        throw new Error('首次全量目录超过分页上限，不能确认完整');
+      }
       offset += CFG.PAGE_SIZE;
       if (page < CFG.MAX_PAGES - 1) await sleep(CFG.INTER_PAGE_MS);
     }
     return changed;
   }
 
-  async function fetchProjects(token) {
+  async function fetchProjects(token, strictFull = false) {
     const projects = [];
     let cursor = null;
 
@@ -326,13 +338,19 @@ const APIHandler = (function () {
       }
 
       cursor = data?.cursor || null;
+      if (projects.length >= CFG.MAX_PROJECTS && strictFull) {
+        throw new Error('项目数达到扫描上限，不能确认首次目录完整');
+      }
       if (!cursor || projects.length >= CFG.MAX_PROJECTS) break;
+      if (strictFull && page === CFG.MAX_PROJECT_PAGES - 1) {
+        throw new Error('项目目录分页达到上限，不能确认完整');
+      }
       await sleep(CFG.INTER_PAGE_MS);
     }
     return projects;
   }
 
-  async function fetchProjectIncremental(token, project, cachedMap, forceFull) {
+  async function fetchProjectIncremental(token, project, cachedMap, forceFull, strictFull = false) {
     const changed = [];
     let cursor = '0';
 
@@ -355,7 +373,13 @@ const APIHandler = (function () {
       }
 
       const next = data?.cursor;
+      if (strictFull && next && items.length === 0) {
+        throw new Error(`项目 ${project.id} 分页为空但仍有后续游标`);
+      }
       if (reachedKnownBoundary || !next || items.length === 0) break;
+      if (strictFull && page === CFG.MAX_PROJECT_PAGES - 1) {
+        throw new Error(`项目 ${project.id} 的聊天分页达到上限，不能确认完整`);
+      }
       cursor = String(next);
       await sleep(CFG.INTER_PAGE_MS);
     }
@@ -389,7 +413,7 @@ const APIHandler = (function () {
     return null;
   }
 
-  async function runSync(forceFull, accountId) {
+  async function runSync(forceFull, accountId, strictFull = false) {
     const key = `${K_ACCOUNT_DIRECTORY_TS}${accountId}`;
     const before = await store.get([key]);
     const previousTs = before[key] || 0;
@@ -397,8 +421,9 @@ const APIHandler = (function () {
 
     if (!lockOwner) {
       const otherResult = await waitForOtherTabSync(previousTs, accountId);
-      if (otherResult) return otherResult;
+      if (otherResult && !strictFull) return otherResult;
       lockOwner = await acquireFetchLock(accountId);
+      if (!lockOwner && strictFull) throw new Error('另一个标签正在同步目录，无法确认首次全量扫描');
     }
 
     try {
@@ -409,7 +434,8 @@ const APIHandler = (function () {
       let token = await getToken();
       for (let attempt = 0; attempt <= CFG.MAX_RETRIES; attempt++) {
         try {
-          const regular = await fetchRegularIncremental(token, cachedMap, forceFull);
+          if (strictFull && attempt > 0) resultMap.clear();
+          const regular = await fetchRegularIncremental(token, cachedMap, forceFull, strictFull);
           for (const rec of regular) resultMap.set(rec.id, rec);
 
           // /conversations exposes custom GPT conversations through gizmo_id,
@@ -440,10 +466,10 @@ const APIHandler = (function () {
             await sleep(CFG.INTER_PAGE_MS);
           }
 
-          const projects = await fetchProjects(token);
+          const projects = await fetchProjects(token, strictFull);
           for (const project of projects) {
             try {
-              const changed = await fetchProjectIncremental(token, project, cachedMap, forceFull);
+              const changed = await fetchProjectIncremental(token, project, cachedMap, forceFull, strictFull);
               for (const rec of changed) resultMap.set(rec.id, rec);
 
               // Project names can change even if conversation update_time does not.
@@ -453,12 +479,13 @@ const APIHandler = (function () {
                 }
               }
             } catch (e) {
+              if (strictFull) throw e;
               console.warn(`[ChatGPT Pro] project ${project.id} sync skipped:`, e.message);
             }
             await sleep(CFG.INTER_PAGE_MS);
           }
 
-          return writeDirectory([...resultMap.values()], accountId);
+          return writeDirectory([...resultMap.values()], accountId, strictFull);
         } catch (e) {
           if (e.message?.includes('登录账号已切换')) throw e;
           if (e.message === '401_UNAUTHORIZED' && attempt === 0) {
@@ -481,10 +508,11 @@ const APIHandler = (function () {
     if (_syncPromise) {
       if (_syncAccountId !== expectedAccountId) {
         await _syncPromise.catch(() => {});
-        return syncConversationList(forceFull);
+        return syncConversationList(forceFull, options);
       }
       const result = await _syncPromise;
       if (await getAccountId(true) !== expectedAccountId) throw new Error('登录账号已切换，请重新同步');
+      if (options.requireComplete === true) return syncConversationList(true, options);
       return result;
     }
     if (!forceFull && options.checkLatest !== true) {
@@ -499,7 +527,7 @@ const APIHandler = (function () {
       }
     }
     _syncAccountId = expectedAccountId;
-    _syncPromise = runSync(forceFull, expectedAccountId);
+    _syncPromise = runSync(forceFull, expectedAccountId, options.requireComplete === true);
     try {
       return await _syncPromise;
     } finally {

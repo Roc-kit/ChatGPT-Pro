@@ -16,6 +16,10 @@ const fetched = [];
 const indexed = new Map();
 let pauseAfterFirst = false;
 const accountId = 'account-A';
+let consentApproved = false;
+let policy = { consentAt: null, initialCompletedAt: null };
+let strictFullScans = 0;
+const initialScanItems = [{ id: 'first-consented', title: 'Full scan item', updateTime: 11 }];
 const context = {
   console,
   Date,
@@ -24,9 +28,18 @@ const context = {
   EXPORT_REQUEST_GAP_MS: 900,
   EXPORT_GROUP_GAP_MS: 10000,
   S: { settings: { enabled: true } },
+  document: { hidden: false },
   log() {},
   window: {
-    APIHandler: { getAccountId: async () => accountId },
+    confirm: () => consentApproved,
+    APIHandler: {
+      getAccountId: async () => accountId,
+      syncConversationList: async (full, options) => {
+        assert(full && options?.requireComplete, 'first approved indexing requires a verified full directory');
+        strictFullScans++;
+        return initialScanItems;
+      }
+    },
     setInterval: () => 1,
     clearInterval: () => {}
   },
@@ -41,6 +54,16 @@ const context = {
     assert.equal(msg.accountId, accountId);
     const job = jobs.get(msg.id);
     switch (msg.action) {
+      case 'indexPolicyGet': return { success: true, result: { ...policy } };
+      case 'indexPolicyConsent':
+        policy.consentAt ||= Date.now();
+        return { success: true, result: { ...policy } };
+      case 'indexPolicyDirectoryVerified':
+        assert.deepEqual(msg.records.map(record => record.id), initialScanItems.map(record => record.id));
+        return { success: true, result: { total: initialScanItems.length } };
+      case 'indexPolicyFinishInitial':
+        policy.initialCompletedAt ||= Date.now();
+        return { success: true, result: { completed: true, remaining: 0 } };
       case 'searchIndexMetadata':
         return { success: true, records: [...indexed.entries()].map(([id, updateTime]) => ({ id, updateTime })) };
       case 'taskList':
@@ -76,7 +99,9 @@ const context = {
   }
 };
 vm.createContext(context);
-vm.runInContext(`${source.slice(start, end)}\nglobalThis.runner = { updateFullTextIndex, runIndexTask, recoverIndexTasks };`, context);
+vm.runInContext(`${source.slice(start, end)}\nglobalThis.runner = {
+  updateFullTextIndex, runIndexTask, recoverIndexTasks, updateIndexWithConsent, maybeAutoIncrementalIndex
+};`, context);
 
 async function main() {
   const records = ['a', 'b', 'c'].map((id, i) => ({ id, title: id, updateTime: i + 1 }));
@@ -107,7 +132,25 @@ async function main() {
   await context.runner.recoverIndexTasks();
   assert.equal(pending.status, 'completed');
   assert.equal(fetched.at(-1), 'd', 'reopening a tab resumes pending work');
-  console.log('S3_PASS: durable index checkpoints, paused recovery, resumed skip, pending recovery');
+  const beforeConsentFetches = fetched.length;
+  const beforeAuto = await context.runner.maybeAutoIncrementalIndex(initialScanItems);
+  assert.equal(beforeAuto.skipped, 'initial-consent-or-index-incomplete');
+  assert.equal(fetched.length, beforeConsentFetches, 'automatic index is disabled until consent and first completion');
+  const denied = await context.runner.updateIndexWithConsent(initialScanItems);
+  assert.equal(denied.consentDeclined, true, 'first index requires explicit user approval');
+  assert.equal(strictFullScans, 0, 'declined initial index cannot scan all conversations');
+  consentApproved = true;
+  const first = await context.runner.updateIndexWithConsent(initialScanItems);
+  assert.equal(first.initialCompleted, true);
+  assert.equal(strictFullScans, 1, 'first consent triggers exact full directory scan');
+  assert.equal(fetched.at(-1), 'first-consented');
+  const newRecord = [{ id: 'post-consent', title: 'Incremental item', updateTime: 12 }];
+  const automatic = await context.runner.maybeAutoIncrementalIndex(newRecord);
+  assert.equal(automatic.automatic, true);
+  assert.equal(automatic.indexedCount, 1);
+  assert.equal(fetched.at(-1), 'post-consent');
+  assert.equal(strictFullScans, 1, 'automatic incremental indexing never repeats first full scan');
+  console.log('S3_S4_PASS: checkpoints, pause/resume, first consent, verified full scan, auto incremental');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });
