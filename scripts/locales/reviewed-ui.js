@@ -1462,6 +1462,100 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
         ja: ['ローカルデータの読み込みに失敗しました', 'エクスポートに失敗しました',
           'タスクの読み込みに失敗しました', 'インデックスの処理に失敗しました']
       }
+    },
+    {
+      // Full-text indexing progress only; export and task-scheduler statuses
+      // are intentionally outside this review batch.
+      keys: [
+        'status.indexedForThisAccountUnassignedLegacyEntries',
+        'status.updatingIndex',
+        'status.addedUpdatedFailed',
+        'status.chatsRemainToBeIndexedResumeTo',
+        'status.indexUpToDateUpdatedSkipped',
+        'status.localChatsCheckingForUpdates'
+      ],
+      translations: {
+        'zh-TW': [
+          '此帳號已索引 {1}/{2} 段對話 · 尚未歸屬的舊索引 {3} 筆',
+          '正在更新索引：{1}',
+          '新增或更新 {1} 筆，失敗 {2} 筆',
+          '首次索引尚有 {1} 段對話未完成，可繼續執行',
+          '索引已是最新狀態 · 更新 {1} 筆、略過 {2} 筆',
+          '本機已有 {1} 段對話，正在檢查最新變更…'
+        ],
+        es: [
+          'Indexadas {1} de {2} conversaciones de esta cuenta · {3} entradas antiguas sin asignar',
+          'Actualizando el índice: {1}',
+          '{1} registros añadidos o actualizados; {2} fallidos',
+          'Quedan {1} conversaciones por indexar inicialmente; puedes reanudar la tarea',
+          'Índice al día · {1} registros actualizados, {2} omitidos',
+          'Hay {1} conversaciones guardadas localmente; comprobando cambios…'
+        ],
+        hi: [
+          'इस खाते की {1}/{2} चैट इंडेक्स हो चुकी हैं · {3} पुराने रिकॉर्ड अभी किसी खाते से नहीं जुड़े हैं',
+          'इंडेक्स अपडेट हो रहा है: {1}',
+          '{1} रिकॉर्ड जोड़े या अपडेट किए गए; {2} विफल रहे',
+          'पहली इंडेक्सिंग में {1} चैट अभी बाकी हैं; कार्य फिर शुरू किया जा सकता है',
+          'इंडेक्स अपडेट है · {1} रिकॉर्ड अपडेट हुए, {2} छोड़े गए',
+          'इस डिवाइस पर {1} चैट सेव हैं; नए बदलाव जाँचे जा रहे हैं…'
+        ],
+        ar: [
+          'تمت فهرسة {1} من أصل {2} محادثة لهذا الحساب · {3} سجلات قديمة غير مرتبطة',
+          'جارٍ تحديث الفهرس: {1}',
+          'تمت إضافة أو تحديث {1} سجل؛ وفشل {2}',
+          'تبقت {1} محادثة لإكمال الفهرسة الأولى؛ يمكنك استئناف المهمة',
+          'الفهرس محدّث · تم تحديث {1} سجل وتخطي {2}',
+          'توجد {1} محادثة محفوظة محليًا؛ جارٍ التحقق من التغييرات…'
+        ],
+        'pt-BR': [
+          'Indexadas {1} de {2} conversas desta conta · {3} registros antigos sem vínculo',
+          'Atualizando o índice: {1}',
+          '{1} registros adicionados ou atualizados; {2} com falha',
+          'Ainda faltam {1} conversas na indexação inicial; você pode retomar a tarefa',
+          'Índice atualizado · {1} registros atualizados, {2} ignorados',
+          'Há {1} conversas salvas localmente; verificando alterações…'
+        ],
+        bn: [
+          'এই অ্যাকাউন্টের {1}/{2}টি চ্যাট ইনডেক্স করা হয়েছে · {3}টি পুরোনো রেকর্ড এখনও সংযুক্ত নয়',
+          'ইনডেক্স হালনাগাদ হচ্ছে: {1}',
+          '{1}টি রেকর্ড যোগ বা হালনাগাদ হয়েছে; {2}টি ব্যর্থ হয়েছে',
+          'প্রথম ইনডেক্স তৈরিতে এখনও {1}টি চ্যাট বাকি; কাজটি আবার শুরু করা যাবে',
+          'ইনডেক্স হালনাগাদ আছে · {1}টি রেকর্ড হালনাগাদ, {2}টি এড়িয়ে যাওয়া হয়েছে',
+          'এই ডিভাইসে {1}টি চ্যাট সংরক্ষিত আছে; পরিবর্তন পরীক্ষা করা হচ্ছে…'
+        ],
+        id: [
+          '{1} dari {2} percakapan akun ini telah diindeks · {3} entri lama belum ditetapkan',
+          'Memperbarui indeks: {1}',
+          '{1} entri ditambahkan atau diperbarui; {2} gagal',
+          'Masih ada {1} percakapan dalam pengindeksan awal; tugas dapat dilanjutkan',
+          'Indeks sudah terbaru · {1} entri diperbarui, {2} dilewati',
+          'Ada {1} percakapan tersimpan secara lokal; memeriksa perubahan…'
+        ],
+        fr: [
+          '{1} conversations indexées sur {2} pour ce compte · {3} anciennes entrées non attribuées',
+          'Mise à jour de l’index : {1}',
+          '{1} entrées ajoutées ou mises à jour ; {2} échecs',
+          'Il reste {1} conversations à indexer lors du premier passage ; vous pouvez reprendre la tâche',
+          'Index à jour · {1} entrées mises à jour, {2} ignorées',
+          '{1} conversations enregistrées localement ; recherche des modifications…'
+        ],
+        ru: [
+          'Проиндексировано {1} из {2} чатов этой учётной записи · {3} старые записи не привязаны',
+          'Обновление индекса: {1}',
+          'Добавлено или обновлено записей: {1}; ошибок: {2}',
+          'В первичной индексации осталось {1} чатов; задачу можно продолжить',
+          'Индекс актуален · обновлено {1}, пропущено {2}',
+          'Локально сохранено {1} чатов; проверка изменений…'
+        ],
+        ja: [
+          'このアカウントのチャット {1}/{2} 件をインデックス済み · 未割り当ての旧データ {3} 件',
+          'インデックスを更新中：{1}',
+          '{1} 件を追加・更新、{2} 件が失敗',
+          '初回のインデックス作成が残り {1} 件です。タスクを再開して続行できます',
+          'インデックスは最新です · 更新 {1} 件、スキップ {2} 件',
+          'ローカルに {1} 件のチャットを保存済み。変更を確認中…'
+        ]
+      }
     }
   ];
   for (const block of blocks) {

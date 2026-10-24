@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 132, 'reviewed interface, safety, indexing and diagnostic hints include 132 strings');
+assert.equal(keys.length, 138, 'reviewed interface, safety, indexing and diagnostic hints include 138 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -59,4 +59,28 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
     `${locale}: delete confirmation is not properly interpolated`);
   assert(confirmation.includes('\n\n'), `${locale}: delete warning lost its paragraph separation`);
 }
-console.log(`I18N_REVIEWED_PASS: ${keys.length} core and safety keys × 10 model-authored locales, placeholder checks, deletion warnings, known translation regressions`);
+// These six indexing statuses are generated dynamically from Chinese source
+// templates. Confirm the actual runtime translation, not just catalog coverage.
+const indexStatuses = [
+  ['status.indexedForThisAccountUnassignedLegacyEntries',
+    '当前账号已索引 119 / 119 个 · 未归属旧索引 104 个', ['119', '119', '104']],
+  ['status.updatingIndex', '正在更新索引 7/12', ['7/12']],
+  ['status.addedUpdatedFailed', '新增/更新 7 个，失败 2 个', ['7', '2']],
+  ['status.chatsRemainToBeIndexedResumeTo', '首次索引仍有 5 条待补全，可再次继续', ['5']],
+  ['status.indexUpToDateUpdatedSkipped', '索引已是最新 · 更新 7 个，跳过 20 个', ['7', '20']],
+  ['status.localChatsCheckingForUpdates', '本地已有 119 条，正在增量检查最新数据…', ['119']]
+];
+for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(locale))) {
+  i18n.setLanguage(locale);
+  for (const [key, source, values] of indexStatuses) {
+    const template = packs[locale][key];
+    const captures = [...template.matchAll(/\{(\d+)\}/g)].map(match => Number(match[1]));
+    assert.deepEqual(captures.slice().sort((a, b) => a - b),
+      values.map((_, index) => index + 1),
+      `${locale}/${key}: numbered variables were lost or duplicated`);
+    const rendered = template.replace(/\{(\d+)\}/g, (_, number) => values[Number(number) - 1]);
+    assert.equal(i18n.translateText(source), rendered,
+      `${locale}/${key}: actual dynamic index status differs from reviewed translation`);
+  }
+}
+console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, six live indexing statuses and placeholders`);
