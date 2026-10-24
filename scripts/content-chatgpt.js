@@ -912,6 +912,8 @@
         event.stopPropagation();
       });
       exportCell.append(mdButton, jsonButton);
+      if (onlyLocal) exportCell.append(createExportButton('清理', '清理此条仅本地对话的本地数据',
+        async rec => clearLocalOnlyRecord(rec.id)));
 
       row.append(selectCell, date, title, project, exportCell);
       container.appendChild(row);
@@ -1296,6 +1298,18 @@
   async function exportConversationJson(rec) {
     const data = await window.APIHandler.getConversation(rec.id);
     downloadTextFile(`${exportBaseFilename(rec, data)}.json`, buildConversationJson(data, rec), 'application/json;charset=utf-8');
+  }
+
+  async function clearLocalOnlyRecord(conversationId) {
+    const confirmed = window.confirm(
+      '永久清理这条仅本地对话在扩展中的原始 JSON、全文索引和目录记录？' +
+      '此操作不可撤销；不会请求删除 ChatGPT 云端记录，也不会清理已下载文件。'
+    );
+    if (!confirmed) return { canceled: true };
+    const accountId = await window.APIHandler.getAccountId(true);
+    const result = await runtimeMessage({ action: 'localDataClearLocalOnly', accountId, id: conversationId });
+    if (result.result?.cleared) await openTimeline();
+    return result.result;
   }
 
   async function uploadTaskZipVolume(session, volume, filename, blob, toIndex, entries) {
@@ -1939,6 +1953,18 @@
           exports.appendChild(exportButton);
         }
         button.append(exports);
+        const clear = document.createElement('button');
+        clear.type = 'button';
+        clear.className = 'chatgpt-pro-export-button';
+        clear.textContent = '清理本地';
+        clear.title = '只清理此对话的扩展本地原始 JSON、全文索引和目录';
+        clear.addEventListener('click', async () => {
+          clear.disabled = true;
+          try { await clearLocalOnlyRecord(result.conversationId); }
+          catch (error) { clear.title = `清理失败：${error.message}`; }
+          finally { clear.disabled = false; }
+        });
+        button.append(clear);
       }
       if (!legacy && !localOnly) button.addEventListener('click', () => openFullTextSearchResult(result));
       container.appendChild(button);

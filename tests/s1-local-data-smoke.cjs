@@ -652,6 +652,27 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     await storage.upsertDirectory('acct-a', [{ id: 'explicit-tombstone', remoteState: 'local-only' }]);
     check((await storage.getDirectoryRecord('acct-a', 'explicit-tombstone')).remoteState === 'local-only',
       'cached directory rewrite cannot silently clear tombstone status');
+    await storage.putConversation('acct-a', {
+      id: 'only-local-to-clean', updateTime: 1700000038,
+      raw: { id: 'only-local-to-clean', title: 'cleanup local copy', mapping: {} },
+      searchRecord: { id: 'only-local-to-clean', title: 'cleanup local copy', messages: [] }
+    });
+    await storage.upsertDirectory('acct-a', [{ id: 'only-local-to-clean', officialDeletion: true }]);
+    check(!(await send({ action: 'localDataClearLocalOnly', accountId: 'acct-b',
+      id: 'only-local-to-clean' })).success, 'another account cannot delete local-only data');
+    check(!(await send({ action: 'localDataClearLocalOnly', accountId: 'acct-a',
+      id: 'ambiguous-online' })).success, 'unknown/non-local entry cannot be cleaned');
+    const cleanedLocalOnly = await send({ action: 'localDataClearLocalOnly', accountId: 'acct-a',
+      id: 'only-local-to-clean' });
+    check(cleanedLocalOnly.success && cleanedLocalOnly.result.cleared,
+      'confirmed local-only record permits explicit cleanup');
+    check(!(await storage.getConversation('acct-a', 'only-local-to-clean')).hit &&
+      !(await storage.getDirectoryRecord('acct-a', 'only-local-to-clean')) &&
+      !(await storage.getSearchRecords('acct-a')).some(record => record.id === 'only-local-to-clean'),
+      'manual cleanup removes only selected directory/raw/search trio');
+    check((await storage.getConversation('acct-a', 'explicit-tombstone')).hit &&
+      (await storage.getLegacyMetadata()).legacyCount === 1,
+      'other local-only records and unassigned legacy data remain after cleanup');
     // Authenticated HTTP 410 is affirmative Gone evidence; HTTP 404 alone is not.
     activeAccount = 'acct-a';
     simulateGoneId = 'gone-http';

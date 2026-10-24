@@ -277,6 +277,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     indexPolicyDirectoryVerified: () => ChatGPTProLocalData.recordFullDirectoryScan(message.accountId, message.records),
     indexPolicyFinishInitial: () => ChatGPTProLocalData.finishInitialIndex(message.accountId),
     localDataMarkOfficialGone: () => ChatGPTProLocalData.markOfficialGone(message.accountId, message.id),
+    localDataClearLocalOnly: () => ChatGPTProLocalData.clearLocalOnlyConversation(message.accountId, message.id),
     taskVolumeChunk: () => ChatGPTProLocalData.uploadExportChunk(
       message.accountId, message.id, message.owner, message.token,
       message.volume, message.index, message.base64

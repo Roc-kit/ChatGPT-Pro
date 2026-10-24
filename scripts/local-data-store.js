@@ -230,6 +230,24 @@ globalThis.ChatGPTProLocalData = (() => {
     });
   }
 
+  async function clearLocalOnlyConversation(accountId, id) {
+    validateAccount(accountId);
+    validateId(id);
+    return transaction([STORES.directory, STORES.conversations, STORES.search], 'readwrite', async stores => {
+      const key = [accountId, id];
+      const directory = await requested(stores[STORES.directory].get(key));
+      if (directory?.remoteState !== 'local-only') {
+        throw new Error('只能清理已经明确确认仅本地的对话，不能删除在线或待核实记录');
+      }
+      await Promise.all([
+        requested(stores[STORES.directory].delete(key)),
+        requested(stores[STORES.conversations].delete(key)),
+        requested(stores[STORES.search].delete(key))
+      ]);
+      return { cleared: true, id };
+    });
+  }
+
   function cleanSearchRecord(accountId, record, origin = 'text-only') {
     validateAccount(accountId);
     const id = validateId(record?.id);
@@ -889,7 +907,7 @@ globalThis.ChatGPTProLocalData = (() => {
     putSearchRecord, getSearchMetadata, getSearchRecords, clearSearchIndex,
     putConversation, getConversation, getStats, getLegacyMetadata,
     getIndexPolicy, grantIndexConsent, recordFullDirectoryScan, finishInitialIndex,
-    markOfficialGone,
+    markOfficialGone, clearLocalOnlyConversation,
     createTask, getTask, listTasks, claimTask, heartbeatTask, checkpointTask, controlTask,
     saveExportVolume, getExportVolume,
     clearCompletedExportVolumes,
