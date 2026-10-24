@@ -861,6 +861,26 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check(resumedCheckpoint.result.task.consecutiveFailures === 0 &&
       resumedCheckpoint.result.task.nextIndex === 4, 'resuming resets failure streak, preserving cursor');
 
+    // C: stage and deadline are durable task metadata, lease-fenced per account.
+    const waitUntil = Date.now() + 5000;
+    const phaseUpdate = await send({ action: 'taskPhase', accountId: 'batch-b-fail',
+      id: failureTask.result.id, owner: 'batch-b-next-tab', token: resumedFailureClaim.result.token,
+      phase: 'waiting', waitUntil });
+    check(phaseUpdate.success && phaseUpdate.result.task.phase === 'waiting' &&
+      phaseUpdate.result.task.waitUntil === waitUntil, 'task stage and deadline persist across reopen');
+    check(!(await send({ action: 'taskPhase', accountId: 'batch-b-fail',
+      id: failureTask.result.id, owner: 'other-tab', token: 'stale',
+      phase: 'fetching' })).success, 'unleased tab cannot falsify progress');
+    check(!(await send({ action: 'taskPhase', accountId: 'batch-b-b',
+      id: failureTask.result.id, owner: 'batch-b-next-tab', token: resumedFailureClaim.result.token,
+      phase: 'fetching' })).success, 'other account cannot modify task stage');
+    const setup = await send({ action: 'indexSetupPhase', accountId: consentId, phase: 'scanning' });
+    check(setup.success && (await send({ action: 'indexPolicyGet', accountId: consentId })).result.setupPhase === 'scanning',
+      'first directory scanning phase appears in durable index policy');
+    await send({ action: 'indexSetupPhase', accountId: consentId, phase: null });
+    check(!(await send({ action: 'indexPolicyGet', accountId: consentId })).result.setupPhase,
+      'directory scanning progress clears after completion');
+
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }

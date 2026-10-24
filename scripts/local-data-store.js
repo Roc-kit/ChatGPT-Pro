@@ -380,8 +380,18 @@ globalThis.ChatGPTProLocalData = (() => {
     return {
       consentAt: account?.fullIndexConsentAt || null,
       initialCompletedAt: account?.initialIndexCompletedAt || null,
-      autoEnabled: Boolean(account?.initialIndexCompletedAt && account.autoIncrementalIndex !== false)
+      autoEnabled: Boolean(account?.initialIndexCompletedAt && account.autoIncrementalIndex !== false),
+      setupPhase: account?.indexSetupUntil > Date.now() ? (account.indexSetupPhase || null) : null
     };
+  }
+
+  async function setIndexSetupPhase(accountId, phase) {
+    if (phase !== 'scanning' && phase !== null) throw new Error('索引准备阶段无效');
+    return changeRequestState(accountId, state => {
+      state.indexSetupPhase = phase;
+      state.indexSetupUntil = phase ? Date.now() + 30 * 60 * 1000 : 0;
+      return { phase, changed: true };
+    });
   }
 
   async function setAutoIndexEnabled(accountId, enabled) {
@@ -634,7 +644,20 @@ globalThis.ChatGPTProLocalData = (() => {
       task.generation++;
       task.lease = { owner, token: crypto.randomUUID(), expiresAt: now + TASK_LEASE_MS };
       task.status = 'running';
+      task.phase = 'fetching';
+      task.waitUntil = 0;
       return { acquired: true, token: task.lease.token, changed: true };
+    });
+  }
+
+  const TASK_PHASES = new Set(['fetching', 'volume', 'waiting', 'rate-limit']);
+  async function updateTaskPhase(accountId, id, owner, token, phase, waitUntil = 0) {
+    if (!TASK_PHASES.has(phase)) throw new Error('任务阶段无效');
+    return mutateTask(accountId, id, (task, now) => {
+      ensureLease(task, owner, token, now);
+      task.phase = phase;
+      task.waitUntil = Number.isFinite(waitUntil) ? Math.max(0, waitUntil) : 0;
+      return { changed: true };
     });
   }
 
@@ -660,9 +683,11 @@ globalThis.ChatGPTProLocalData = (() => {
       }
       if (task.nextIndex === task.items.length) {
         task.status = 'completed';
+        task.phase = 'completed';
         task.lease = null;
       } else if (task.consecutiveFailures >= MAX_CONSECUTIVE_ITEM_FAILURES) {
         task.status = 'paused';
+        task.phase = 'consecutive-failures';
         task.lease = null;
       }
       return { changed: true };
@@ -681,6 +706,10 @@ globalThis.ChatGPTProLocalData = (() => {
       else if (action === 'cancel') task.status = 'canceled';
       else return { changed: false };
       task.lease = null;
+      task.phase = action === 'pause'
+        ? (task.consecutiveFailures >= MAX_CONSECUTIVE_ITEM_FAILURES ? 'consecutive-failures' : 'paused')
+        : action === 'resume' ? 'pending' : 'canceled';
+      task.waitUntil = 0;
       task.generation++;
       return { changed: true };
     });
@@ -742,7 +771,7 @@ globalThis.ChatGPTProLocalData = (() => {
       task.volumeCount = payload.volume;
       task.nextIndex = to;
       task.updatedAt = Date.now();
-      if (to === task.items.length) { task.status = 'completed'; task.lease = null; }
+      if (to === task.items.length) { task.status = 'completed'; task.phase = 'completed'; task.lease = null; }
       await requested(taskStore.put(task));
       return { nextIndex: task.nextIndex, volumeCount: task.volumeCount, status: task.status };
     });
@@ -988,10 +1017,11 @@ globalThis.ChatGPTProLocalData = (() => {
     openDb, upsertDirectory, getDirectory, getDirectoryRecord,
     putSearchRecord, getSearchMetadata, getSearchRecords, clearSearchIndex,
     putConversation, getConversation, getStats, getLegacyMetadata,
-    getIndexPolicy, setAutoIndexEnabled, clearAccountData,
+    getIndexPolicy, setIndexSetupPhase, setAutoIndexEnabled, clearAccountData,
     grantIndexConsent, recordFullDirectoryScan, finishInitialIndex,
     markOfficialGone, clearLocalOnlyConversation,
-    createTask, getTask, listTasks, claimTask, heartbeatTask, checkpointTask, controlTask,
+    createTask, getTask, listTasks, claimTask, updateTaskPhase,
+    heartbeatTask, checkpointTask, controlTask,
     saveExportVolume, getExportVolume,
     clearCompletedExportVolumes,
     readExportVolumeChunk, uploadExportChunk, finalizeExportChunks,

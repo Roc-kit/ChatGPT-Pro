@@ -252,6 +252,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     taskGet: () => ChatGPTProLocalData.getTask(message.accountId, message.id),
     taskList: () => ChatGPTProLocalData.listTasks(message.accountId),
     taskClaim: () => ChatGPTProLocalData.claimTask(message.accountId, message.id, message.owner),
+    taskPhase: () => ChatGPTProLocalData.updateTaskPhase(message.accountId, message.id,
+      message.owner, message.token, message.phase, message.waitUntil),
     taskHeartbeat: () => ChatGPTProLocalData.heartbeatTask(message.accountId, message.id, message.owner, message.token),
     taskCheckpoint: () => ChatGPTProLocalData.checkpointTask(
       message.accountId, message.id, message.owner, message.token,
@@ -273,6 +275,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       message.accountId, message.id
     ),
     indexPolicyGet: () => ChatGPTProLocalData.getIndexPolicy(message.accountId),
+    indexSetupPhase: () => ChatGPTProLocalData.setIndexSetupPhase(message.accountId, message.phase),
     indexPolicySetAuto: () => ChatGPTProLocalData.setAutoIndexEnabled(message.accountId, message.enabled),
     localDataClearAccount: () => ChatGPTProLocalData.clearAccountData(message.accountId, message.kind),
     indexPolicyConsent: () => ChatGPTProLocalData.grantIndexConsent(message.accountId),

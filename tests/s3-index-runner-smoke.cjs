@@ -55,6 +55,7 @@ const context = {
     const job = jobs.get(msg.id);
     switch (msg.action) {
       case 'indexPolicyGet': return { success: true, result: { ...policy } };
+      case 'indexSetupPhase': return { success: true, result: { phase: msg.phase } };
       case 'indexPolicyConsent':
         policy.consentAt ||= Date.now();
         return { success: true, result: { ...policy } };
@@ -81,6 +82,11 @@ const context = {
         return { success: true, result: { acquired: true, token: job.lease.token, task: job } };
       case 'taskHeartbeat':
         if (job.status !== 'running' || job.lease?.token !== msg.token) throw Error('任务租约已失效');
+        return { success: true, result: { task: job } };
+      case 'taskPhase':
+        if (job.status !== 'running' || job.lease?.token !== msg.token) throw Error('任务租约已失效');
+        job.phase = msg.phase;
+        job.waitUntil = msg.waitUntil || 0;
         return { success: true, result: { task: job } };
       case 'localDataPutConversation':
         indexed.set(msg.record.id, msg.record.searchRecord.updateTime);

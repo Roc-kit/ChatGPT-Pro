@@ -1403,6 +1403,8 @@
       const filename = `${prefix}_part${String(volumeNumber).padStart(3, '0')}.zip`;
       const zipBlob = buildStoredZip(entries);
       if (session) {
+        await runtimeMessage({ action: 'taskPhase', accountId: session.accountId,
+          id: session.taskId, owner: session.owner, token: session.token, phase: 'volume' });
         // Never move the durable task cursor before the exact ZIP bytes are
         // stored successfully. Chrome may block the subsequent download.
         await uploadTaskZipVolume(session, volumeNumber, filename, zipBlob, endIndex, volumeEntries);
@@ -1436,6 +1438,8 @@
       if (session) {
         await runtimeMessage({ action: 'taskHeartbeat', accountId: session.accountId,
           id: session.taskId, owner: session.owner, token: session.token });
+        await runtimeMessage({ action: 'taskPhase', accountId: session.accountId,
+          id: session.taskId, owner: session.owner, token: session.token, phase: 'fetching' });
         if (await window.APIHandler.getAccountId() !== session.accountId) {
           throw new Error('登录账号已切换，导出任务已停止');
         }
@@ -1494,10 +1498,16 @@
       const isLast = index === records.length - 1;
       const isGroupEnd = (index + 1) % EXPORT_GROUP_SIZE === 0;
       if (!isLast && usedNetwork && isGroupEnd) {
+        if (session) await runtimeMessage({ action: 'taskPhase', accountId: session.accountId,
+          id: session.taskId, owner: session.owner, token: session.token,
+          phase: 'waiting', waitUntil: Date.now() + EXPORT_GROUP_GAP_MS });
         await waitForExport(EXPORT_GROUP_GAP_MS, onProgress, {
           ...progress, phase: 'group-wait', done: index + 1, failures: failures.length
         });
       } else if (!isLast && usedNetwork) {
+        if (session) await runtimeMessage({ action: 'taskPhase', accountId: session.accountId,
+          id: session.taskId, owner: session.owner, token: session.token,
+          phase: 'waiting', waitUntil: Date.now() + EXPORT_REQUEST_GAP_MS });
         await waitForExport(EXPORT_REQUEST_GAP_MS, onProgress, {
           ...progress, phase: 'pacing', done: index + 1, failures: failures.length
         });
@@ -1643,6 +1653,9 @@
         };
         // A pause or canceled lease aborts before any next request.
         await indexTaskMessage('taskHeartbeat', accountId, { id: taskId, owner: INDEX_EXECUTOR_ID, token });
+        await indexTaskMessage('taskPhase', accountId, {
+          id: taskId, owner: INDEX_EXECUTOR_ID, token, phase: 'fetching'
+        });
         if (await window.APIHandler.getAccountId() !== accountId) throw new Error('登录账号已切换，索引任务已停止');
         let usedNetwork = false;
         let outcome = 'success';
@@ -1681,7 +1694,12 @@
         const isLast = index === total - 1;
         const groupEnd = (index + 1) % EXPORT_GROUP_SIZE === 0;
         if (!isLast && usedNetwork) {
-          await waitForExport(groupEnd ? EXPORT_GROUP_GAP_MS : EXPORT_REQUEST_GAP_MS,
+          const delay = groupEnd ? EXPORT_GROUP_GAP_MS : EXPORT_REQUEST_GAP_MS;
+          await indexTaskMessage('taskPhase', accountId, {
+            id: taskId, owner: INDEX_EXECUTOR_ID, token,
+            phase: 'waiting', waitUntil: Date.now() + delay
+          });
+          await waitForExport(delay,
             onProgress, { ...progress, phase: groupEnd ? 'group-wait' : 'pacing', done: index + 1 });
         }
       }
@@ -1731,11 +1749,16 @@
     let targetRecords = records;
     if (!policy.initialCompletedAt) {
       onProgress?.({ phase: 'initial-directory' });
-      targetRecords = await window.APIHandler.syncConversationList(true, { requireComplete: true });
-      if (await window.APIHandler.getAccountId(true) !== accountId) {
-        throw new Error('登录账号已切换，首次索引已停止');
+      await runtimeMessage({ action: 'indexSetupPhase', accountId, phase: 'scanning' });
+      try {
+        targetRecords = await window.APIHandler.syncConversationList(true, { requireComplete: true });
+        if (await window.APIHandler.getAccountId(true) !== accountId) {
+          throw new Error('登录账号已切换，首次索引已停止');
+        }
+        await runtimeMessage({ action: 'indexPolicyDirectoryVerified', accountId, records: targetRecords });
+      } finally {
+        await runtimeMessage({ action: 'indexSetupPhase', accountId, phase: null }).catch(() => {});
       }
-      await runtimeMessage({ action: 'indexPolicyDirectoryVerified', accountId, records: targetRecords });
     }
     const result = await updateFullTextIndex(targetRecords, onProgress);
     if (!policy.initialCompletedAt && !result.paused && !result.busy) {
@@ -1800,6 +1823,7 @@
         total: task.items?.length || 0, done: task.nextIndex || 0,
         successes: task.successCount || 0, failures: task.failureCount || 0,
         savedVolumes: task.volumesClearedAt ? 0 : (task.volumeCount || 0),
+        phase: task.phase || null, waitUntil: task.waitUntil || 0,
         updatedAt: task.updatedAt, createdAt: task.createdAt,
         recoveryPending: task.status === 'running' && task.lease?.expiresAt <= Date.now()
       })),
@@ -1995,6 +2019,38 @@
       snippet.textContent = result.snippet;
       button.append(title, meta, snippet);
       if (localOnly) {
+        const previewButton = document.createElement('button');
+        previewButton.type = 'button';
+        previewButton.className = 'chatgpt-pro-export-button';
+        previewButton.textContent = '本地完整预览';
+        const preview = document.createElement('pre');
+        preview.hidden = true;
+        preview.className = 'chatgpt-pro-local-preview';
+        preview.style.cssText = 'max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;text-align:left;'
+          + 'padding:9px;background:rgba(128,128,128,.08);border-radius:6px;font-size:11px;';
+        previewButton.addEventListener('click', async () => {
+          if (!preview.hidden) { preview.hidden = true; previewButton.textContent = '本地完整预览'; return; }
+          previewButton.disabled = true;
+          try {
+            // A confirmed deleted conversation MUST NOT fall back to any
+            // official API. Read only this signed-in account's stored JSON.
+            const accountId = await window.APIHandler.getAccountId(true);
+            const reply = await runtimeMessage({ action: 'localDataGetConversation',
+              accountId, id: result.conversationId });
+            if (await window.APIHandler.getAccountId(true) !== accountId) {
+              throw new Error('登录账号已切换，无法预览旧账号内容');
+            }
+            preview.textContent = reply.hit && reply.raw
+              ? JSON.stringify(reply.raw, null, 2)
+              : '完整原始 JSON 未保存在本机；仅有搜索片段，无法提供完整预览。';
+            preview.hidden = false;
+            previewButton.textContent = '收起本地预览';
+          } catch (error) {
+            preview.textContent = `无法读取本地完整内容：${error.message}`;
+            preview.hidden = false;
+          } finally { previewButton.disabled = false; }
+        });
+        button.append(previewButton, preview);
         const exports = document.createElement('span');
         exports.className = 'chatgpt-pro-row-export';
         for (const [label, action] of [['MD', exportConversationMarkdown], ['JSON', exportConversationJson]]) {
@@ -2137,6 +2193,27 @@
     let activeView = 'directory';
     let sortDirection = 'newest';
     let currentRecords = [];
+    let searchTimer = null;
+    let searchRequestId = 0;
+    let searchCacheRevision = '';
+    const searchCache = new Map();
+    const clearRecentSearches = () => {
+      searchCacheRevision = '';
+      searchCache.clear();
+      searchRequestId++;
+    };
+    const onSearchAccountChanged = () => {
+      if (!panel.isConnected) {
+        window.removeEventListener('chatgpt-pro-account-changed', onSearchAccountChanged);
+        return;
+      }
+      clearRecentSearches();
+      window.clearTimeout(searchTimer);
+      searchResults.replaceChildren();
+      searchIndexStatus.textContent = '账号已变化；请重新授权或搜索当前账号';
+      status.textContent = '登录账号已变化，本地搜索结果已清空';
+    };
+    window.addEventListener('chatgpt-pro-account-changed', onSearchAccountChanged);
     const selectedIds = new Set();
 
     const currentVisibleRecords = () => visibleTimelineRecords(
@@ -2182,7 +2259,9 @@
         searchIndexUpdate.textContent = !policy.result?.consentAt
           ? '首次索引（需授权）'
           : policy.result.initialCompletedAt ? '更新索引' : '继续首次索引';
-        searchIndexStatus.textContent = `当前账号已索引 ${response.records?.length || 0} / ${currentRecords.length} 个 · 未归属旧索引 ${legacy.legacyCount || 0} 个`;
+        searchIndexStatus.textContent = !policy.result?.consentAt
+          ? `首次建立全文索引需点击授权；不会自动抓取正文。已有索引可搜索 · 当前 ${response.records?.length || 0} 条`
+          : `当前账号已索引 ${response.records?.length || 0} / ${currentRecords.length} 个 · 未归属旧索引 ${legacy.legacyCount || 0} 个`;
       } catch (error) {
         searchIndexStatus.textContent = `索引状态读取失败：${error.message}`;
       }
@@ -2210,29 +2289,71 @@
     };
 
     panelTabs.forEach(tab => tab.addEventListener('click', () => setActiveView(tab.dataset.panelView)));
-    fullTextForm.addEventListener('submit', async event => {
-      event.preventDefault();
+    const runFullTextSearch = async () => {
+      const requestId = ++searchRequestId;
       const query = fullTextInput.value.trim();
       if (!query) {
         searchResults.replaceChildren();
+        status.textContent = '输入关键词以搜索已有的本地索引';
         return;
       }
       status.textContent = '正在搜索本地索引…';
       try {
         const accountId = await window.APIHandler.getAccountId();
-        const [response, legacy] = await Promise.all([
-          runtimeMessage({ action: 'searchFullText', accountId, query, limit: 200 }),
-          legacySearchToggle.checked
-            ? runtimeMessage({ action: 'searchUnassignedLegacy', query, limit: 200 })
-            : Promise.resolve({ results: [] })
+        // Cheap version metadata invalidates the small recent-query cache
+        // after an index write, account switch or manual index deletion.
+        const [metadata, directoryState] = await Promise.all([
+          runtimeMessage({ action: 'searchIndexMetadata', accountId }),
+          runtimeMessage({ action: 'localDataGetDirectory', accountId })
         ]);
-        if (await window.APIHandler.getAccountId(true) !== accountId) throw new Error('登录账号已切换，请重新搜索');
-        const results = [...(response.results || []), ...(legacy.results || [])];
-        renderFullTextResults(searchResults, results);
-        status.textContent = `当前账号 ${response.results?.length || 0} 条${legacySearchToggle.checked ? ` · 未归属旧索引 ${legacy.results?.length || 0} 条` : ''}`;
+        if (requestId !== searchRequestId) return;
+        const revision = accountId + ':' + (metadata.records || []).map(entry =>
+          `${entry.id}:${entry.updateTime}:${entry.indexedAt}`).join('|') + ':'
+          + (directoryState.records || []).map(entry =>
+            `${entry.id}:${entry.updateTime}:${entry.remoteState}`).join('|');
+        if (revision !== searchCacheRevision) {
+          searchCache.clear();
+          searchCacheRevision = revision;
+        }
+        const includeLegacy = legacySearchToggle.checked;
+        const cacheKey = JSON.stringify([accountId, query, includeLegacy]);
+        let cached = searchCache.get(cacheKey);
+        if (!cached) {
+          const [response, legacy] = await Promise.all([
+            runtimeMessage({ action: 'searchFullText', accountId, query, limit: 200 }),
+            includeLegacy
+              ? runtimeMessage({ action: 'searchUnassignedLegacy', query, limit: 200 })
+              : Promise.resolve({ results: [] })
+          ]);
+          cached = { current: response.results || [], legacy: legacy.results || [] };
+          searchCache.set(cacheKey, cached);
+          if (searchCache.size > 8) searchCache.delete(searchCache.keys().next().value);
+        }
+        if (requestId !== searchRequestId) return;
+        if (await window.APIHandler.getAccountId(true) !== accountId) {
+          clearRecentSearches();
+          throw new Error('登录账号已切换，请重新搜索');
+        }
+        renderFullTextResults(searchResults, [...cached.current, ...cached.legacy]);
+        status.textContent = `当前账号 ${cached.current.length} 条${includeLegacy ? ` · 未归属旧索引 ${cached.legacy.length} 条` : ''}`;
       } catch (error) {
-        status.textContent = `全文搜索失败：${error.message}`;
+        if (requestId === searchRequestId) status.textContent = `全文搜索失败：${error.message}`;
       }
+    };
+    fullTextForm.addEventListener('submit', event => {
+      event.preventDefault();
+      window.clearTimeout(searchTimer);
+      runFullTextSearch();
+    });
+    fullTextInput.addEventListener('input', () => {
+      // Invalidate an older async result immediately, not 300 ms later.
+      searchRequestId++;
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(runFullTextSearch, 300);
+    });
+    legacySearchToggle.addEventListener('change', () => {
+      window.clearTimeout(searchTimer);
+      runFullTextSearch();
     });
     searchIndexUpdate.addEventListener('click', async () => {
       if (searchIndexUpdate.disabled) return;
@@ -2270,6 +2391,7 @@
       } catch (error) {
         searchIndexStatus.textContent = `索引更新失败：${error.message}`;
       } finally {
+        clearRecentSearches();
         searchIndexUpdate.disabled = false;
       }
     });

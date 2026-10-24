@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const apiStatus = document.getElementById('apiStatus');
   const apiStatusText = document.getElementById('apiStatusText');
   const taskFeedback = document.getElementById('taskFeedback');
+  const taskCooldownText = document.getElementById('taskCooldownText');
   const taskList = document.getElementById('taskList');
   const taskLogList = document.getElementById('taskLogList');
   const taskRefresh = document.getElementById('taskRefresh');
@@ -30,6 +31,24 @@ document.addEventListener('DOMContentLoaded', () => {
   let taskLoading = false;
   let indexConsentGranted = false;
   let dashboardStats = null;
+  let cooldownDeadline = 0;
+  const taskPhases = {
+    fetching: '抓取 / 处理对话', volume: '生成并保存 ZIP 分卷',
+    waiting: '请求间隔等待', 'rate-limit': '限流冷却',
+    'consecutive-failures': '连续失败，等待人工继续',
+    paused: '已暂停', pending: '等待执行', completed: '已完成', canceled: '已取消'
+  };
+
+  function updateTaskCountdowns() {
+    const remaining = Math.max(0, Math.ceil((cooldownDeadline - Date.now()) / 1000));
+    taskCooldownText.hidden = remaining === 0;
+    if (remaining) taskCooldownText.textContent = `账号请求冷却中 · 剩余 ${remaining} 秒 · 到期后可自动继续`;
+    document.querySelectorAll('.task-waiting-remainder').forEach(element => {
+      const until = Number(element.dataset.until || 0);
+      const waiting = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+      element.textContent = waiting ? ` · 还需 ${waiting} 秒` : ' · 等待结束，正在恢复';
+    });
+  }
 
   document.getElementById('extensionVersion').textContent = `v${chrome.runtime.getManifest?.().version || '3.0.0'}`;
 
@@ -83,6 +102,8 @@ document.addEventListener('DOMContentLoaded', () => {
     dashboardStats = null;
     count.textContent = rawCount.textContent = indexedCount.textContent = '–';
     autoIndexToggle.disabled = true;
+    cooldownDeadline = 0;
+    taskCooldownText.hidden = true;
     setToggle(autoIndexToggle, false);
     clearIndex.disabled = clearRaw.disabled = true;
   }
@@ -118,6 +139,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderTaskDashboard(data) {
+    cooldownDeadline = Number(data.cooldownUntil || 0);
+    updateTaskCountdowns();
     const policy = data.indexPolicy || {};
     indexConsentGranted = Boolean(policy.consentAt);
     const initialDone = Boolean(policy.initialCompletedAt);
@@ -134,7 +157,9 @@ document.addEventListener('DOMContentLoaded', () => {
     indexStart.disabled = Boolean(unfinishedIndexTask);
     indexStart.textContent = !policy.consentAt ? '建立全文索引（需授权）'
       : initialDone ? '立即检查新增聊天' : '继续首次全文索引';
-    indexConsentStatus.textContent = unfinishedIndexTask
+    indexConsentStatus.textContent = policy.setupPhase === 'scanning'
+      ? '正在扫描完整聊天目录，包括项目与分页；索引任务准备中'
+      : unfinishedIndexTask
       ? '索引任务已创建，请使用下方任务控制和进度查看'
       : initialDone ? (policy.autoEnabled === false ? '首次索引已完成，自动更新已关闭' : '首次索引已完成，之后自动检查增量变化')
         : policy.consentAt ? '已授权，首次完整索引尚未完成' : '首次扫描需确认授权；原始 JSON 仅保存在本机';
@@ -164,6 +189,17 @@ document.addEventListener('DOMContentLoaded', () => {
       detail.className = 'hint';
       const description = `${task.done}/${task.total} · 成功 ${task.successes} · 失败 ${task.failures}`;
       detail.textContent = task.savedVolumes ? `${description} · ZIP ${task.savedVolumes} 卷` : description;
+      if (task.status === 'running' && cooldownDeadline > Date.now()) {
+        detail.append(' · 等待账号限流冷却');
+      } else if (task.phase) {
+        detail.append(` · ${taskPhases[task.phase] || task.phase}`);
+      }
+      if (task.status === 'running' && task.waitUntil > Date.now()) {
+        const waiting = document.createElement('span');
+        waiting.className = 'task-waiting-remainder';
+        waiting.dataset.until = String(task.waitUntil);
+        detail.appendChild(waiting);
+      }
 
       const actions = document.createElement('div');
       actions.className = 'task-actions';
@@ -201,6 +237,7 @@ document.addEventListener('DOMContentLoaded', () => {
       taskLogList.appendChild(entry);
     }
     if (!taskLogList.childElementCount) taskLogList.textContent = '暂无记录';
+    updateTaskCountdowns();
   }
 
   async function loadTaskDashboard(keepFeedback = false) {
@@ -429,4 +466,5 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(pollStatus, 3000);
   loadTaskDashboard();
   setInterval(() => loadTaskDashboard(), 6000);
+  setInterval(updateTaskCountdowns, 1000);
 });

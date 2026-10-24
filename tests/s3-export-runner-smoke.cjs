@@ -69,6 +69,11 @@ async function runtimeMessage(original) {
       validateLease();
       job.lease.expiresAt = Date.now() + 30000;
       return { success: true, result: {} };
+    case 'taskPhase':
+      validateLease();
+      job.phase = msg.phase;
+      job.waitUntil = msg.waitUntil || 0;
+      return { success: true, result: {} };
     case 'taskControl':
       assert.equal(msg.operation, 'pause');
       job.status = 'paused';

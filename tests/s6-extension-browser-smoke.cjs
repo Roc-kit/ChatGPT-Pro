@@ -201,6 +201,39 @@ async function main() {
     'full-text query searched the actual worker index');
     assert.equal(requests.details, 1, 'searching the persisted index did not refetch JSON');
 
+    // Input searches are debounced and still work while indexing is only
+    // partial; a confirmed local-only result never fetches an online detail.
+    await cdp.eval(pageSession, `(() => {
+      const input = document.querySelector('.chatgpt-pro-fulltext-input');
+      input.value = 'hello from controlled fixture';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-search-results').textContent.includes('hello from controlled fixture')`),
+    'typing searches without explicit submit after debounce');
+    assert.equal(requests.details, 1, 'debounced search does not call remote API');
+
+    const markLocal = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
+      action: 'localDataMarkOfficialGone', accountId: 's6-isolated-account', id: '${CHAT_ID}'
+    })`);
+    assert(markLocal?.success && markLocal?.result?.marked, 'fixture is explicitly marked local-only in IDB');
+    await cdp.eval(pageSession, `(() => {
+      const input = document.querySelector('.chatgpt-pro-fulltext-input');
+      input.value = 's6 acceptance unique phrase';
+      document.querySelector('.chatgpt-pro-fulltext-form').dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true }));
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-search-result-meta')?.textContent.includes('仅本地')`),
+    'directory local-only transition invalidates cached search results');
+    await cdp.eval(pageSession, `Array.from(document.querySelectorAll('.chatgpt-pro-search-result button'))
+      .find(button => button.textContent.includes('本地完整预览')).click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `!document.querySelector('.chatgpt-pro-local-preview')?.hidden &&
+       document.querySelector('.chatgpt-pro-local-preview')?.textContent.includes('s6 acceptance unique phrase')`),
+    'confirmed local-only item offers complete raw JSON preview');
+    assert.equal(requests.details, 1, 'local-only preview did not reach official conversation endpoint');
+
     await cdp.eval(pageSession, `document.querySelector('[data-panel-view="directory"]').click()`);
     await eventually(async () => cdp.eval(pageSession,
       `Boolean(document.querySelector('.chatgpt-pro-row-checkbox'))`), 'directory item rendered');

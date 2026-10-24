@@ -20,7 +20,7 @@ const mock = `<script>
   const indexPolicy = { consentAt: null, initialCompletedAt: null, autoEnabled: false };
   const stats = { directory: 120, complete: 71, indexed: 43 };
   window.__testState = { tasks, calls: [], currentUrl: 'https://chatgpt.com/c/example',
-    otherTabs: [], opened: [], noAuth: false, allowConsent: true };
+    otherTabs: [], opened: [], noAuth: false, allowConsent: true, cooldownUntil: 0 };
   window.confirm = () => window.__testState.allowConsent;
   window.chrome = {
     runtime: { lastError: null },
@@ -51,7 +51,7 @@ const mock = `<script>
           callback(window.__testState.noAuth ? { success: false, error: '账号无法确认' }
             : { success: true, tasks, indexPolicy: { ...indexPolicy }, stats: { ...stats },
               logs: [{ createdAt: Date.now(), type: 'rate-limit', code: '429',
-                message: '请求冷却' }], cooldownUntil: 0 });
+                message: '请求冷却' }], cooldownUntil: window.__testState.cooldownUntil });
         } else if (msg.action === 'indexBegin') {
           if (msg.userConfirmedConsent) indexPolicy.consentAt = Date.now();
           callback({ success: true, queued: true });
@@ -222,6 +222,29 @@ server.listen(0, '127.0.0.1', async () => {
       document.querySelector('#autoIndexToggle').click();
       await new Promise(resolve => setTimeout(resolve, 50));
       check(indexPolicy.autoEnabled === true, 'toggle on persists');
+      window.__testState.cooldownUntil = Date.now() + 10000;
+      const running = tasks.find(task => task.status === 'running');
+      if (running) {
+        running.phase = 'waiting';
+        running.waitUntil = Date.now() + 9000;
+      }
+      document.querySelector('#taskRefresh').click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(!document.querySelector('#taskCooldownText').hidden &&
+        /剩余 [0-9]+ 秒/.test(document.querySelector('#taskCooldownText').textContent),
+        'Popup shows dynamic persisted-account 429 countdown: ' +
+        document.querySelector('#taskCooldownText').outerHTML +
+        '; feedback=' + document.querySelector('#taskFeedback').textContent);
+      if (running) check(document.querySelector('.task-card').textContent.includes('等待账号限流冷却'),
+        'running task explains account-wide cooldown');
+      window.__testState.cooldownUntil = 0;
+      if (running) running.status = 'pending';
+      indexPolicy.setupPhase = 'scanning';
+      document.querySelector('#taskRefresh').click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(document.querySelector('#indexConsentStatus').textContent.includes('扫描完整聊天目录'),
+        'initial directory scanning is exposed without inventing an index task');
+      indexPolicy.setupPhase = null;
       window.__testState.allowConsent = false;
       const beforeClear = window.__testState.calls.length;
       document.querySelector('#clearIndex').click();
