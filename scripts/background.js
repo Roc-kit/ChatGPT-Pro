@@ -263,6 +263,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
+  if (message.action === 'localDataGetDirectoryRecord') {
+    ChatGPTProLocalData.getDirectoryRecord(message.accountId, message.id)
+      .then(record => sendResponse({ success: true, record: record || null }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
   if (message.action === 'localDataStats') {
     ChatGPTProLocalData.getStats(message.accountId)
       .then(result => sendResponse({ success: true, ...result }))

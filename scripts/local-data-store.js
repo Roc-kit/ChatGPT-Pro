@@ -174,6 +174,13 @@ globalThis.ChatGPTProLocalData = (() => {
     return records.sort((a, b) => (b.updateTime || 0) - (a.updateTime || 0));
   }
 
+  async function getDirectoryRecord(accountId, id) {
+    validateAccount(accountId);
+    validateId(id);
+    return transaction([STORES.directory], 'readonly', stores =>
+      requested(stores[STORES.directory].get([accountId, id])));
+  }
+
   function cleanSearchRecord(accountId, record, origin = 'text-only') {
     validateAccount(accountId);
     const id = validateId(record?.id);
@@ -196,7 +203,10 @@ globalThis.ChatGPTProLocalData = (() => {
     // Prevent a later text-only write from overwriting a newer raw-derived index.
     return transaction([STORES.conversations, STORES.search], 'readwrite', async stores => {
       const raw = await requested(stores[STORES.conversations].get([accountId, entry.id]));
-      if (raw?.complete && raw.dataVersion === entry.dataVersion) {
+      if (raw?.complete && raw.dataVersion !== entry.dataVersion) {
+        throw new Error('全文索引版本与完整 JSON 不一致，请重新索引');
+      }
+      if (raw?.complete) {
         const existing = await requested(stores[STORES.search].get([accountId, entry.id]));
         if (existing?.origin === 'raw') return { indexedAt: existing.indexedAt, reused: true };
       }
@@ -249,12 +259,15 @@ globalThis.ChatGPTProLocalData = (() => {
       origin: 'raw', indexedAt: savedAt
     };
     // A single transaction either commits raw JSON and its matching index,
-    // or neither. Missing derived index invalidates any older one.
+    // or neither. Preserve an existing text-only index only when its version
+    // exactly matches this raw record; otherwise remove the stale version.
     return transaction([STORES.conversations, STORES.search], 'readwrite', async stores => {
+      const previousIndex = search ? null : await requested(stores[STORES.search].get([accountId, id]));
       const writes = [requested(stores[STORES.conversations].put(record))];
-      writes.push(requested(search
-        ? stores[STORES.search].put(search)
-        : stores[STORES.search].delete([accountId, id])));
+      if (search) writes.push(requested(stores[STORES.search].put(search)));
+      else if (!previousIndex || previousIndex.dataVersion !== dataVersion || dataVersion === null) {
+        writes.push(requested(stores[STORES.search].delete([accountId, id])));
+      }
       await Promise.all(writes);
       return { saved: true, dataVersion, indexed: Boolean(search) };
     });
@@ -297,7 +310,8 @@ globalThis.ChatGPTProLocalData = (() => {
   }
 
   return Object.freeze({
-    openDb, upsertDirectory, getDirectory, putSearchRecord, getSearchMetadata, getSearchRecords, clearSearchIndex,
+    openDb, upsertDirectory, getDirectory, getDirectoryRecord,
+    putSearchRecord, getSearchMetadata, getSearchRecords, clearSearchIndex,
     putConversation, getConversation, getStats, getLegacyMetadata,
     DB_NAME, DB_VERSION, LEGACY_SEARCH, UNASSIGNED_ACCOUNT, STORES
   });

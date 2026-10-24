@@ -32,6 +32,7 @@ const APIHandler = (function () {
   let _sessionPromise = null;
   let _syncPromise = null;
   let _syncAccountId = null;
+  const _conversationPromises = new Map();
 
   // Revalidate when a previously backgrounded tab comes back into focus.
   window.addEventListener('focus', () => { _tokenFetchedAt = 0; });
@@ -526,8 +527,44 @@ const APIHandler = (function () {
 
   async function getConversation(conversationId) {
     if (!conversationId) throw new Error('Missing conversation id');
-    const token = await getToken();
-    return fetchAuthedJson(token, `${baseUrl()}/conversation/${encodeURIComponent(conversationId)}`);
+    const accountId = await getAccountId();
+    const key = JSON.stringify([accountId, conversationId]);
+    if (_conversationPromises.has(key)) return _conversationPromises.get(key);
+    const promise = (async () => {
+      // A single-record version lookup avoids scanning the entire directory
+      // once per exported conversation.
+      let updateTime;
+      try {
+        const directory = await localDataMessage({
+          action: 'localDataGetDirectoryRecord', accountId, id: conversationId
+        });
+        updateTime = directory.record?.updateTime ?? undefined;
+        const cached = await localDataMessage({
+          action: 'localDataGetConversation', accountId, id: conversationId, updateTime
+        });
+        if (cached.hit) return cached.raw;
+      } catch (error) {
+        // Temporary IDB failures must not make a valid online conversation
+        // impossible to export. The raw data is still fetched from ChatGPT.
+        console.warn('[ChatGPT Pro] Detail cache read skipped:', error.message);
+      }
+
+      const token = await getToken();
+      const raw = await fetchAuthedJson(token, `${baseUrl()}/conversation/${encodeURIComponent(conversationId)}`);
+      if (await getAccountId() !== accountId) throw new Error('登录账号已切换，已取消详情缓存写入');
+      try {
+        await localDataMessage({
+          action: 'localDataPutConversation', accountId,
+          record: { id: conversationId, raw, updateTime: updateTime ?? raw.update_time ?? raw.updated_at }
+        });
+      } catch (error) {
+        console.warn('[ChatGPT Pro] Detail cache write skipped:', error.message);
+      }
+      return raw;
+    })();
+    _conversationPromises.set(key, promise);
+    try { return await promise; }
+    finally { _conversationPromises.delete(key); }
   }
 
   async function clearCache() {

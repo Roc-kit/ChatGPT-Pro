@@ -151,6 +151,7 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     let activeAccount = 'acct-a';
     let missingIdentity = false;
     let switchMidSync = false;
+    let detailRequests = 0;
     const sentUrls = [];
     window.fetch = async (input, options) => {
       const url = String(input);
@@ -165,6 +166,11 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
         if (switchMidSync) { activeAccount = 'acct-b'; switchMidSync = false; }
       } else if (url.includes('/backend-api/gizmos/snorlax/sidebar')) {
         json = { items: [] };
+      } else if (url.includes('/backend-api/conversation/')) {
+        detailRequests++;
+        const id = decodeURIComponent(url.split('/').pop());
+        json = { id, title: 'remote-details', update_time: 1700000003,
+          mapping: { m: { message: { id: 'm', author: { role: 'user' }, content: { parts: ['details'] } } } } };
       } else throw Error('Unexpected request ' + url);
       return { ok: true, status: 200, json: async () => json, headers: { get() { return null; } } };
     };
@@ -212,6 +218,53 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
       'stale response not written to A');
     check(!(await storage.getDirectory('acct-b')).some(row => row.id === 'race-old-account'),
       'stale response not written to B');
+
+    // S2-1: all existing raw JSON must be reused by getConversation, without
+    // rerequesting the detail API; same-id on different accounts stays isolated.
+    activeAccount = 'acct-a';
+    const cachedDirectory = [];
+    for (let i = 0; i < 100; i++) {
+      const id = 'cached-' + i;
+      cachedDirectory.push({ id, title: id, updateTime: 1700000003 });
+      await storage.putConversation('acct-a', {
+        id, updateTime: 1700000003,
+        raw: { id, title: 'stored-A', mapping: { m: { message: { content: 'cache' } } } }
+      });
+    }
+    await storage.upsertDirectory('acct-a', cachedDirectory);
+    await window.APIHandler.getAccountId(true);
+    const cachedResults = await Promise.all(cachedDirectory.map(item => window.APIHandler.getConversation(item.id)));
+    check(cachedResults.length === 100 && cachedResults.every(item => item.title === 'stored-A'), '100 complete cached chats reused');
+    check(detailRequests === 0, '100 cached chats generate zero detail API calls');
+    activeAccount = 'acct-b';
+    await window.APIHandler.getAccountId(true);
+    const [first, second, third] = await Promise.all([
+      window.APIHandler.getConversation('cached-0'),
+      window.APIHandler.getConversation('cached-0'),
+      window.APIHandler.getConversation('cached-0')
+    ]);
+    check(first.title === 'remote-details' && first === second && second === third,
+      'simultaneous detail callers share same result');
+    check(detailRequests === 1, 'same conversation request coalesced into one network call');
+    check((await storage.getConversation('acct-b', 'cached-0')).hit, 'network response cached in B');
+    check((await storage.getConversation('acct-a', 'cached-0')).raw.title === 'stored-A',
+      'B fetch did not overwrite A cache');
+    check((await window.APIHandler.getConversation('cached-0')).title === 'remote-details' && detailRequests === 1,
+      'subsequent B cache hit is network-free');
+    await storage.upsertDirectory('acct-b', [{ id: 'cached-0', updateTime: 1700000004 }]);
+    await window.APIHandler.getConversation('cached-0');
+    check(detailRequests === 2, 'directory version change triggers exactly one detail fetch');
+    check((await storage.getConversation('acct-b', 'cached-0', 1700000004)).hit,
+      'refreshed cache carries directory version');
+    try {
+      await storage.putSearchRecord('acct-b', {
+        id: 'cached-0', updateTime: 1700000003,
+        title: 'stale', messages: [{ id: 'm', text: 'obsolete' }]
+      });
+      throw Error('stale search index accepted');
+    } catch (error) {
+      check(/索引版本/.test(error.message), 'stale search cannot overwrite newer complete JSON');
+    }
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }
