@@ -280,8 +280,11 @@
     const checkView = () => refreshMessageTimestampsForView();
     window.addEventListener('popstate', checkView);
     window.addEventListener('hashchange', checkView);
+    if (window.navigation?.addEventListener) {
+      window.navigation.addEventListener('navigatesuccess', checkView);
+    }
     window.setInterval(checkView, MESSAGE_ROUTE_CHECK_MS);
-    // Minimap is DOM-only: never fetch additional conversation details.
+    // Minimap reuses rendered turns and checks local raw JSON without network detail requests.
     window.setInterval(syncConversationMinimap, 3000);
     const scheduleActive = () => {
       if (S.minimap.frame) return;
@@ -1711,10 +1714,9 @@
   }
 
   async function clearLocalOnlyRecord(conversationId) {
-    const confirmed = window.confirm(
-      '永久清理这条仅本地对话在扩展中的原始 JSON、全文索引和目录记录？' +
-      '此操作不可撤销；不会请求删除 ChatGPT 云端记录，也不会清理已下载文件。'
-    );
+    const confirmed = window.confirm(window.ChatGPTProI18n.t(
+      '永久清理这条仅本地对话在扩展中的原始 JSON、全文索引和目录记录？此操作不可撤销；不会请求删除 ChatGPT 云端记录，也不会清理已下载文件。'
+    ));
     if (!confirmed) return { canceled: true };
     const accountId = await window.APIHandler.getAccountId(true);
     const result = await runtimeMessage({ action: 'localDataClearLocalOnly', accountId, id: conversationId });
@@ -2149,10 +2151,9 @@
     const accountId = await window.APIHandler.getAccountId(true);
     let policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
     if (!policy.consentAt) {
-      const accepted = consentConfirmedInPopup || window.confirm(
-        '首次建立全文索引将遍历当前账号可读取的完整聊天目录，并按需抓取未缓存的对话正文。' +
-        '原始 JSON 和搜索索引只保存在本机。首次完成后将自动增量更新。是否授权开始？'
-      );
+      const accepted = consentConfirmedInPopup || window.confirm(window.ChatGPTProI18n.t(
+        '首次建立全文索引将遍历当前账号可读取的完整聊天目录，并按需抓取未缓存的对话正文。原始 JSON 和搜索索引只保存在本机。首次完成后将自动增量更新。是否授权开始？'
+      ));
       if (!accepted) return { consentDeclined: true };
       policy = (await runtimeMessage({ action: 'indexPolicyConsent', accountId })).result;
     }
@@ -2924,7 +2925,10 @@
         const explanation = action === 'delete'
           ? '删除 ChatGPT 云端对话不可撤销。扩展会先验证完整 JSON 已保存到本地，删除后保留本地索引和原文。'
           : '归档只影响 ChatGPT 云端的对话列表，不会清理扩展本地数据。';
-        if (!window.confirm(`确定${verb}选中的 ${selected.length} 条对话？\n\n${explanation}\n\n操作可能持续一段时间，失败的条目会保留供重试。`)) return;
+        if (!window.confirm(window.ChatGPTProI18n.format(
+          '确定{action}选中的 {count} 条对话？\n\n{detail}\n\n操作可能持续一段时间，失败的条目会保留供重试。',
+          { action: window.ChatGPTProI18n.t(verb), count: selected.length,
+            detail: window.ChatGPTProI18n.t(explanation) }))) return;
         mutationButtons.concat(batchButtons).forEach(item => { item.disabled = true; });
         let success = 0;
         const failed = [];
@@ -2965,7 +2969,8 @@
           if (failed.length) {
             status.title = failed.join('\n');
             status.style.cursor = 'pointer';
-            status.onclick = () => window.alert(`失败记录：\n${failed.join('\n')}`);
+            status.onclick = () => window.alert(window.ChatGPTProI18n.format(
+              '失败记录：\n{items}', { items: failed.join('\n') }));
           } else {
             status.removeAttribute('title');
             status.style.cursor = '';

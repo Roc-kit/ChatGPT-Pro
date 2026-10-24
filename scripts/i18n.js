@@ -105,6 +105,175 @@
     '刷新失败':'Refresh failed','正在重建本地目录…':'Rebuilding local directory…',
     '完成':'Completed','还需':'Remaining','条聊天记录':'chats',
     '归档':'Archive','删除':'Delete','永久删除':'Delete permanently'
+    ,'时间未知':'Unknown time','未命名项目':'Unnamed project','项目':'Project','项目 · 全部':'All projects'
+    ,'来源 · 全部':'All sources','待核实 · ':'Unverified · ','仅本地 · ':'Local only · '
+    ,'导出该聊天为 Markdown':'Export this conversation as Markdown'
+    ,'导出该聊天原始 JSON':'Export this conversation as original JSON'
+    ,'清理此条仅本地对话的本地数据':'Remove local-only conversation data'
+    ,'重新下载最近一次已持久化的批量 ZIP 分卷':'Download previously saved ZIP parts again'
+    ,'对话消息导航':'Conversation message navigation'
+    ,'标题匹配':'Title match','清理':'Remove','未命名项目':'Unnamed project'
+    ,'没有可导出的聊天':'No conversations available to export'
+    ,'没有找到可导出的用户/助手消息':'No user or assistant messages to export'
+    ,'当前对话分支没有可识别的图片资源':'No accessible images in the current conversation branch'
+    ,'账号已切换':'Account changed','登录账号已切换':'Account changed'
+    ,'返回内容不是图片':'Returned data is not an image','图片内容为空':'Empty image'
+    ,'单张图片超过 80 MiB 下载上限':'Image exceeds 80 MiB limit'
+    ,'导出重试次数已用尽':'Export retries exhausted','找不到已保存的 ZIP 分卷':'Saved ZIP file not found'
+    ,'没有找到匹配内容':'No matching results','当前账号暂无任务':'No tasks for this account'
+    ,'完整原始 JSON 未保存在本机；仅有搜索片段，无法提供完整预览。':'Complete JSON not stored locally; only a search excerpt is available.'
+    ,'全选当前筛选结果':'Select all current filtered conversations'
+    ,'永久删除':'Delete permanently','失败记录':'Failed items'
+    ,'当前账号没有已持久化的 ZIP 分卷':'No saved ZIP parts for the current account'
+    ,'索引任务已暂停，请在任务管理中继续':'Index paused; resume from Task Manager'
+    ,'同账号的导出任务正在其他标签页执行':'A bulk export is already running in another tab'
+    ,'同账号已有其他任务执行，导出任务将排队':'Another account task is running; export is queued'
+    ,'已有同类型的暂停任务，请在任务管理中继续':'A matching task is paused; resume it from Task Manager'
+    ,'首次索引（需授权）':'Initial indexing (consent required)'
+    ,'当前账号没有已持久化的 ZIP 分卷':'No saved ZIP parts for this account'
+    ,'同账号已有其他任务在执行，索引任务将排队':'Another task is running; indexing is queued'
+    ,'索引任务正在其他标签页运行':'Indexing is running in another tab'
+    ,'未授权，未开始首次全量索引':'Consent not granted; initial indexing not started'
+    ,'远端状态待核实':'Remote status not verified'
+    ,'当前账号没有已持久化的 ZIP 分卷':'No saved ZIP parts for the current account'
+    ,'任务进度保存在本地，刷新标签页不会清空':'Task progress is saved locally and survives page reloads'
+    ,'已请求开始索引；请保持 ChatGPT 标签页打开，稍后刷新进度':'Indexing requested; keep ChatGPT open and check task progress'
+    ,'索引任务正在当前标签页准备中':'Index is starting in the current tab'
+    ,'刷新状态':'Refresh status','完整刷新 / 重建缓存':'Full refresh / rebuild cache'
+    ,'首次索引已完成，自动更新已关闭':'Initial index completed; automatic updates disabled'
+    ,'已授权，首次完整索引尚未完成':'Consent granted; initial indexing incomplete'
+    ,'索引任务已创建，请使用下方任务控制和进度查看':'Index task created; view task controls for progress'
+    ,'正在扫描完整聊天目录，包括项目与分页；索引任务准备中':'Scanning all chats and projects for indexing'
+    ,'首次扫描需确认授权；原始 JSON 仅保存在本机':'Initial scan requires consent; original JSON stays local'
+    ,'索引任务已暂停，请在任务管理中继续':'Index paused; resume it in Task Manager'
+    ,'自动增量索引已开启':'Automatic incremental indexing enabled'
+    ,'自动增量索引已关闭；已有任务不受影响':'Automatic indexing disabled; running tasks unaffected'
+    ,'正在核实完整聊天目录（项目和分页）…':'Verifying complete chat directory and projects…'
+    ,'本地已有':'Locally stored','同步失败':'Sync failed','输入关键词以搜索已有的本地索引':'Enter keywords to search the local index'
+    ,'永久清理这条仅本地对话在扩展中的原始 JSON、全文索引和目录记录？此操作不可撤销；不会请求删除 ChatGPT 云端记录，也不会清理已下载文件。':'Permanently remove local JSON, search index and directory record? This cannot be undone. Nothing will be deleted from ChatGPT or your downloaded files.'
+    ,'确定{action}选中的 {count} 条对话？\n\n{detail}\n\n操作可能持续一段时间，失败的条目会保留供重试。':'{action} {count} selected conversations?\n\n{detail}\n\nThis may take a while. Failed items remain selected for retry.'
+    ,'删除 ChatGPT 云端对话不可撤销。扩展会先验证完整 JSON 已保存到本地，删除后保留本地索引和原文。':'Deleting conversations in ChatGPT cannot be undone. The extension verifies that complete JSON is stored locally before deletion and retains the local index and original data.'
+    ,'归档只影响 ChatGPT 云端的对话列表，不会清理扩展本地数据。':'Archiving removes chats from the remote list without clearing local extension data.'
+    ,'仅清除当前已确认账号的 {label}（约 {count} 条）？\n{detail}\n已有下载文件、ZIP 分卷、其他账号及未归属旧索引均不受影响。':'Clear {count} {label} records for the verified account only?\n{detail}\nDownloaded files, ZIP parts, other accounts and unassigned legacy records are unaffected.'
+    ,'不会删除完整 JSON；自动更新会关闭，须手动重新建立索引。':'Full JSON is retained. Automatic indexing will be disabled until you rebuild the index manually.'
+    ,'不会删除全文搜索索引；后续需要正文时将按需重新获取。':'Full-text index is retained. Chat content will be fetched when needed.'
+    ,'首次全文索引会读取当前 ChatGPT 账号全部可读取的聊天目录，并按需获取未缓存的完整聊天正文。本机保存原始 JSON 和搜索索引，首次完成后自动增量更新。是否授权？':'The first index reads all accessible chats from this ChatGPT account, fetching any uncached full content. Original JSON and search data stay on this device. Enable automatic incremental updates after completion. Authorize now?'
+    ,'首次建立全文索引将遍历当前账号可读取的完整聊天目录，并按需抓取未缓存的对话正文。原始 JSON 和搜索索引只保存在本机。首次完成后将自动增量更新。是否授权开始？':'The first index scans all accessible chats and fetches missing content as needed. Raw JSON and the search index stay on this device. Automatic incremental updates follow completion. Authorize now?'
+    ,'永久清理这条仅本地对话在扩展中的原始 JSON、全文索引和目录记录？\n此操作不可撤销；不会请求删除 ChatGPT 云端记录，也不会清理已下载文件。':'Permanently remove this local-only chat from JSON, search index and directory?\nThis cannot be undone; no remote chats or downloaded files are deleted.'
+    ,'读取任务失败':'Failed to load task',' · 等待账号限流冷却':' · Waiting for account rate limit cooldown'
+    ,' · 等待结束，正在恢复':' · Resuming after wait','全文搜索索引':'Full-text search index'
+    ,'· 等待账号限流冷却':'· Waiting for account rate-limit cooldown'
+    ,'· 等待结束，正在恢复':'· Resuming after wait'
+    ,'完整 JSON 缓存':'Full JSON cache','当前账号本地数据数量':'Local data count for this account'
+    ,'已完成首次目录同步':'Initial directory sync complete'
+    ,'ChatGPT 聊天记录':'ChatGPT conversation','导出失败.txt':'export-errors.txt'
+    ,'登录账号已切换，导出任务已停止':'Account switched; export stopped'
+    ,'登录/权限异常，导出任务已暂停；本地分卷与检查点仍保留':'Authentication error; export paused. Saved parts and checkpoints retained.'
+    ,'连续 3 条处理失败，导出任务已暂停；可检查日志后手动继续':'Three consecutive failures. Export paused; review logs before resuming.'
+    ,'扩展后台操作失败':'Extension background operation failed'
+    ,'登录账号已切换，索引任务已停止':'Account changed; indexing stopped'
+    ,'登录/权限异常，任务已暂停':'Authentication error; task paused'
+    ,'登录账号已切换，首次索引已停止':'Account changed; initial indexing stopped'
+    ,'登录账号已切换，请重新打开任务管理':'Account switched; reopen Task Manager'
+    ,'登录账号发生变化，请重试':'Account changed; try again'
+    ,'请先启用扩展':'Enable the extension first'
+    ,'首次全文索引必须由用户明确授权':'Initial indexing requires explicit consent'
+    ,'任务操作无效':'Invalid task operation'
+    ,'当前账号下找不到该任务':'Task not found for current account'
+    ,'当前账号下没有此任务的已保存分卷':'No saved ZIP parts for this task'
+    ,'下载期间账号发生变化':'Account changed during download'
+    ,'登录账号已切换，无法预览旧账号内容':'Account switched; cannot preview previous account data'
+    ,'登录账号已切换，请重新搜索':'Account switched; search again'
+    ,'完整原文尚未保存到本地，未执行云端删除':'Complete JSON not saved locally; remote deletion canceled'
+    ,'云端已删除，但本地状态标记失败，请检查缓存':'Deleted remotely, but local state update failed; check cache'
+    ,'ChatGPT 登录账号无法确认，已停止读取账号缓存':'Unable to verify ChatGPT account; stopped reading account cache'
+    ,'登录账号已切换，停止批量请求':'Account changed; bulk requests stopped'
+    ,'本地数据读取失败':'Failed to read local data'
+    ,'登录账号已切换，请重新同步':'Account switched; sync again'
+    ,'完整目录出现重复分页，已停止以避免循环':'Repeated directory page detected; stopped to prevent a loop'
+    ,'首次全量目录分页提前结束，不能确认完整':'Initial directory ended early; completeness cannot be verified'
+    ,'项目分页游标重复，已停止以避免循环':'Repeated project cursor; stopped to prevent a loop'
+    ,'另一个标签正在同步目录，无法确认首次全量扫描':'Another tab is syncing the directory; initial completeness cannot be verified'
+    ,'GPT 项目元数据连续失败已停止，请稍后手动重试':'GPT project metadata failed repeatedly; try again later'
+    ,'项目目录连续失败已停止，请稍后手动重试':'Project directory failed repeatedly; try again later'
+    ,'登录账号已切换，详情任务已停止':'Account changed; detail task stopped'
+    ,'登录账号已切换，已取消详情缓存写入':'Account changed; detail cache write canceled'
+    ,'仅本地对话没有可导出的完整原始 JSON':'No complete JSON available for local-only conversation'
+    ,'无效的对话操作':'Invalid conversation operation'
+    ,'登录账号已切换，操作已停止':'Account changed; operation stopped'
+    ,'登录账号已切换，请核对远端操作结果':'Account changed; verify the remote operation result'
+    ,'无效的图片文件标识':'Invalid image file identifier'
+    ,'ChatGPT 未提供可下载的图片链接':'ChatGPT did not provide a downloadable image URL'
+    ,'索引操作失败':'Index operation failed','索引事务已中止':'Index transaction aborted'
+    ,'索引事务失败':'Index transaction failed','索引记录缺少 conversation id':'Index record missing conversation ID'
+    ,'无法读取索引状态':'Cannot read index status','无法清理旧索引':'Cannot clear legacy index'
+    ,'首次索引准备中断':'Initial indexing preparation interrupted'
+    ,'目录同步失败，请检查登录状态或冷却后重试':'Directory sync failed; check sign-in or try after cooldown'
+    ,'批量请求进入共享冷却':'Bulk requests entered shared cooldown'
+    ,'连续失败达到阈值，索引任务已暂停':'Index paused after repeated failures'
+    ,'批量任务单条处理失败':'Bulk task item failed','任务状态已修改':'Task status changed'
+    ,'无法打开本地数据缓存':'Cannot open local data cache'
+    ,'旧版数据库连接仍在使用，请重新打开 ChatGPT 标签页':'Old database connection still active; reopen ChatGPT tab'
+    ,'IndexedDB 请求失败':'IndexedDB request failed'
+    ,'IndexedDB 事务已中止':'IndexedDB transaction aborted','IndexedDB 事务失败':'IndexedDB transaction failed'
+    ,'必须提供明确的账号 ID；旧索引不能自动归属给当前账号':'An explicit account ID is required; legacy index cannot be assigned automatically'
+    ,'缺少对话 ID':'Conversation ID missing','对话 JSON 不完整，未写入缓存':'Conversation JSON incomplete; not cached'
+    ,'原始 JSON 与请求的对话 ID 不一致':'Original JSON does not match requested conversation ID'
+    ,'目录应为数组':'Directory must be an array'
+    ,'只能清理已经明确确认仅本地的对话，不能删除在线或待核实记录':'Only confirmed local-only conversations can be cleared'
+    ,'索引记录缺少消息数组':'Index record missing message array'
+    ,'全文索引版本与完整 JSON 不一致，请重新索引':'Index version does not match full JSON; rebuild the index'
+    ,'无法清理当前账号索引':'Cannot clear current account index'
+    ,'搜索索引与原始对话不一致':'Search index does not match original conversation'
+    ,'已有更新版本的完整 JSON，拒绝覆盖旧数据':'Newer full JSON exists; refusing to overwrite with older data'
+    ,'索引准备阶段无效':'Invalid indexing preparation phase'
+    ,'自动更新开关必须是布尔值':'Auto-index setting must be a boolean'
+    ,'请先完成首次全文索引':'Complete initial indexing first'
+    ,'未知的清理类型':'Unknown cleanup type'
+    ,'当前账号有执行中或待执行的任务，请先暂停或取消任务再清理':'Active or pending tasks exist; pause or cancel them before clearing data'
+    ,'清理本地数据失败':'Failed to clear local data'
+    ,'首次全量目录快照必须是数组':'Initial directory snapshot must be an array'
+    ,'首次全量目录快照含重复 ID':'Initial directory snapshot contains duplicate IDs'
+    ,'未授权首次全量索引':'Initial indexing not authorized','目录核实失败':'Directory verification failed'
+    ,'尚未授权首次全量索引':'Initial indexing consent missing'
+    ,'尚未完成可验证的首次全量目录扫描':'Verified initial directory scan incomplete'
+    ,'缺少已核实的全量目录快照':'Verified complete directory snapshot missing'
+    ,'首次索引任务仍在执行或暂停':'Initial indexing task still running or paused'
+    ,'任务内容不能为空':'Task items cannot be empty','任务存在重复的对话 ID':'Task contains duplicate conversation IDs'
+    ,'不支持的任务类型':'Unsupported task type'
+    ,'当前账号未启用自动全文索引':'Automatic indexing not enabled for this account'
+    ,'任务租约已失效，拒绝旧执行器写入':'Task lease expired; stale executor write rejected'
+    ,'找不到当前账号任务':'Task not found for current account'
+    ,'任务阶段无效':'Invalid task phase','无效的任务结果':'Invalid task result'
+    ,'任务检查点顺序不正确':'Invalid task checkpoint order','无效的任务操作':'Invalid task operation'
+    ,'分卷 ZIP 内容为空':'ZIP part is empty','分卷文件名无效':'Invalid ZIP part filename'
+    ,'分卷清单不能为空':'ZIP part manifest cannot be empty'
+    ,'无权写入该导出任务':'Not allowed to write this export task'
+    ,'分卷进度或编号不正确':'Invalid ZIP part progress or number'
+    ,'分卷清单与任务快照不符':'ZIP part manifest does not match task snapshot'
+    ,'已有同编号分卷':'ZIP part number already exists'
+    ,'无效的分卷编号':'Invalid ZIP part number'
+    ,'当前账号下没有该导出任务':'Export task not found for current account'
+    ,'请先取消或结束任务，再清理已保存的 ZIP 分卷':'Cancel or finish the task before clearing saved ZIP parts'
+    ,'ZIP 清理失败':'ZIP cleanup failed','ZIP 下载区间无效':'Invalid ZIP download range'
+    ,'找不到已保存的分卷':'Saved ZIP part not found'
+    ,'分卷上传索引无效':'Invalid ZIP upload index'
+    ,'ZIP 分块编码无效':'Invalid ZIP chunk encoding'
+    ,'无权上传分卷':'Not authorized to upload ZIP part'
+    ,'分卷上传序号错误':'Invalid ZIP upload part number'
+    ,'ZIP 分块数无效':'Invalid ZIP chunk count'
+    ,'无法读取导出任务':'Cannot read export task'
+    ,'ZIP 分块未完整上传':'ZIP chunk upload incomplete'
+    ,'ZIP 上传暂存清理失败':'Failed to clear temporary ZIP upload'
+    ,'详情请求租约已失效':'Detail request lease expired'
+    ,'详情请求租约已失效，拒绝修改共享冷却':'Detail lease expired; cannot modify shared cooldown'
+    ,'不支持的日志类型':'Unsupported log type'
+    ,'日志保留期清理失败':'Failed to purge expired logs'
+    ,'失败记录：\n{items}':'Failed items:\n{items}'
+    ,'无法读取本地完整内容':'Unable to read complete local content'
+    ,'首次索引准备失败':'Failed to prepare initial index'
+    ,'登录账号已切换，操作已停止':'Account changed; operation stopped'
+    ,'并发起下载':'and download started'
   };
   const PACKS = {
     'en': EN,
@@ -396,9 +565,60 @@
     if (current === 'zh-CN') return key;
     return PACKS[current]?.[key] || fallback(key);
   }
+  function format(key, values = {}) {
+    return t(key).replace(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g, (whole, name) =>
+      Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : whole);
+  }
   // Explicit wildcard templates for extension-generated UI only. Do not
   // translate arbitrary ChatGPT page content or the user's chat titles.
   const DYNAMIC = [
+    [/^项目 (.+) 分页游标重复$/, m => `Repeated pagination cursor for project ${m[1]}`],
+    [/^项目 (.+) 分页为空但仍有后续游标$/, m => `Empty page but more cursor results for project ${m[1]}`],
+    [/^ChatGPT 操作失败：HTTP (\d+)$/, m => `ChatGPT operation failed: HTTP ${m[1]}`],
+    [/^无法读取本地完整内容：(.+)$/, m => `${t('无法读取本地完整内容')}: ${translateText(m[1])}`],
+    [/^首次索引准备失败：(.+)$/, m => `${t('首次索引准备失败')}: ${translateText(m[1])}`],
+    [/^正在重试 (\d+) \/ (\d+) · (.+)$/, m => `Retrying ${m[1]}/${m[2]} · ${translateText(m[3])}`],
+    [/^正在(?:归档|永久删除) (\d+) \/ (\d+) · 成功 (\d+)、失败 (\d+)$/, m =>
+      `${valueVerb(m[0])} ${m[1]}/${m[2]} · ${m[3]} succeeded, ${m[4]} failed`],
+    [/^(\d+) \/ (\d+) · 第 (\d+) \/ (\d+) 组$/, m =>
+      `${m[1]} / ${m[2]} · group ${m[3]} / ${m[4]}`],
+    [/^(.+?) · (\d+) 条$/, m => `${translateText(m[1])} · ${m[2]} chats`],
+    [/^当前账号 (\d+) 条(?: · 未归属旧索引 (\d+) 条)?$/, m => `${m[1]} account chats${m[2] ? ` · ${m[2]} unassigned legacy entries` : ''}`],
+    [/^(\d+) \/ (\d+) · 成功 (\d+) · 失败 (\d+)(?: · ZIP (\d+) 卷)?$/, m =>
+      `${m[1]}/${m[2]} · ${m[3]} succeeded · ${m[4]} failed${m[5] ? ` · ${m[5]} ZIP parts` : ''}`],
+    [/^已发起 (\d+) 个分卷下载，请检查浏览器下载提示$/, m => `Started ${m[1]} ZIP part downloads; check browser downloads`],
+    [/^已清理 (\d+) 个本地 ZIP 分卷，原始聊天缓存和任务历史仍保留$/, m => `Deleted ${m[1]} saved ZIP parts; original chat cache and task history remain`],
+    [/^(.+?)操作已提交$/, m => `${translateText(m[1])} request submitted`],
+    [/^任务不可用：(.+)$/, m => `Task unavailable: ${translateText(m[1])}`],
+    [/^请求限流冷却中，至 (.+)$/, m => `Rate-limit cooldown until ${m[1]}`],
+    [/^已从当前账号清除 (\d+) 条(.+)；其他数据保持不变$/, m =>
+      `Removed ${m[1]} ${translateText(m[2])} entries from this account; other data unchanged`],
+    [/^已请求开始索引；请保持 ChatGPT 标签页打开，稍后刷新进度$/, () => t('已请求开始索引；请保持 ChatGPT 标签页打开，稍后刷新进度')],
+    [/^完成 · (\d+) 条聊天记录$/, m => `Completed · ${m[1]} chats`],
+    [/^(.+) · 已完成后台增量同步$/, m => `${translateText(m[1])} · ${t('已完成后台增量同步')}`],
+    [/^当前账号已索引 (\d+) \/ (\d+) 个 · 未归属旧索引 (\d+) 个$/, m =>
+      `Indexed ${m[1]} / ${m[2]} for this account · ${m[3]} unassigned legacy entries`],
+    [/^请求受限，(\d+) 秒后继续 · (.+)$/, m => `Rate limited · resume in ${m[1]}s · ${translateText(m[2])}`],
+    [/^本组完成，(\d+) 秒后继续 · (.+)$/, m => `Batch complete · continue in ${m[1]}s · ${translateText(m[2])}`],
+    [/^请求失败，(\d+) 秒后重试 · (.+)$/, m => `Request failed · retry in ${m[1]}s · ${translateText(m[2])}`],
+    [/^请求受限 · (\d+) 秒后继续 · (.+)$/, m => `Rate limited · resume in ${m[1]}s · ${translateText(m[2])}`],
+    [/^本组完成 · (\d+) 秒后继续 · (.+)$/, m => `Batch complete · continue in ${m[1]}s · ${translateText(m[2])}`],
+    [/^请求失败 · (\d+) 秒后重试 (\d+) \/ (\d+) · (.+)$/, m =>
+      `Request failed · retry in ${m[1]}s (${m[2]}/${m[3]}) · ${translateText(m[4])}`],
+    [/^第 (\d+) 个 ZIP 已保存(并发起下载)? · (\d+) \/ (\d+)$/, m =>
+      `ZIP part ${m[1]} saved${m[2] ? ' and download started' : ''} · ${m[3]}/${m[4]}`],
+    [/^正在更新索引 (.+)$/, m => `Updating index ${translateText(m[1])}`],
+    [/^新增\/更新 (\d+) 个，失败 (\d+) 个$/, m => `${m[1]} added/updated, ${m[2]} failed`],
+    [/^首次索引仍有 (\d+) 条待补全，可再次继续$/, m => `${m[1]} chats remain to be indexed; resume to continue`],
+    [/^索引已是最新 · 更新 (\d+) 个，跳过 (\d+) 个$/, m =>
+      `Index up to date · ${m[1]} updated, ${m[2]} skipped`],
+    [/^已持久化 (\d+) 卷 · 成功 (\d+) 个、失败 (\d+) 个（浏览器下载需单独确认）$/, m =>
+      `${m[1]} saved ZIP parts · ${m[2]} succeeded, ${m[3]} failed (verify browser downloads)`],
+    [/^已发起下载 (\d+) \/ (\d+) 卷（最近一次导出任务）$/, m =>
+      `Downloading saved ZIP part ${m[1]}/${m[2]}`],
+    [/^同步失败，已保留本地数据：(.+)$/, m => `Sync failed; local data retained: ${translateText(m[1])}`],
+    [/^图片下载 HTTP (\d+)$/, m => `Image download HTTP ${m[1]}`],
+    [/^无权写入(.+)$/, m => `Not allowed to write ${translateText(m[1])}`],
     [/^当前账号已索引 (\d+) \/ (\d+) 个 · 未归属旧索引 (\d+) 个$/, m =>
       `Indexed ${m[1]} / ${m[2]} for this account · ${m[3]} unassigned legacy entries`],
     [/^首次建立全文索引需点击授权；不会自动抓取正文。已有索引可搜索 · 当前 (\d+) 条$/, m =>
@@ -434,6 +654,7 @@
     [/^(归档|永久删除)中止：(.+)$/, m => `${t(m[1])} stopped: ${translateText(m[2])}`],
     [/^(\d+)\/(\d+) · (用户|ChatGPT|消息)：(.+)$/, m => `${m[1]}/${m[2]} · ${t(m[3])}: ${m[4]}`]
   ];
+  function valueVerb(text) { return text.startsWith('正在归档') ? 'Archiving' : 'Deleting'; }
   function translateText(source) {
     const value = source.trim();
     if (!value) return source;
@@ -511,6 +732,6 @@
     if (root) { root.dir = current === 'ar' ? 'rtl' : 'ltr'; root.lang = current; }
   }
   setLanguage('auto');
-  scope.ChatGPTProI18n = { t, translateText, apply, watch, setLanguage, setDirection, resolveLanguage,
+  scope.ChatGPTProI18n = { t, format, translateText, apply, watch, setLanguage, setDirection, resolveLanguage,
     get language() { return current; }, get preferred() { return preferred; }, LANGUAGES };
 })(window);
