@@ -13,7 +13,10 @@ const ROOT = path.resolve(__dirname, '..');
 const CHAT_ID = 's6-fixture-conversation';
 const CHAT_URL = `https://chatgpt.com/c/${CHAT_ID}`;
 const BODY = '<!doctype html><html><head><meta charset="utf-8"><title>S6 isolated fixture</title></head>' +
-  `<body><main><h1>Isolated ChatGPT fixture</h1><a href="/c/${CHAT_ID}">Fixture chat</a></main></body></html>`;
+  `<body><main><h1>Isolated ChatGPT fixture</h1><a href="/c/${CHAT_ID}">Fixture chat</a>` +
+  `<section data-message-id="question" data-message-author-role="user"><p>s6 acceptance unique phrase</p></section>` +
+  `<section data-message-id="answer" data-message-author-role="assistant"><p>hello from controlled fixture</p></section>` +
+  `</main></body></html>`;
 const CHAT = { id: CHAT_ID, title: 'Offline acceptance test', update_time: 1770000000,
   current_node: 'answer', mapping: {
     root: { id: 'root', parent: null, children: ['question'], message: null },
@@ -99,7 +102,10 @@ async function main() {
   let extensionId;
   const browserErrors = [];
   cdp.listeners.add(message => {
-    if (message.method === 'Runtime.exceptionThrown') browserErrors.push(message.params?.exceptionDetails?.text);
+    if (message.method === 'Runtime.exceptionThrown') {
+      const details = message.params?.exceptionDetails;
+      browserErrors.push(details?.exception?.description || details?.text || 'unknown runtime exception');
+    }
     if (message.method !== 'Fetch.requestPaused' || message.sessionId !== pageSession) return;
     const url = new URL(message.params.request.url);
     let response;
@@ -186,9 +192,51 @@ async function main() {
     assert.equal(requests.details, 1, 'first index fetched one uncached full JSON exactly once');
     assert(requests.directory > 0 && requests.projectList > 0, 'real strict scan covered normal and project listings');
 
+    // R8 original settings: switches propagate to the real content script and
+    // the message timestamp decoration uses cached full JSON, not a re-fetch.
+    await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').length === 2`),
+    'user + assistant timestamps render from persisted JSON');
+    assert.equal(requests.details, 1, 'timestamp decoration reuses cached JSON');
+    await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').length === 0`),
+    'disabling message timestamps removes decorations');
+    await cdp.eval(popupSession, `(() => {
+      const preset = document.querySelector('#filenamePreset');
+      preset.value = 'date_title';
+      preset.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await eventually(async () => cdp.eval(popupSession,
+      `new Promise(resolve => chrome.storage.local.get('exportFilenameTemplate',
+        data => resolve(data.exportFilenameTemplate === '{created_date}_{title}')))`),
+    'filename preset persists to the real extension settings');
+    assert.match(await cdp.eval(popupSession,
+      `document.querySelector('#filenamePreview').textContent`), /2026-09-05/);
+
     await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
     await eventually(async () => cdp.eval(pageSession,
       `Boolean(document.querySelector('[data-panel-view="search"]'))`), 'directory panel opened');
+    // R8 single exports: exercise both real browser downloads and filename
+    // template, without a second detail request for the same cached version.
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-row-export button').length === 2`),
+    'single conversation export controls mounted');
+    await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-row-export button').click()`);
+    await eventually(async () => fs.readdirSync(downloadPath).some(name =>
+      name === '2026-02-02_Offline acceptance test.md'), 'single Markdown download uses saved filename template');
+    await cdp.eval(pageSession, `document.querySelectorAll('.chatgpt-pro-row-export button')[1].click()`);
+    await eventually(async () => fs.readdirSync(downloadPath).some(name =>
+      name === '2026-02-02_Offline acceptance test.json'), 'single JSON download uses saved filename template');
+    const singleMd = fs.readFileSync(path.join(downloadPath, '2026-02-02_Offline acceptance test.md'), 'utf8');
+    const singleJson = JSON.parse(fs.readFileSync(path.join(downloadPath,
+      '2026-02-02_Offline acceptance test.json'), 'utf8'));
+    assert(singleMd.includes('s6 acceptance unique phrase') && singleMd.includes('hello from controlled fixture'),
+      'Markdown contains user and assistant text');
+    assert.equal(singleJson.conversation.mapping.question.message.id, 'question',
+      'JSON preserves complete original conversation mapping');
+    assert.equal(requests.details, 1, 'both single exports share cached full JSON');
     await cdp.eval(pageSession, `document.querySelector('[data-panel-view="search"]').click()`);
     await cdp.eval(pageSession, `(() => {
       const input = document.querySelector('.chatgpt-pro-fulltext-input');
@@ -295,8 +343,45 @@ async function main() {
     const manifestLabel = Buffer.from('manifest.json');
     assert(secondBytes.includes(manifestLabel), 'second ZIP has manifest entry');
     assert(secondBytes.includes(Buffer.from('s6-batch-54')), 'second ZIP manifest covers final conversation');
+
+    const projectSeed = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
+      action: 'localDataUpsertDirectory', accountId: 's6-isolated-account',
+      records: [{ id: 'r8-project-conversation', title: 'R8 unique project fixture',
+        createTime: 1770000200, updateTime: 1770000200,
+        projectId: 'g-p-r8-project', projectName: 'R8 独立项目',
+        href: '/g/g-p-r8-project/c/r8-project-conversation' }]
+    })`);
+    assert(projectSeed?.success, 'controlled project conversation added to local directory');
+    await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
+    await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `Array.from(document.querySelector('.chatgpt-pro-project-filter').options)
+        .some(option => option.value === 'g-p-r8-project' && option.textContent.includes('R8 独立项目'))`),
+    'project filter includes cached project display name');
+    await cdp.eval(pageSession, `(() => {
+      const filter = document.querySelector('.chatgpt-pro-project-filter');
+      filter.value = 'g-p-r8-project';
+      filter.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-row').length`), 1,
+    'project filter displays only the selected project record');
+    assert.match(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-row-title').textContent`), /R8 unique project fixture/);
+    await cdp.eval(pageSession, `(() => {
+      const filter = document.querySelector('.chatgpt-pro-project-filter');
+      filter.value = '__all__';
+      filter.dispatchEvent(new Event('change', { bubbles: true }));
+      const title = document.querySelector('.chatgpt-pro-title-filter-input');
+      title.value = 'R8 unique';
+      title.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-row').length`), 1,
+    'title filter composes with project navigation');
+    assert.equal(requests.details, 1, 'filtering cached directory never calls conversation detail API');
     assert(!browserErrors.some(Boolean), `Chrome runtime exceptions: ${browserErrors.join('; ')}`);
-    console.log(`S6_EXTENSION_PASS: real MV3 install, popup consent, complete scan, indexed search, cached ZIP and two MD parts downloaded; requests=${JSON.stringify(requests)}`);
+    console.log(`S6_EXTENSION_PASS: real MV3, timestamps, filename settings, single MD/JSON, project/title filter, cached index and two ZIP parts; requests=${JSON.stringify(requests)}`);
   } finally {
     chrome.kill('SIGTERM');
     await sleep(250);

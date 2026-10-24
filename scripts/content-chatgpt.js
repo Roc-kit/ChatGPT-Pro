@@ -2571,7 +2571,7 @@
           Array.from(mutation.addedNodes).some(node =>
             node.nodeType === 1 && (
               window.ChatGPTDomAdapter.containsMessageNode(node) ||
-              window.ChatGPTDomAdapter.containsMessageDecorationTarget(node)
+              window.ChatGPTDomAdapter.containsMessageDecorationTarget?.(node)
             )
           )
         );
