@@ -1719,9 +1719,7 @@
   }
 
   async function clearLocalOnlyRecord(conversationId) {
-    const confirmed = window.confirm(window.ChatGPTProI18n.t(
-      '永久清理这条仅本地对话在扩展中的原始 JSON、全文索引和目录记录？此操作不可撤销；不会请求删除 ChatGPT 云端记录，也不会清理已下载文件。'
-    ));
+    const confirmed = window.confirm(window.ChatGPTProI18n.t('ui.permanentlyRemoveLocalJSONSearchIndexAndDirectory'));
     if (!confirmed) return { canceled: true };
     const accountId = await window.APIHandler.getAccountId(true);
     const result = await runtimeMessage({ action: 'localDataClearLocalOnly', accountId, id: conversationId });
@@ -2157,8 +2155,7 @@
     let policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
     if (!policy.consentAt) {
       const accepted = consentConfirmedInPopup || window.confirm(window.ChatGPTProI18n.t(
-        '首次建立全文索引将遍历当前账号可读取的完整聊天目录，并按需抓取未缓存的对话正文。原始 JSON 和搜索索引只保存在本机。首次完成后将自动增量更新。是否授权开始？'
-      ));
+        'ui.theFirstIndexScansAllAccessibleChatsAnd'));
       if (!accepted) return { consentDeclined: true };
       policy = (await runtimeMessage({ action: 'indexPolicyConsent', accountId })).result;
     }
@@ -2931,9 +2928,11 @@
           ? '删除 ChatGPT 云端对话不可撤销。扩展会先验证完整 JSON 已保存到本地，删除后保留本地索引和原文。'
           : '归档只影响 ChatGPT 云端的对话列表，不会清理扩展本地数据。';
         if (!window.confirm(window.ChatGPTProI18n.format(
-          '确定{action}选中的 {count} 条对话？\n\n{detail}\n\n操作可能持续一段时间，失败的条目会保留供重试。',
-          { action: window.ChatGPTProI18n.t(verb), count: selected.length,
-            detail: window.ChatGPTProI18n.t(explanation) }))) return;
+          'ui.variableVariableSelectedConversationsVariableThisMayTake',
+          { action: window.ChatGPTProI18n.t(action === 'delete' ? 'ui.deletePermanently' : 'ui.archive'),
+            count: selected.length, detail: window.ChatGPTProI18n.t(action === 'delete'
+              ? 'ui.deletingConversationsInChatGPTCannotBeUndoneThe'
+              : 'ui.archivingRemovesChatsFromTheRemoteListWithout') }))) return;
         mutationButtons.concat(batchButtons).forEach(item => { item.disabled = true; });
         let success = 0;
         const failed = [];
@@ -2975,7 +2974,7 @@
             status.title = failed.join('\n');
             status.style.cursor = 'pointer';
             status.onclick = () => window.alert(window.ChatGPTProI18n.format(
-              '失败记录：\n{items}', { items: failed.join('\n') }));
+              'ui.failedItemsVariable', { items: failed.join('\n') }));
           } else {
             status.removeAttribute('title');
             status.style.cursor = '';

@@ -33,6 +33,7 @@
         "scripts/locales/fr.js",
         "scripts/locales/ru.js",
         "scripts/locales/ja.js",
+        "scripts/locales/dynamic-map.js",
         "scripts/i18n.js",
         "scripts/chatgpt-dom-adapter.js",
         "scripts/api-handler.js",

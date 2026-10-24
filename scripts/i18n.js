@@ -10,6 +10,7 @@
   const ZH = PACKS['zh-CN'] || Object.create(null);
   const EN = PACKS.en || Object.create(null);
   const SOURCE_TO_KEY = new Map(Object.entries(ZH).map(([key, source]) => [source, key]));
+  const DYNAMIC_KEYS = scope.ChatGPTProDynamicMessageKeys || [];
   const LANGUAGES = [
     ['auto','自动 / Browser'],['zh-CN','简体中文'],['zh-TW','繁體中文'],
     ['en','English'],['es','Español'],['hi','हिन्दी'],['ar','العربية'],
@@ -124,6 +125,30 @@
     [/^(\d+)\/(\d+) · (用户|ChatGPT|消息)：(.+)$/, m => `${m[1]}/${m[2]} · ${t(m[3])}: ${m[4]}`]
   ];
   function valueVerb(text) { return text.startsWith('正在归档') ? 'Archiving' : 'Deleting'; }
+  function dynamicVariant(index, match) {
+    if (index === 6) return match[0].startsWith('正在归档') ? 'archive' : 'delete';
+    if (index === 65) return match[1] === '正在归档' ? 'archive' : 'delete';
+    if (index === 66) return `${match[1] === '归档' ? 'archive' : 'delete'}${match[4] ? 'WithFailures' : ''}`;
+    if (index === 9 || index === 60) return match[2] ? 'full' : 'short';
+    if (index === 10) return match[5] ? 'full' : 'short';
+    if (index === 27) return match[2] ? 'full' : 'short';
+    return 'default';
+  }
+  function dynamicTranslation(index, match, fallbackFormatter) {
+    const key = DYNAMIC_KEYS[index]?.[dynamicVariant(index, match)];
+    const template = key && (PACKS[current]?.[key] || EN[key]);
+    if (!template) return fallbackFormatter(match);
+    return template.replace(/\{(\d+)\}/g, (whole, digit) => {
+      const value = match[Number(digit)];
+      if (value == null) return '';
+      // Only translate a recognized extension label. Never translate a
+      // conversation title or user message substituted into a status.
+      if (SOURCE_TO_KEY.has(value)) return t(value);
+      // A nested export/index progress message may itself be a recognized
+      // extension status. Never apply this to arbitrary user-authored text.
+      return DYNAMIC.some(([pattern]) => pattern.test(value)) ? translateText(value) : value;
+    });
+  }
   function translateText(source) {
     const value = source.trim();
     if (!value) return source;
@@ -135,9 +160,9 @@
           result = parts.map(part => t(part)).join(' · ');
         }
       }
-      if (current !== 'zh-CN') for (const [pattern, format] of DYNAMIC) {
+      if (current !== 'zh-CN') for (const [index, [pattern, format]] of DYNAMIC.entries()) {
         const match = value.match(pattern);
-        if (match) { result = format(match); break; }
+        if (match) { result = dynamicTranslation(index, match, format); break; }
       }
     }
     if (result === value) return source;

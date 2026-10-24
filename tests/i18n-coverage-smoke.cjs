@@ -13,7 +13,14 @@ environment.window = environment;
 const i18n = loadLocales(environment);
 const packs = environment.ChatGPTProLocalePacks;
 const stableKeys = Object.keys(keys);
-assert(stableKeys.length >= 300, 'the existing UI and error catalog must not be lost');
+assert(stableKeys.length >= 400, 'static and dynamic UI/status keys must be preserved');
+const dynamicKeys = environment.ChatGPTProDynamicMessageKeys;
+assert.equal(dynamicKeys.length, 69, 'all recognized dynamic UI templates must have stable keys');
+for (const variants of dynamicKeys) {
+  for (const key of Object.values(variants)) {
+    assert(Object.prototype.hasOwnProperty.call(keys, key), `missing dynamic catalog key ${key}`);
+  }
+}
 
 const placeholders = value => [...String(value).matchAll(/\{([a-z][a-z0-9_]*)\}/gi)]
   .map(match => match[1]).sort();
@@ -38,4 +45,22 @@ for (const locale of ['en','es','hi','ar','pt-BR','bn','id','fr','ru','ja','zh-T
 }
 assert.equal(i18n.t('ui.thisKeyDoesNotExist'), 'ui.thisKeyDoesNotExist',
   'unknown keys remain visible for future audit tooling');
+const indexed = '当前账号已索引 119 / 119 个 · 未归属旧索引 104 个';
+const downloading = '正在下载图片 2 / 12';
+const confirmations = '确定{action}选中的 {count} 条对话？\n\n{detail}\n\n操作可能持续一段时间，失败的条目会保留供重试。';
+for (const locale of localeNames.filter(locale => locale !== 'zh-CN')) {
+  i18n.setLanguage(locale);
+  const expectedCount = packs[locale]['status.indexedForThisAccountUnassignedLegacyEntries']
+    .replace('{1}', '119').replace('{2}', '119').replace('{3}', '104');
+  const expectedDownload = packs[locale]['status.downloadingImages']
+    .replace('{1}', '2').replace('{2}', '12');
+  assert.equal(i18n.translateText(indexed), expectedCount, `${locale}: native index status missing`);
+  assert.equal(i18n.translateText(downloading), expectedDownload, `${locale}: native download progress missing`);
+  assert.notEqual(i18n.translateText(indexed), indexed, `${locale}: index status not translated`);
+  assert.equal(i18n.format('ui.variableVariableSelectedConversationsVariableThisMayTake',
+    { action: i18n.t('ui.archive'), count: 2, detail: i18n.t('ui.archivingRemovesChatsFromTheRemoteListWithout') })
+    .includes('{count}'), false, `${locale}: untranslated confirmation variable`);
+}
+assert.equal(keys['ui.variableVariableSelectedConversationsVariableThisMayTake'], confirmations,
+  'named-variable confirmation source has not changed accidentally');
 console.log(`I18N_COVERAGE_PASS: ${localeNames.length} locale bundles × ${stableKeys.length} stable keys, complete placeholders, offline runtime`);

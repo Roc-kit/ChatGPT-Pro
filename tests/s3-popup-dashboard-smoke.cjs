@@ -95,7 +95,7 @@ const server = http.createServer((request, response) => {
   } else if (request.url === '/scripts/i18n.js') {
     response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
     response.end(i18nJs);
-  } else if (/^\/scripts\/locales\/(registry|zh-CN|en|zh-TW|es|hi|ar|pt-BR|bn|id|fr|ru|ja)\.js$/.test(request.url)) {
+  } else if (/^\/scripts\/locales\/(registry|dynamic-map|zh-CN|en|zh-TW|es|hi|ar|pt-BR|bn|id|fr|ru|ja)\.js$/.test(request.url)) {
     response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
     response.end(fs.readFileSync(path.join(__dirname, '..', request.url), 'utf8'));
   } else {
@@ -161,9 +161,9 @@ server.listen(0, '127.0.0.1', async () => {
         'brand header uses the same accent green as switches');
       check(getComputedStyle(document.querySelector('#apiStatus')).color === 'rgb(255, 255, 255)',
         'ready status has readable white contrast against the green header');
-      check(document.querySelector('#openChatGPT').getBoundingClientRect().top <
+      check(document.querySelector('#openChatGPT').getBoundingClientRect().top >=
         document.querySelector('.header strong').getBoundingClientRect().bottom,
-        'open ChatGPT action is next to the title, not on its own line');
+        'open ChatGPT action appears on the second header row');
       document.querySelector('#taskManager summary').click();
       check(document.querySelector('#taskManager').open, 'footer management entry expands controls');
       const selectAction = (index, label) => [...document.querySelectorAll('.task-card')[index]

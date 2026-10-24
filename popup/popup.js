@@ -283,9 +283,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const estimated = dashboardStats?.[kind === 'index' ? 'indexed' : 'complete'];
     const detail = kind === 'index' ? '不会删除完整 JSON；自动更新会关闭，须手动重新建立索引。'
       : '不会删除全文搜索索引；后续需要正文时将按需重新获取。';
-    if (!window.confirm(i18n.format(
-      '仅清除当前已确认账号的 {label}（约 {count} 条）？\n{detail}\n已有下载文件、ZIP 分卷、其他账号及未归属旧索引均不受影响。',
-      { label: i18n.t(label), count: estimated ?? '—', detail: i18n.t(detail) }))) return;
+    if (!window.confirm(i18n.format('ui.clearVariableVariableRecordsForTheVerifiedAccount', {
+      label: i18n.t(kind === 'index' ? 'ui.fullTextSearchIndex' : 'ui.fullJSONCache'),
+      count: estimated ?? '—',
+      detail: i18n.t(kind === 'index'
+        ? 'ui.fullJSONIsRetainedAutomaticIndexingWillBe'
+        : 'ui.fullTextIndexIsRetainedChatContentWill')
+    }))) return;
     button.disabled = true;
     try {
       const result = await sendToActiveChatGPT({ action: 'clearAccountLocalData', kind });
@@ -303,9 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
   taskRefresh.addEventListener('click', () => loadTaskDashboard());
   indexStart.addEventListener('click', async () => {
     if (indexStart.disabled) return;
-    if (!indexConsentGranted && !window.confirm(i18n.t(
-      '首次全文索引会读取当前 ChatGPT 账号全部可读取的聊天目录，并按需获取未缓存的完整聊天正文。本机保存原始 JSON 和搜索索引，首次完成后自动增量更新。是否授权？'
-    ))) return;
+    if (!indexConsentGranted && !window.confirm(i18n.t('ui.theFirstIndexReadsAllAccessibleChatsFrom'))) return;
     indexStart.disabled = true;
     try {
       const response = await sendToActiveChatGPT({ action: 'indexBegin', userConfirmedConsent: true });
