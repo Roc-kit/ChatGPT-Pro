@@ -94,7 +94,7 @@ globalThis.ChatGPTProLocalData = (() => {
         db.onversionchange = () => db.close();
         resolve(db);
       };
-      request.onerror = () => reject(request.error || new Error('无法打开本地数据缓存'));
+      request.onerror = () => reject(request.error || new Error('E_DB_OPEN_FAILED'));
       request.onblocked = () => reject(new Error('旧版数据库连接仍在使用，请重新打开 ChatGPT 标签页'));
     });
   }
@@ -102,7 +102,7 @@ globalThis.ChatGPTProLocalData = (() => {
   function requested(request) {
     return new Promise((resolve, reject) => {
       request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error || new Error('IndexedDB 请求失败'));
+      request.onerror = () => reject(request.error || new Error('E_DB_REQUEST_FAILED'));
     });
   }
 
@@ -113,8 +113,8 @@ globalThis.ChatGPTProLocalData = (() => {
       const stores = Object.fromEntries(storeNames.map(name => [name, tx.objectStore(name)]));
       const done = new Promise((resolve, reject) => {
         tx.oncomplete = resolve;
-        tx.onabort = () => reject(tx.error || new Error('IndexedDB 事务已中止'));
-        tx.onerror = () => reject(tx.error || new Error('IndexedDB 事务失败'));
+        tx.onabort = () => reject(tx.error || new Error('E_DB_TRANSACTION_ABORTED'));
+        tx.onerror = () => reject(tx.error || new Error('E_DB_TRANSACTION_FAILED'));
       });
       const result = await operation(stores);
       await done;
@@ -262,7 +262,7 @@ globalThis.ChatGPTProLocalData = (() => {
   function cleanSearchRecord(accountId, record, origin = 'text-only') {
     validateAccount(accountId);
     const id = validateId(record?.id);
-    if (!Array.isArray(record.messages)) throw new Error('索引记录缺少消息数组');
+    if (!Array.isArray(record.messages)) throw new Error('E_INDEX_MESSAGES_MISSING');
     const updateTime = normalizeTime(record.updateTime);
     return {
       accountId, id, updateTime, dataVersion: updateTime,
@@ -397,7 +397,7 @@ globalThis.ChatGPTProLocalData = (() => {
   }
 
   async function setIndexSetupPhase(accountId, phase) {
-    if (phase !== 'scanning' && phase !== null) throw new Error('索引准备阶段无效');
+    if (phase !== 'scanning' && phase !== null) throw new Error('E_INDEX_PREPARATION_PHASE_INVALID');
     return changeRequestState(accountId, state => {
       state.indexSetupPhase = phase;
       state.indexSetupUntil = phase ? Date.now() + 30 * 60 * 1000 : 0;
@@ -614,7 +614,7 @@ globalThis.ChatGPTProLocalData = (() => {
   function ensureLease(task, owner, token, now) {
     if (!task || task.status !== 'running' || !task.lease ||
         task.lease.owner !== owner || task.lease.token !== token || task.lease.expiresAt <= now) {
-      throw new Error('任务租约已失效，拒绝旧执行器写入');
+      throw new Error('E_TASK_LEASE_EXPIRED');
     }
   }
 
@@ -663,7 +663,7 @@ globalThis.ChatGPTProLocalData = (() => {
 
   const TASK_PHASES = new Set(['fetching', 'volume', 'waiting', 'rate-limit']);
   async function updateTaskPhase(accountId, id, owner, token, phase, waitUntil = 0) {
-    if (!TASK_PHASES.has(phase)) throw new Error('任务阶段无效');
+    if (!TASK_PHASES.has(phase)) throw new Error('E_TASK_PHASE_INVALID');
     return mutateTask(accountId, id, (task, now) => {
       ensureLease(task, owner, token, now);
       task.phase = phase;
@@ -681,10 +681,10 @@ globalThis.ChatGPTProLocalData = (() => {
   }
 
   async function checkpointTask(accountId, id, owner, token, itemIndex, outcome, error = '') {
-    if (!['success', 'failed'].includes(outcome)) throw new Error('无效的任务结果');
+    if (!['success', 'failed'].includes(outcome)) throw new Error('E_TASK_RESULT_INVALID');
     return mutateTask(accountId, id, (task, now) => {
       ensureLease(task, owner, token, now);
-      if (itemIndex !== task.nextIndex || itemIndex >= task.items.length) throw new Error('任务检查点顺序不正确');
+      if (itemIndex !== task.nextIndex || itemIndex >= task.items.length) throw new Error('E_TASK_CHECKPOINT_ORDER_INVALID');
       task.nextIndex++;
       if (outcome === 'success') { task.successCount++; task.consecutiveFailures = 0; }
       else {
@@ -733,9 +733,9 @@ globalThis.ChatGPTProLocalData = (() => {
   async function saveExportVolume(accountId, id, owner, token, payload) {
     validateAccount(accountId);
     validateId(id);
-    if (!(payload?.blob instanceof Blob) || payload.blob.size === 0) throw new Error('分卷 ZIP 内容为空');
-    if (typeof payload.filename !== 'string' || !payload.filename.endsWith('.zip')) throw new Error('分卷文件名无效');
-    if (!Array.isArray(payload.entries) || !payload.entries.length) throw new Error('分卷清单不能为空');
+    if (!(payload?.blob instanceof Blob) || payload.blob.size === 0) throw new Error('E_ZIP_PART_EMPTY');
+    if (typeof payload.filename !== 'string' || !payload.filename.endsWith('.zip')) throw new Error('E_ZIP_FILENAME_INVALID');
+    if (!Array.isArray(payload.entries) || !payload.entries.length) throw new Error('E_ZIP_MANIFEST_EMPTY');
     return transaction([STORES.tasks, STORES.taskVolumes], 'readwrite', async stores => {
       const taskStore = stores[STORES.tasks];
       const task = await requested(taskStore.get(id));
@@ -747,12 +747,12 @@ globalThis.ChatGPTProLocalData = (() => {
       const to = payload.toIndex;
       if (!Number.isInteger(to) || to <= from || to > task.items.length ||
           payload.entries.length !== to - from || payload.volume !== (task.volumeCount || 0) + 1) {
-        throw new Error('分卷进度或编号不正确');
+        throw new Error('E_ZIP_PROGRESS_INVALID');
       }
       for (let index = 0; index < payload.entries.length; index++) {
         const entry = payload.entries[index];
         if (entry.id !== task.items[from + index].id || !['success', 'failed'].includes(entry.status)) {
-          throw new Error('分卷清单与任务快照不符');
+          throw new Error('E_ZIP_MANIFEST_MISMATCH');
         }
       }
       const key = [id, payload.volume];
@@ -791,7 +791,7 @@ globalThis.ChatGPTProLocalData = (() => {
   async function getExportVolume(accountId, taskId, volume) {
     validateAccount(accountId);
     validateId(taskId);
-    if (!Number.isInteger(volume) || volume < 1) throw new Error('无效的分卷编号');
+    if (!Number.isInteger(volume) || volume < 1) throw new Error('E_ZIP_PART_NUMBER_INVALID');
     const record = await transaction([STORES.taskVolumes], 'readonly', stores =>
       requested(stores[STORES.taskVolumes].get([taskId, volume])));
     return record?.accountId === accountId ? record : null;
@@ -834,7 +834,7 @@ globalThis.ChatGPTProLocalData = (() => {
 
   async function readExportVolumeChunk(accountId, taskId, volume, offset, size = 256 * 1024) {
     if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(size) || size < 1 || size > 512 * 1024) {
-      throw new Error('ZIP 下载区间无效');
+      throw new Error('E_ZIP_DOWNLOAD_RANGE_INVALID');
     }
     const record = await getExportVolume(accountId, taskId, volume);
     if (!record) throw new Error('找不到已保存的分卷');
@@ -850,17 +850,17 @@ globalThis.ChatGPTProLocalData = (() => {
   async function uploadExportChunk(accountId, id, owner, token, volume, index, base64) {
     validateAccount(accountId);
     if (!Number.isInteger(volume) || volume < 1 || !Number.isInteger(index) || index < 0) {
-      throw new Error('分卷上传索引无效');
+      throw new Error('E_ZIP_UPLOAD_INDEX_INVALID');
     }
     if (typeof base64 !== 'string' || base64.length > 1024 * 1024 ||
         !/^[A-Za-z0-9+/]*={0,2}$/.test(base64) || !base64.length) {
-      throw new Error('ZIP 分块编码无效');
+      throw new Error('E_ZIP_CHUNK_ENCODING_INVALID');
     }
     return transaction([STORES.tasks, STORES.taskVolumeChunks], 'readwrite', async stores => {
       const task = await requested(stores[STORES.tasks].get(id));
       if (!task || task.accountId !== accountId || !task.type.startsWith('export-')) throw new Error('无权上传分卷');
       ensureLease(task, owner, token, Date.now());
-      if (volume !== (task.volumeCount || 0) + 1) throw new Error('分卷上传序号错误');
+      if (volume !== (task.volumeCount || 0) + 1) throw new Error('E_ZIP_UPLOAD_ORDER_INVALID');
       await requested(stores[STORES.taskVolumeChunks].put({ taskId: id, volume, index, token, base64 }));
       return { uploaded: true };
     });
@@ -869,7 +869,7 @@ globalThis.ChatGPTProLocalData = (() => {
   async function finalizeExportChunks(accountId, id, owner, token, payload) {
     validateAccount(accountId);
     if (!Number.isInteger(payload?.chunkCount) || payload.chunkCount < 1 || payload.chunkCount > 8192) {
-      throw new Error('ZIP 分块数无效');
+      throw new Error('E_ZIP_CHUNK_COUNT_INVALID');
     }
     // Read all staged chunks in order. Each chunk has been serialized as a
     // bounded JSON string; finalizing does not depend on the MV3 worker
@@ -881,7 +881,7 @@ globalThis.ChatGPTProLocalData = (() => {
       const parts = [];
       for (let index = 0; index < payload.chunkCount; index++) {
         const chunk = await requested(stores[STORES.taskVolumeChunks].get([id, payload.volume, index]));
-        if (!chunk || chunk.token !== token) throw new Error('ZIP 分块未完整上传');
+        if (!chunk || chunk.token !== token) throw new Error('E_ZIP_CHUNK_INCOMPLETE');
         const decoded = atob(chunk.base64);
         const bytes = new Uint8Array(decoded.length);
         for (let at = 0; at < decoded.length; at++) bytes[at] = decoded.charCodeAt(at);
@@ -904,7 +904,7 @@ globalThis.ChatGPTProLocalData = (() => {
         cursor.delete();
         cursor.continue();
       };
-      request.onerror = () => reject(request.error || new Error('ZIP 上传暂存清理失败'));
+      request.onerror = () => reject(request.error || new Error('E_ZIP_STAGING_CLEANUP_FAILED'));
     })).catch(() => {});
     return result;
   }
@@ -940,7 +940,7 @@ globalThis.ChatGPTProLocalData = (() => {
   async function heartbeatDetailSlot(accountId, owner, token) {
     return changeRequestState(accountId, (state, now) => {
       if (state.detailLease?.owner !== owner || state.detailLease?.token !== token ||
-          state.detailLease.expiresAt <= now) throw new Error('详情请求租约已失效');
+          state.detailLease.expiresAt <= now) throw new Error('E_TASK_DETAIL_LEASE_EXPIRED');
       state.detailLease.expiresAt = now + DETAIL_LEASE_MS;
       return { renewed: true, changed: true };
     });
@@ -949,7 +949,7 @@ globalThis.ChatGPTProLocalData = (() => {
   async function releaseDetailSlot(accountId, owner, token, status, retryAfterMs) {
     return changeRequestState(accountId, (state, now) => {
       if (state.detailLease?.owner !== owner || state.detailLease?.token !== token) {
-        throw new Error('详情请求租约已失效，拒绝修改共享冷却');
+        throw new Error('E_TASK_COOLDOWN_LEASE_EXPIRED');
       }
       state.detailLease = null;
       if (status === 429) {
@@ -990,7 +990,7 @@ globalThis.ChatGPTProLocalData = (() => {
 
   async function addLog(accountId, entry) {
     validateAccount(accountId);
-    if (!LOG_TYPES.has(entry?.type)) throw new Error('不支持的日志类型');
+    if (!LOG_TYPES.has(entry?.type)) throw new Error('E_TASK_LOG_TYPE_UNSUPPORTED');
     const createdAt = Date.now();
     const log = {
       accountId, createdAt, type: entry.type,
@@ -1010,7 +1010,7 @@ globalThis.ChatGPTProLocalData = (() => {
           cursor.delete();
           cursor.continue();
         };
-        expired.onerror = () => reject(expired.error || new Error('日志保留期清理失败'));
+        expired.onerror = () => reject(expired.error || new Error('E_TASK_LOG_PURGE_FAILED'));
       });
       return { id, createdAt };
     });

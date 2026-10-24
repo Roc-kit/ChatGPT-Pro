@@ -142,9 +142,25 @@
       return DYNAMIC.some(([pattern]) => pattern.test(value)) ? translateText(value) : value;
     });
   }
+  // Internal storage/ZIP/scheduler failures carry stable English diagnostics.
+  // The interface shows a short localized explanation, retaining the code
+  // so logs and bug reports can identify the actual underlying condition.
+  function diagnosticMessage(value) {
+    if (!/^E_(?:DB|ZIP|TASK|INDEX)_[A-Z0-9_]+$/.test(value)) return null;
+    const family = value.split('_')[1];
+    const hintKey = {
+      DB: 'ui.failedToReadLocalData',
+      ZIP: 'ui.exportFailed',
+      TASK: 'ui.failedToLoadTask',
+      INDEX: 'ui.indexOperationFailed'
+    }[family];
+    return `${t(hintKey)} (${value})`;
+  }
   function translateText(source) {
     const value = source.trim();
     if (!value) return source;
+    const explanation = diagnosticMessage(value);
+    if (explanation) return source.replace(value, explanation);
     let result = t(value);
     if (result === value) {
       if (current !== 'zh-CN' && value.includes(' · ')) {

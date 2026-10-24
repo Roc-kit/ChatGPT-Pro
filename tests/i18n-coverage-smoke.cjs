@@ -13,7 +13,7 @@ environment.window = environment;
 const i18n = loadLocales(environment);
 const packs = environment.ChatGPTProLocalePacks;
 const stableKeys = Object.keys(keys);
-assert(stableKeys.length >= 400, 'static and dynamic UI/status keys must be preserved');
+assert(stableKeys.length >= 380, 'user-visible interface and dynamic status keys must be preserved');
 const dynamicKeys = environment.ChatGPTProDynamicMessageKeys;
 assert.equal(dynamicKeys.length, 63, 'dynamic UI templates must have no redundant rules');
 for (const variants of dynamicKeys) {
@@ -63,4 +63,16 @@ for (const locale of localeNames.filter(locale => locale !== 'zh-CN')) {
 }
 assert.equal(keys['ui.variableVariableSelectedConversationsVariableThisMayTake'], confirmations,
   'named-variable confirmation source has not changed accidentally');
+for (const locale of localeNames) {
+  i18n.setLanguage(locale);
+  for (const [code, key] of [
+    ['E_DB_REQUEST_FAILED', 'ui.failedToReadLocalData'],
+    ['E_ZIP_CHUNK_ENCODING_INVALID', 'ui.exportFailed'],
+    ['E_TASK_LEASE_EXPIRED', 'ui.failedToLoadTask'],
+    ['E_INDEX_TRANSACTION_FAILED', 'ui.indexOperationFailed']
+  ]) {
+    assert.equal(i18n.translateText(code), `${i18n.t(key)} (${code})`,
+      `${locale}: internal diagnostics must have localized human hints`);
+  }
+}
 console.log(`I18N_COVERAGE_PASS: ${localeNames.length} locale bundles × ${stableKeys.length} stable keys, complete placeholders, offline runtime`);

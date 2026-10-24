@@ -1437,6 +1437,32 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
 インデックス作成の開始を要求しました。ChatGPT のタブを開いたままにして、後ほど進行状況を更新してください。`.split('\n')
       }
     }
+    ,
+    {
+      keys: ['ui.failedToReadLocalData', 'ui.exportFailed',
+        'ui.failedToLoadTask', 'ui.indexOperationFailed'],
+      translations: {
+        'zh-TW': ['本機資料讀取失敗', '匯出失敗', '工作讀取失敗', '索引操作失敗'],
+        es: ['No se pudieron leer los datos locales', 'Error al exportar',
+          'No se pudo cargar la tarea', 'Error al procesar el índice'],
+        hi: ['स्थानीय डेटा नहीं पढ़ा जा सका', 'एक्सपोर्ट विफल रहा',
+          'कार्य लोड नहीं हो सका', 'इंडेक्स प्रक्रिया विफल रही'],
+        ar: ['تعذرت قراءة البيانات المحلية', 'فشل التصدير',
+          'تعذر تحميل المهمة', 'فشلت عملية الفهرسة'],
+        'pt-BR': ['Falha ao ler dados locais', 'Falha na exportação',
+          'Falha ao carregar tarefa', 'Falha na operação de indexação'],
+        bn: ['স্থানীয় ডেটা পড়া যায়নি', 'এক্সপোর্ট ব্যর্থ হয়েছে',
+          'কাজ লোড করা যায়নি', 'ইনডেক্স প্রক্রিয়া ব্যর্থ হয়েছে'],
+        id: ['Gagal membaca data lokal', 'Ekspor gagal',
+          'Gagal memuat tugas', 'Operasi indeks gagal'],
+        fr: ['Impossible de lire les données locales', 'Échec de l’exportation',
+          'Impossible de charger la tâche', 'Échec de l’opération d’indexation'],
+        ru: ['Не удалось прочитать локальные данные', 'Ошибка экспорта',
+          'Не удалось загрузить задачу', 'Ошибка работы с индексом'],
+        ja: ['ローカルデータの読み込みに失敗しました', 'エクスポートに失敗しました',
+          'タスクの読み込みに失敗しました', 'インデックスの処理に失敗しました']
+      }
+    }
   ];
   for (const block of blocks) {
     for (const [locale, translations] of Object.entries(block.translations)) {

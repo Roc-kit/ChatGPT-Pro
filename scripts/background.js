@@ -24,7 +24,7 @@ function openSearchDb() {
 function requestResult(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('索引操作失败'));
+    request.onerror = () => reject(request.error || new Error('E_INDEX_REQUEST_FAILED'));
   });
 }
 
@@ -35,8 +35,8 @@ async function withSearchStore(mode, operation) {
     const store = transaction.objectStore(SEARCH_STORE);
     const done = new Promise((resolve, reject) => {
       transaction.oncomplete = resolve;
-      transaction.onabort = () => reject(transaction.error || new Error('索引事务已中止'));
-      transaction.onerror = () => reject(transaction.error || new Error('索引事务失败'));
+      transaction.onabort = () => reject(transaction.error || new Error('E_INDEX_TRANSACTION_ABORTED'));
+      transaction.onerror = () => reject(transaction.error || new Error('E_INDEX_TRANSACTION_FAILED'));
     });
     const result = await operation(store);
     await done;
@@ -74,7 +74,7 @@ async function upsertSearchRecord(record) {
       createTime: Number(message?.createTime || 0)
     })).filter(message => message.text) : []
   };
-  if (!clean.id) throw new Error('索引记录缺少 conversation id');
+  if (!clean.id) throw new Error('E_INDEX_CONVERSATION_ID_MISSING');
   await withSearchStore('readwrite', store => requestResult(store.put(clean)));
   return { success: true, indexedAt: clean.indexedAt };
 }
