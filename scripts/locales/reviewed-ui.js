@@ -1556,6 +1556,122 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'ローカルに {1} 件のチャットを保存済み。変更を確認中…'
         ]
       }
+    },
+    {
+      // Bulk conversation export: distinguish saved ZIP parts from downloads
+      // that have merely been initiated by the browser.
+      keys: [
+        'status.succeededFailedZIPParts',
+        'status.succeededFailed',
+        'status.startedZIPPartDownloadsCheckBrowserDownloads',
+        'status.deletedSavedZIPPartsOriginalChatCache',
+        'status.zipPartSavedAndDownloadStarted',
+        'status.zipPartSaved',
+        'status.savedZIPPartsSucceededFailedVerifyBrowser',
+        'status.downloadingSavedZIPPart'
+      ],
+      translations: {
+        'zh-TW': [
+          '{1}/{2} · 成功 {3} 筆 · 失敗 {4} 筆 · ZIP 分卷 {5} 個',
+          '{1}/{2} · 成功 {3} 筆 · 失敗 {4} 筆',
+          '已發起 {1} 個 ZIP 分卷的下載，請確認瀏覽器下載狀態',
+          '已清除 {1} 個本機 ZIP 分卷；原始對話快取及工作記錄仍保留',
+          '第 {1} 個 ZIP 分卷已儲存並發起下載 · {3}/{4}',
+          '第 {1} 個 ZIP 分卷已儲存 · {3}/{4}',
+          '已儲存 {1} 個 ZIP 分卷 · 成功 {2} 筆、失敗 {3} 筆（請另外確認瀏覽器是否下載完成）',
+          '已發起下載已儲存的 ZIP 分卷 {1}/{2}'
+        ],
+        es: [
+          '{1}/{2} · {3} correctas · {4} fallidas · {5} partes ZIP',
+          '{1}/{2} · {3} correctas · {4} fallidas',
+          'Se ha iniciado la descarga de {1} partes ZIP. Comprueba las descargas del navegador',
+          'Se han eliminado {1} partes ZIP locales; se conservan la caché de conversaciones y el historial de tareas',
+          'Parte ZIP {1} guardada; descarga iniciada · {3}/{4}',
+          'Parte ZIP {1} guardada · {3}/{4}',
+          '{1} partes ZIP guardadas · {2} correctas, {3} fallidas (comprueba por separado las descargas del navegador)',
+          'Descarga iniciada de la parte ZIP guardada {1}/{2}'
+        ],
+        hi: [
+          '{1}/{2} · {3} सफल · {4} विफल · ZIP के {5} हिस्से',
+          '{1}/{2} · {3} सफल · {4} विफल',
+          'ZIP के {1} हिस्सों का डाउनलोड शुरू किया गया है। ब्राउज़र में डाउनलोड की स्थिति जाँचें',
+          'स्थानीय ZIP के {1} हिस्से हटा दिए गए हैं; मूल चैट कैश और कार्य इतिहास सुरक्षित हैं',
+          'ZIP का हिस्सा {1} सेव हो गया है और डाउनलोड शुरू कर दिया गया है · {3}/{4}',
+          'ZIP का हिस्सा {1} सेव हो गया है · {3}/{4}',
+          'ZIP के {1} हिस्से सेव हुए · {2} सफल, {3} विफल (ब्राउज़र में डाउनलोड पूरा होने की अलग से जाँच करें)',
+          'सेव किए गए ZIP हिस्से {1}/{2} का डाउनलोड शुरू किया गया है'
+        ],
+        ar: [
+          '{1}/{2} · نجح {3} · فشل {4} · {5} أجزاء ZIP',
+          '{1}/{2} · نجح {3} · فشل {4}',
+          'بدأ تنزيل {1} من أجزاء ZIP. تحقّق من حالة التنزيلات في المتصفح',
+          'حُذف {1} من أجزاء ZIP المحلية؛ ولا تزال ذاكرة المحادثات الأصلية وسجل المهام محفوظين',
+          'حُفظ جزء ZIP رقم {1} وبدأ تنزيله · {3}/{4}',
+          'حُفظ جزء ZIP رقم {1} · {3}/{4}',
+          'تم حفظ {1} من أجزاء ZIP · نجح {2} وفشل {3} (تحقّق بشكل منفصل من اكتمال التنزيل في المتصفح)',
+          'بدأ تنزيل جزء ZIP المحفوظ رقم {1} من أصل {2}'
+        ],
+        'pt-BR': [
+          '{1}/{2} · {3} com sucesso · {4} com falha · {5} partes ZIP',
+          '{1}/{2} · {3} com sucesso · {4} com falha',
+          'O download de {1} partes ZIP foi iniciado. Confira os downloads no navegador',
+          '{1} partes ZIP locais foram removidas; o cache original das conversas e o histórico das tarefas foram mantidos',
+          'Parte ZIP {1} salva e download iniciado · {3}/{4}',
+          'Parte ZIP {1} salva · {3}/{4}',
+          '{1} partes ZIP salvas · {2} com sucesso, {3} com falha (confira separadamente os downloads no navegador)',
+          'Download iniciado da parte ZIP salva {1}/{2}'
+        ],
+        bn: [
+          '{1}/{2} · {3}টি সফল · {4}টি ব্যর্থ · ZIP-এর {5}টি অংশ',
+          '{1}/{2} · {3}টি সফল · {4}টি ব্যর্থ',
+          'ZIP-এর {1}টি অংশ ডাউনলোড শুরু হয়েছে। ব্রাউজারের ডাউনলোডের অবস্থা পরীক্ষা করুন',
+          'স্থানীয় ZIP-এর {1}টি অংশ সরানো হয়েছে; মূল চ্যাট ক্যাশ ও কাজের ইতিহাস অক্ষত আছে',
+          'ZIP-এর {1} নম্বর অংশ সংরক্ষিত হয়েছে এবং ডাউনলোড শুরু হয়েছে · {3}/{4}',
+          'ZIP-এর {1} নম্বর অংশ সংরক্ষিত হয়েছে · {3}/{4}',
+          'ZIP-এর {1}টি অংশ সংরক্ষিত · {2}টি সফল, {3}টি ব্যর্থ (ব্রাউজারে ডাউনলোড শেষ হয়েছে কি না আলাদাভাবে দেখুন)',
+          'সংরক্ষিত ZIP-এর {1}/{2} নম্বর অংশ ডাউনলোড শুরু হয়েছে'
+        ],
+        id: [
+          '{1}/{2} · {3} berhasil · {4} gagal · {5} bagian ZIP',
+          '{1}/{2} · {3} berhasil · {4} gagal',
+          'Pengunduhan {1} bagian ZIP telah dimulai. Periksa status unduhan di browser',
+          '{1} bagian ZIP lokal dihapus; cache percakapan asli dan riwayat tugas tetap disimpan',
+          'Bagian ZIP {1} tersimpan dan pengunduhan dimulai · {3}/{4}',
+          'Bagian ZIP {1} tersimpan · {3}/{4}',
+          '{1} bagian ZIP tersimpan · {2} berhasil, {3} gagal (periksa penyelesaian unduhan di browser secara terpisah)',
+          'Pengunduhan bagian ZIP tersimpan {1}/{2} telah dimulai'
+        ],
+        fr: [
+          '{1}/{2} · {3} réussites · {4} échecs · {5} parties ZIP',
+          '{1}/{2} · {3} réussites · {4} échecs',
+          'Le téléchargement de {1} parties ZIP a été lancé. Vérifiez les téléchargements du navigateur',
+          '{1} parties ZIP locales supprimées ; le cache des conversations d’origine et l’historique des tâches sont conservés',
+          'Partie ZIP {1} enregistrée et téléchargement lancé · {3}/{4}',
+          'Partie ZIP {1} enregistrée · {3}/{4}',
+          '{1} parties ZIP enregistrées · {2} réussites, {3} échecs (vérifiez séparément les téléchargements du navigateur)',
+          'Téléchargement lancé pour la partie ZIP enregistrée {1}/{2}'
+        ],
+        ru: [
+          '{1}/{2} · успешно: {3} · ошибок: {4} · частей ZIP: {5}',
+          '{1}/{2} · успешно: {3} · ошибок: {4}',
+          'Запущена загрузка {1} частей ZIP. Проверьте загрузки в браузере',
+          'Удалено локальных частей ZIP: {1}; исходный кэш чатов и история задач сохранены',
+          'Часть ZIP № {1} сохранена, загрузка запущена · {3}/{4}',
+          'Часть ZIP № {1} сохранена · {3}/{4}',
+          'Сохранено частей ZIP: {1} · успешно: {2}, ошибок: {3} (завершение загрузок в браузере проверяется отдельно)',
+          'Запущена загрузка сохранённой части ZIP {1}/{2}'
+        ],
+        ja: [
+          '{1}/{2} · 成功 {3} 件 · 失敗 {4} 件 · ZIP 分割ファイル {5} 個',
+          '{1}/{2} · 成功 {3} 件 · 失敗 {4} 件',
+          'ZIP 分割ファイル {1} 個のダウンロードを開始しました。ブラウザのダウンロード状況を確認してください',
+          'ローカルの ZIP 分割ファイル {1} 個を削除しました。元のチャットキャッシュとタスク履歴は残ります',
+          'ZIP 分割ファイル {1} を保存し、ダウンロードを開始しました · {3}/{4}',
+          'ZIP 分割ファイル {1} を保存しました · {3}/{4}',
+          'ZIP 分割ファイル {1} 個を保存 · 成功 {2} 件、失敗 {3} 件（ブラウザでのダウンロード完了は別途確認してください）',
+          '保存済み ZIP 分割ファイル {1}/{2} のダウンロードを開始しました'
+        ]
+      }
     }
   ];
   for (const block of blocks) {

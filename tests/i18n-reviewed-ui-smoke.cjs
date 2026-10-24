@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 138, 'reviewed interface, safety, indexing and diagnostic hints include 138 strings');
+assert.equal(keys.length, 146, 'reviewed interface, safety, indexing, ZIP export and diagnostic hints include 146 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -83,4 +83,38 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
       `${locale}/${key}: actual dynamic index status differs from reviewed translation`);
   }
 }
-console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, six live indexing statuses and placeholders`);
+// ZIP parts are saved locally before Chrome downloads complete. Confirm both
+// optional message variants and the exact runtime-facing Chinese source text.
+const zipStatuses = [
+  ['status.succeededFailedZIPParts', '3 / 10 · 成功 2 · 失败 1 · ZIP 4 卷',
+    { 1: '3', 2: '10', 3: '2', 4: '1', 5: '4' }],
+  ['status.succeededFailed', '3 / 10 · 成功 2 · 失败 1',
+    { 1: '3', 2: '10', 3: '2', 4: '1' }],
+  ['status.startedZIPPartDownloadsCheckBrowserDownloads',
+    '已发起 4 个分卷下载，请检查浏览器下载提示', { 1: '4' }],
+  ['status.deletedSavedZIPPartsOriginalChatCache',
+    '已清理 4 个本地 ZIP 分卷，原始聊天缓存和任务历史仍保留', { 1: '4' }],
+  ['status.zipPartSavedAndDownloadStarted', '第 2 个 ZIP 已保存并发起下载 · 8 / 20',
+    { 1: '2', 3: '8', 4: '20' }],
+  ['status.zipPartSaved', '第 2 个 ZIP 已保存 · 8 / 20',
+    { 1: '2', 3: '8', 4: '20' }],
+  ['status.savedZIPPartsSucceededFailedVerifyBrowser',
+    '已持久化 4 卷 · 成功 2 个、失败 1 个（浏览器下载需单独确认）',
+    { 1: '4', 2: '2', 3: '1' }],
+  ['status.downloadingSavedZIPPart',
+    '已发起下载 2 / 4 卷（最近一次导出任务）', { 1: '2', 2: '4' }]
+];
+for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(locale))) {
+  i18n.setLanguage(locale);
+  for (const [key, source, args] of zipStatuses) {
+    const template = packs[locale][key];
+    const slots = [...template.matchAll(/\{(\d+)\}/g)].map(match => Number(match[1]));
+    assert.deepEqual(slots.sort((a, b) => a - b),
+      Object.keys(args).map(Number).sort((a, b) => a - b),
+      `${locale}/${key}: ZIP status placeholders missing, duplicated, or changed`);
+    const rendered = template.replace(/\{(\d+)\}/g, (_, index) => args[index]);
+    assert.equal(i18n.translateText(source), rendered,
+      `${locale}/${key}: ZIP status does not use its reviewed translation`);
+  }
+}
+console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, six indexing and eight ZIP status templates`);
