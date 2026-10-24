@@ -281,8 +281,9 @@ const APIHandler = (function () {
     const changed = [];
     let offset = 0;
     let total = Infinity;
+    const seenPages = strictFull ? new Set() : null;
 
-    for (let page = 0; page < CFG.MAX_PAGES && offset < total; page++) {
+    for (let page = 0; (strictFull || page < CFG.MAX_PAGES) && offset < total; page++) {
       const url = new URL(`${baseUrl()}/conversations`);
       url.searchParams.set('offset', String(offset));
       url.searchParams.set('limit', String(CFG.PAGE_SIZE));
@@ -290,6 +291,11 @@ const APIHandler = (function () {
       const data = await fetchAuthedJson(token, url.toString());
       const items = Array.isArray(data) ? data : (data.items || data.conversations || []);
       if (page === 0 && Number.isFinite(data?.total)) total = data.total;
+      if (strictFull && items.length) {
+        const signature = items.map(item => item.id).join('|');
+        if (seenPages.has(signature)) throw new Error('完整目录出现重复分页，已停止以避免循环');
+        seenPages.add(signature);
+      }
 
       let reachedKnownBoundary = false;
       for (const item of items) {
@@ -311,12 +317,8 @@ const APIHandler = (function () {
         }
         break;
       }
-      if (strictFull && page === CFG.MAX_PAGES - 1 &&
-          (total === Infinity || offset + items.length < total)) {
-        throw new Error('首次全量目录超过分页上限，不能确认完整');
-      }
       offset += CFG.PAGE_SIZE;
-      if (page < CFG.MAX_PAGES - 1) await sleep(CFG.INTER_PAGE_MS);
+      await sleep(CFG.INTER_PAGE_MS);
     }
     return changed;
   }
@@ -324,8 +326,14 @@ const APIHandler = (function () {
   async function fetchProjects(token, strictFull = false) {
     const projects = [];
     let cursor = null;
+    const seenCursors = strictFull ? new Set() : null;
 
-    for (let page = 0; page < CFG.MAX_PROJECT_PAGES; page++) {
+    for (let page = 0; strictFull || page < CFG.MAX_PROJECT_PAGES; page++) {
+      if (strictFull) {
+        const cursorKey = cursor ?? '__start__';
+        if (seenCursors.has(cursorKey)) throw new Error('项目分页游标重复，已停止以避免循环');
+        seenCursors.add(cursorKey);
+      }
       const url = new URL(`${baseUrl()}/gizmos/snorlax/sidebar`);
       url.searchParams.set('owned_only', 'true');
       url.searchParams.set('conversations_per_gizmo', '0');
@@ -341,17 +349,11 @@ const APIHandler = (function () {
           shortUrl: String(gizmo.short_url || item?.gizmo?.short_url || item?.short_url || gizmo.id),
           name: projectNameFromSidebarItem(item, gizmo)
         });
-        if (projects.length >= CFG.MAX_PROJECTS) break;
+        if (!strictFull && projects.length >= CFG.MAX_PROJECTS) break;
       }
 
       cursor = data?.cursor || null;
-      if (projects.length >= CFG.MAX_PROJECTS && strictFull) {
-        throw new Error('项目数达到扫描上限，不能确认首次目录完整');
-      }
-      if (!cursor || projects.length >= CFG.MAX_PROJECTS) break;
-      if (strictFull && page === CFG.MAX_PROJECT_PAGES - 1) {
-        throw new Error('项目目录分页达到上限，不能确认完整');
-      }
+      if (!cursor || (!strictFull && projects.length >= CFG.MAX_PROJECTS)) break;
       await sleep(CFG.INTER_PAGE_MS);
     }
     return projects;
@@ -360,8 +362,13 @@ const APIHandler = (function () {
   async function fetchProjectIncremental(token, project, cachedMap, forceFull, strictFull = false) {
     const changed = [];
     let cursor = '0';
+    const seenCursors = strictFull ? new Set() : null;
 
-    for (let page = 0; page < CFG.MAX_PROJECT_PAGES; page++) {
+    for (let page = 0; strictFull || page < CFG.MAX_PROJECT_PAGES; page++) {
+      if (strictFull) {
+        if (seenCursors.has(cursor)) throw new Error(`项目 ${project.id} 分页游标重复`);
+        seenCursors.add(cursor);
+      }
       const url = new URL(`${baseUrl()}/gizmos/${encodeURIComponent(project.id)}/conversations`);
       url.searchParams.set('cursor', cursor);
       const data = await fetchAuthedJson(token, url.toString());
@@ -385,9 +392,6 @@ const APIHandler = (function () {
         throw new Error(`项目 ${project.id} 分页为空但仍有后续游标`);
       }
       if (reachedKnownBoundary || !next || items.length === 0) break;
-      if (strictFull && page === CFG.MAX_PROJECT_PAGES - 1) {
-        throw new Error(`项目 ${project.id} 的聊天分页达到上限，不能确认完整`);
-      }
       cursor = String(next);
       await sleep(CFG.INTER_PAGE_MS);
     }

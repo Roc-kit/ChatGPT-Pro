@@ -1727,15 +1727,17 @@
     return result;
   }
 
-  let autoIndexLastCheckedAt = 0;
+  const autoIndexLastCheckedByAccount = new Map();
   const AUTO_INDEX_MIN_CHECK_MS = 5 * 60 * 1000;
   async function maybeAutoIncrementalIndex(records) {
     if (!S.settings.enabled || document.hidden || !records?.length) return { skipped: 'inactive' };
-    if (Date.now() - autoIndexLastCheckedAt < AUTO_INDEX_MIN_CHECK_MS) return { skipped: 'recent' };
     const accountId = await window.APIHandler.getAccountId();
+    if (Date.now() - (autoIndexLastCheckedByAccount.get(accountId) || 0) < AUTO_INDEX_MIN_CHECK_MS) {
+      return { skipped: 'recent' };
+    }
     const policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
     if (!policy?.initialCompletedAt) return { skipped: 'initial-consent-or-index-incomplete' };
-    autoIndexLastCheckedAt = Date.now();
+    autoIndexLastCheckedByAccount.set(accountId, Date.now());
     const result = await updateFullTextIndex(records);
     return { ...result, automatic: true };
   }
