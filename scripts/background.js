@@ -1,5 +1,9 @@
 /** ChatGPT Pro - background service worker */
 
+// S1: upgrade the existing IndexedDB in-place. The version-1 search store is
+// deliberately retained until its unassigned records can be reconciled.
+importScripts('local-data-store.js');
+
 const DEFAULT_SETTINGS = {
   enabled: true,
   showSidebarTime: false,
@@ -11,24 +15,10 @@ const DEFAULT_SETTINGS = {
   panelSize: { width: 580, height: 560 }
 };
 
-const SEARCH_DB_NAME = 'ChatGPTProSearch';
-const SEARCH_DB_VERSION = 1;
 const SEARCH_STORE = 'conversations';
 
 function openSearchDb() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(SEARCH_DB_NAME, SEARCH_DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      const store = db.objectStoreNames.contains(SEARCH_STORE)
-        ? request.transaction.objectStore(SEARCH_STORE)
-        : db.createObjectStore(SEARCH_STORE, { keyPath: 'id' });
-      if (!store.indexNames.contains('updateTime')) store.createIndex('updateTime', 'updateTime');
-      if (!store.indexNames.contains('indexedAt')) store.createIndex('indexedAt', 'indexedAt');
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('无法打开全文搜索索引'));
-  });
+  return ChatGPTProLocalData.openDb();
 }
 
 function requestResult(request) {
@@ -107,25 +97,25 @@ async function searchIndexMetadata() {
 }
 
 async function pruneSearchIndex(keepIds) {
+  // Absence from a partial/failed remote directory is NOT proof of deletion.
+  // Previous behavior irreversibly removed local full-text results. Until S4
+  // implements verified account-scoped deletion detection, retain them.
   const keep = new Set((keepIds || []).map(String));
-  let removed = 0;
-  await withSearchStore('readwrite', store => new Promise((resolve, reject) => {
+  const retainedUnverified = await withSearchStore('readonly', store => new Promise((resolve, reject) => {
+    let count = 0;
     const request = store.openCursor();
     request.onsuccess = () => {
       const cursor = request.result;
       if (!cursor) {
-        resolve();
+        resolve(count);
         return;
       }
-      if (!keep.has(String(cursor.key))) {
-        cursor.delete();
-        removed++;
-      }
+      if (!keep.has(String(cursor.key))) count++;
       cursor.continue();
     };
     request.onerror = () => reject(request.error || new Error('无法清理旧索引'));
   }));
-  return { success: true, removed };
+  return { success: true, removed: 0, retainedUnverified };
 }
 
 async function searchFullText(query, limit = 200) {
@@ -207,6 +197,36 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'localDataPutConversation') {
+    ChatGPTProLocalData.putConversation(message.accountId, message.record)
+      .then(result => sendResponse({ success: true, ...result }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  if (message.action === 'localDataGetConversation') {
+    ChatGPTProLocalData.getConversation(message.accountId, message.id, message.updateTime)
+      .then(result => sendResponse({ success: true, ...result }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  if (message.action === 'localDataUpsertDirectory') {
+    ChatGPTProLocalData.upsertDirectory(message.accountId, message.records)
+      .then(result => sendResponse({ success: true, ...result }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  if (message.action === 'localDataStats') {
+    ChatGPTProLocalData.getStats(message.accountId)
+      .then(result => sendResponse({ success: true, ...result }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  if (message.action === 'localDataLegacyStats') {
+    ChatGPTProLocalData.getLegacyMetadata()
+      .then(result => sendResponse({ success: true, ...result }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
   if (message.action === 'searchIndexUpsert') {
     upsertSearchRecord(message.record).then(sendResponse).catch(error => sendResponse({ success: false, error: error.message }));
     return true;
