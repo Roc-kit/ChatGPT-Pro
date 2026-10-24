@@ -821,10 +821,11 @@
 
     container.replaceChildren();
     for (const rec of sorted) {
-      const row = document.createElement('a');
+      const onlyLocal = rec.remoteState === 'local-only';
+      const row = document.createElement(onlyLocal ? 'div' : 'a');
       row.className = 'chatgpt-pro-row';
-      row.href = rec.href || `/c/${rec.id}`;
-      row.addEventListener('click', event => {
+      if (!onlyLocal) row.href = rec.href || `/c/${rec.id}`;
+      if (!onlyLocal) row.addEventListener('click', event => {
         if (!S.settings.openInBackground) return;
         if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
@@ -858,7 +859,8 @@
 
       const title = document.createElement('span');
       title.className = 'chatgpt-pro-row-title';
-      title.textContent = rec.title;
+      title.textContent = `${onlyLocal ? '仅本地 · ' : rec.remoteState === 'unverified' ? '待核实 · ' : ''}${rec.title}`;
+      if (onlyLocal) row.title = '官方明确删除标记，原始数据和导出保留在本地';
 
       const project = document.createElement('span');
       project.className = 'chatgpt-pro-row-project';
@@ -1876,7 +1878,7 @@
   }
 
   async function openFullTextSearchResult(result) {
-    if (result.origin === 'legacy-unassigned') return;
+    if (result.origin === 'legacy-unassigned' || result.remoteState === 'local-only') return;
     if (result.conversationId === currentConversationId()) {
       if (result.messageId) await jumpToSearchMessage(result.messageId, result.snippet);
       return;
@@ -1902,19 +1904,43 @@
     }
     for (const result of results) {
       const legacy = result.origin === 'legacy-unassigned';
-      const button = document.createElement(legacy ? 'div' : 'button');
+      const localOnly = result.remoteState === 'local-only';
+      const button = document.createElement(legacy || localOnly ? 'div' : 'button');
       button.type = 'button';
       button.className = 'chatgpt-pro-search-result';
       const title = document.createElement('strong');
       title.textContent = result.title;
       const meta = document.createElement('span');
       meta.className = 'chatgpt-pro-search-result-meta';
-      meta.textContent = [legacy ? '未归属历史索引 · 不可确认在线链接或完整导出' : '', result.role === 'user' ? '用户' : (result.role === 'assistant' ? 'ChatGPT' : ''), searchResultTime(result)].filter(Boolean).join(' · ');
+      meta.textContent = [legacy ? '未归属历史索引 · 不可确认在线链接或完整导出'
+        : localOnly ? '仅本地 · 已确认官方删除' : result.remoteState === 'unverified' ? '远端状态待核实' : '',
+        result.role === 'user' ? '用户' : (result.role === 'assistant' ? 'ChatGPT' : ''), searchResultTime(result)].filter(Boolean).join(' · ');
       const snippet = document.createElement('span');
       snippet.className = 'chatgpt-pro-search-result-snippet';
       snippet.textContent = result.snippet;
       button.append(title, meta, snippet);
-      if (!legacy) button.addEventListener('click', () => openFullTextSearchResult(result));
+      if (localOnly) {
+        const exports = document.createElement('span');
+        exports.className = 'chatgpt-pro-row-export';
+        for (const [label, action] of [['MD', exportConversationMarkdown], ['JSON', exportConversationJson]]) {
+          const exportButton = document.createElement('button');
+          exportButton.type = 'button';
+          exportButton.className = 'chatgpt-pro-export-button';
+          exportButton.textContent = label;
+          exportButton.addEventListener('click', async () => {
+            exportButton.disabled = true;
+            try {
+              await action({ id: result.conversationId, title: result.title, href: result.href,
+                updateTime: result.updateTime });
+            } catch (error) {
+              exportButton.title = `仅本地导出失败：${error.message}`;
+            } finally { exportButton.disabled = false; }
+          });
+          exports.appendChild(exportButton);
+        }
+        button.append(exports);
+      }
+      if (!legacy && !localOnly) button.addEventListener('click', () => openFullTextSearchResult(result));
       container.appendChild(button);
     }
   }

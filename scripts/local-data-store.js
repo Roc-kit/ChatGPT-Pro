@@ -159,6 +159,9 @@ globalThis.ChatGPTProLocalData = (() => {
     if (!Array.isArray(items)) throw new Error('目录应为数组');
     const clean = items.map(item => {
       const id = validateId(item?.id);
+      const remoteState = item.officialDeletion === true ? 'local-only'
+        : item.verifiedOnline === true ? 'online'
+        : ['local-only', 'unverified'].includes(item.remoteState) ? item.remoteState : 'online';
       return {
         accountId, id,
         title: String(item.title || 'Untitled conversation'),
@@ -167,16 +170,27 @@ globalThis.ChatGPTProLocalData = (() => {
         href: String(item.href || `/c/${id}`),
         projectId: item.projectId || null,
         projectName: String(item.projectName || ''),
-        remoteState: 'online',
+        remoteState,
+        remoteStateReason: remoteState === 'local-only' ? 'official-deletion'
+          : remoteState === 'unverified' ? 'missing-full-directory' : null,
         checkedAt: Date.now()
       };
     });
-    return transaction([STORES.accounts, STORES.directory], 'readwrite', async stores => {
+    return transaction([STORES.accounts, STORES.directory, STORES.conversations], 'readwrite', async stores => {
       const account = await requested(stores[STORES.accounts].get(accountId));
       const writes = [requested(stores[STORES.accounts].put({
         ...account, id: accountId, lastSeenAt: Date.now()
       }))];
-      for (const entry of clean) writes.push(requested(stores[STORES.directory].put(entry)));
+      for (const entry of clean) {
+        if (entry.remoteState === 'local-only') {
+          const raw = await requested(stores[STORES.conversations].get([accountId, entry.id]));
+          if (!raw?.complete) {
+            entry.remoteState = 'unverified';
+            entry.remoteStateReason = 'official-deletion-without-local-raw';
+          }
+        }
+        writes.push(requested(stores[STORES.directory].put(entry)));
+      }
       await Promise.all(writes);
       return { saved: clean.length };
     });
@@ -194,6 +208,26 @@ globalThis.ChatGPTProLocalData = (() => {
     validateId(id);
     return transaction([STORES.directory], 'readonly', stores =>
       requested(stores[STORES.directory].get([accountId, id])));
+  }
+
+  async function markOfficialGone(accountId, id) {
+    validateAccount(accountId);
+    validateId(id);
+    return transaction([STORES.directory, STORES.conversations], 'readwrite', async stores => {
+      const raw = await requested(stores[STORES.conversations].get([accountId, id]));
+      if (!raw?.complete) return { marked: false, reason: 'no-local-raw' };
+      const directory = stores[STORES.directory];
+      const previous = await requested(directory.get([accountId, id]));
+      const updated = {
+        ...previous, accountId, id,
+        title: previous?.title || String(raw.raw?.title || 'Untitled conversation'),
+        updateTime: previous?.updateTime ?? raw.dataVersion,
+        href: previous?.href || `/c/${id}`,
+        remoteState: 'local-only', remoteStateReason: 'official-410', checkedAt: Date.now()
+      };
+      await requested(directory.put(updated));
+      return { marked: true, reason: updated.remoteStateReason };
+    });
   }
 
   function cleanSearchRecord(accountId, record, origin = 'text-only') {
@@ -352,13 +386,28 @@ globalThis.ChatGPTProLocalData = (() => {
     if (new Set(snapshot.map(item => item.id)).size !== snapshot.length) {
       throw new Error('首次全量目录快照含重复 ID');
     }
-    return transaction([STORES.accounts], 'readwrite', async stores => {
+    return transaction([STORES.accounts, STORES.directory], 'readwrite', async stores => {
       const store = stores[STORES.accounts];
       const account = await requested(store.get(accountId));
       if (!account?.fullIndexConsentAt) throw new Error('未授权首次全量索引');
       account.fullDirectoryScannedAt = Date.now();
       account.firstIndexSnapshot = snapshot;
       await requested(store.put(account));
+      const seen = new Set(snapshot.map(item => item.id));
+      await new Promise((resolve, reject) => {
+        const directoryCursor = stores[STORES.directory].index('byAccount')
+          .openCursor(IDBKeyRange.only(accountId));
+        directoryCursor.onsuccess = () => {
+          const cursor = directoryCursor.result;
+          if (!cursor) return resolve();
+          if (!seen.has(cursor.value.id) && cursor.value.remoteState !== 'local-only') {
+            cursor.update({ ...cursor.value, remoteState: 'unverified',
+              remoteStateReason: 'missing-full-directory' });
+          }
+          cursor.continue();
+        };
+        directoryCursor.onerror = () => reject(directoryCursor.error || new Error('目录核实失败'));
+      });
       return { fullDirectoryScannedAt: account.fullDirectoryScannedAt, total: snapshot.length };
     });
   }
@@ -840,6 +889,7 @@ globalThis.ChatGPTProLocalData = (() => {
     putSearchRecord, getSearchMetadata, getSearchRecords, clearSearchIndex,
     putConversation, getConversation, getStats, getLegacyMetadata,
     getIndexPolicy, grantIndexConsent, recordFullDirectoryScan, finishInitialIndex,
+    markOfficialGone,
     createTask, getTask, listTasks, claimTask, heartbeatTask, checkpointTask, controlTask,
     saveExportVolume, getExportVolume,
     clearCompletedExportVolumes,

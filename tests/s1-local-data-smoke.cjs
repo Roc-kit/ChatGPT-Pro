@@ -154,6 +154,8 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     let missingIdentity = false;
     let switchMidSync = false;
     let changedRemoteAccountA = false;
+    let simulateGoneId = null;
+    let simulateMissingId = null;
     let detailRequests = 0;
     const sentUrls = [];
     window.fetch = async (input, options) => {
@@ -175,6 +177,10 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
       } else if (url.includes('/backend-api/conversation/')) {
         detailRequests++;
         const id = decodeURIComponent(url.split('/').pop());
+        if (id === simulateGoneId || id === simulateMissingId) {
+          const status = id === simulateGoneId ? 410 : 404;
+          return { ok: false, status, json: async () => ({}), headers: { get() { return null; } } };
+        }
         json = { id, title: 'remote-details', update_time: 1700000003,
           mapping: { m: { message: { id: 'm', author: { role: 'user' }, content: { parts: ['details'] } } } } };
       } else throw Error('Unexpected request ' + url);
@@ -624,6 +630,55 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
       'initial completion flag persists for automatic incremental eligibility');
     check(!(await send({ action: 'indexPolicyGet', accountId: 'acct-b' })).result.consentAt,
       'another account never inherits consent');
+    const historical = await storage.getDirectoryRecord(consentId, 'historical-local-only');
+    check(historical.remoteState === 'unverified',
+      'absence from a verified full directory is unverified, not a confirmed deletion');
+    await storage.putConversation('acct-a', {
+      id: 'explicit-tombstone', updateTime: 1700000031,
+      raw: { id: 'explicit-tombstone', title: 'kept offline', mapping: {} },
+      searchRecord: { id: 'explicit-tombstone', title: 'kept offline', messages: [{ id: 'm', text: 'retained search' }] }
+    });
+    await storage.upsertDirectory('acct-a', [{ id: 'explicit-tombstone', updateTime: 1700000031,
+      officialDeletion: true }]);
+    check((await storage.getDirectoryRecord('acct-a', 'explicit-tombstone')).remoteState === 'local-only',
+      'explicit official tombstone marks cached raw conversation as local-only');
+    check((await searchForAccount('acct-a', 'retained search'))[0].remoteState === 'local-only',
+      'search result exposes confirmed local-only state');
+    check((await storage.getConversation('acct-a', 'explicit-tombstone')).raw.title === 'kept offline',
+      'tombstone retains lossless JSON');
+    await storage.upsertDirectory('acct-a', [{ id: 'no-local-raw', officialDeletion: true }]);
+    check((await storage.getDirectoryRecord('acct-a', 'no-local-raw')).remoteState === 'unverified',
+      'official deletion without any saved local JSON is not mislabeled as local-only');
+    await storage.upsertDirectory('acct-a', [{ id: 'explicit-tombstone', remoteState: 'local-only' }]);
+    check((await storage.getDirectoryRecord('acct-a', 'explicit-tombstone')).remoteState === 'local-only',
+      'cached directory rewrite cannot silently clear tombstone status');
+    // Authenticated HTTP 410 is affirmative Gone evidence; HTTP 404 alone is not.
+    activeAccount = 'acct-a';
+    simulateGoneId = 'gone-http';
+    await storage.putConversation('acct-a', { id: simulateGoneId,
+      updateTime: 1700000040, raw: { id: simulateGoneId, title: 'HTTP Gone cached', mapping: {} } });
+    await storage.upsertDirectory('acct-a', [{ id: simulateGoneId,
+      updateTime: 1700000041, verifiedOnline: true }]);
+    const beforeGoneFetch = detailRequests;
+    const preservedGone = await window.APIHandler.getConversation(simulateGoneId, { withSource: true });
+    check(preservedGone.source === 'cache' && preservedGone.data.title === 'HTTP Gone cached',
+      'official 410 returns preserved raw JSON from cache');
+    check((await storage.getDirectoryRecord('acct-a', simulateGoneId)).remoteState === 'local-only',
+      'official 410 marks correct account and original ID');
+    await window.APIHandler.getConversation(simulateGoneId);
+    check(detailRequests === beforeGoneFetch + 1,
+      'confirmed local-only conversation stops subsequent remote detail requests');
+    simulateMissingId = 'ambiguous-404';
+    await storage.putConversation('acct-a', { id: simulateMissingId,
+      updateTime: 1700000050, raw: { id: simulateMissingId, mapping: {} } });
+    await storage.upsertDirectory('acct-a', [{ id: simulateMissingId,
+      updateTime: 1700000051, verifiedOnline: true }]);
+    try {
+      await window.APIHandler.getConversation(simulateMissingId);
+      throw Error('ambiguous HTTP 404 unexpectedly succeeded');
+    } catch (error) { check(/404/.test(error.message), 'ambiguous HTTP 404 does not silently succeed'); }
+    check((await storage.getDirectoryRecord('acct-a', simulateMissingId)).remoteState !== 'local-only',
+      'HTTP 404 alone never marks an offline-only record');
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }

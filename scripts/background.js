@@ -198,8 +198,14 @@ function matchingResults(records, query, limit = 200, origin = 'account') {
 }
 
 async function searchForAccount(accountId, query, limit) {
-  const records = await ChatGPTProLocalData.getSearchRecords(accountId);
-  return matchingResults(records, query, limit);
+  const [records, directory] = await Promise.all([
+    ChatGPTProLocalData.getSearchRecords(accountId),
+    ChatGPTProLocalData.getDirectory(accountId)
+  ]);
+  const states = new Map(directory.map(item => [item.id, item.remoteState]));
+  return matchingResults(records, query, limit).map(result => ({
+    ...result, remoteState: states.get(result.conversationId) || 'unverified'
+  }));
 }
 
 async function searchUnassignedLegacy(query, limit) {
@@ -270,6 +276,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     indexPolicyConsent: () => ChatGPTProLocalData.grantIndexConsent(message.accountId),
     indexPolicyDirectoryVerified: () => ChatGPTProLocalData.recordFullDirectoryScan(message.accountId, message.records),
     indexPolicyFinishInitial: () => ChatGPTProLocalData.finishInitialIndex(message.accountId),
+    localDataMarkOfficialGone: () => ChatGPTProLocalData.markOfficialGone(message.accountId, message.id),
     taskVolumeChunk: () => ChatGPTProLocalData.uploadExportChunk(
       message.accountId, message.id, message.owner, message.token,
       message.volume, message.index, message.base64

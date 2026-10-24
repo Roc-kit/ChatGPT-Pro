@@ -15,7 +15,8 @@ const ctx = {
   URL,
   CFG: { PAGE_SIZE: 3, MAX_PAGES: 2, INTER_PAGE_MS: 0 },
   baseUrl: () => 'https://chatgpt.com/backend-api',
-  recordFromItem: item => ({ id: item.id, updateTime: item.update_time || 1 }),
+  recordFromItem: item => ({ id: item.id, updateTime: item.update_time || 1,
+    officialDeletion: item.deleted === true }),
   sameUpdate: (cached, item) => Boolean(cached && cached.updateTime === item.updateTime),
   fetchAuthedJson: async () => pageData,
   sleep: async () => {}
@@ -34,5 +35,11 @@ vm.runInContext(`${source.slice(begin, end)}\nglobalThis.fetchFirstPage = fetchR
   pageData = { items: [{ id: 'a' }, { id: 'b' }, { id: 'c' }], total: 3 };
   const exact = await ctx.fetchFirstPage('', new Map(), true, true);
   assert.equal(exact.length, 3, 'exactly full final page is a valid completed scan');
+  pageData = { items: [{ id: 'was-online', update_time: 8, deleted: true }], total: 1 };
+  const tombstone = await ctx.fetchFirstPage('', new Map([
+    ['was-online', { id: 'was-online', updateTime: 8, remoteState: 'online' }]
+  ]), false, false);
+  assert.equal(tombstone.length, 1,
+    'an explicit official deletion flag must propagate even when update_time is unchanged');
   console.log('S4_DIRECTORY_PASS: partial page rejected, page cap rejected, exact total accepted');
 })().catch(error => { console.error(error); process.exitCode = 1; });

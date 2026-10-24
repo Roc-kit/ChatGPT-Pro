@@ -198,6 +198,8 @@ const APIHandler = (function () {
     if (!id) return null;
     const projectId = project?.id || item.gizmo_id || null;
     const shortUrl = project?.shortUrl || projectId;
+    const officialDeletion = item.is_deleted === true || item.deleted === true ||
+      item.status === 'deleted' || (typeof item.deleted_at === 'string' && Boolean(item.deleted_at.trim()));
     return {
       id,
       title: item.title || 'Untitled conversation',
@@ -205,7 +207,8 @@ const APIHandler = (function () {
       updateTime: item.update_time ?? item.updated_at ?? item.updateTime ?? null,
       href: projectId ? `/g/${shortUrl}/c/${id}` : `/c/${id}`,
       projectId,
-      projectName: project?.name || item._chatgptProProjectName || item._chatTimelineProjectName || ''
+      projectName: project?.name || item._chatgptProProjectName || item._chatTimelineProjectName || '',
+      officialDeletion, verifiedOnline: !officialDeletion
     };
   }
 
@@ -220,6 +223,9 @@ const APIHandler = (function () {
       projectId: item.projectId ? String(item.projectId) : null,
       projectName: String(item.projectName || ''),
       remoteState: item.remoteState || 'online',
+      remoteStateReason: item.remoteStateReason || null,
+      officialDeletion: item.officialDeletion === true,
+      verifiedOnline: item.verifiedOnline === true,
       checkedAt: item.checkedAt || null
     };
   }
@@ -290,7 +296,8 @@ const APIHandler = (function () {
         const rec = recordFromItem(item);
         if (!rec) continue;
         const cached = cachedMap.get(rec.id);
-        if (!forceFull && sameUpdate(cached, rec)) {
+        if (!forceFull && sameUpdate(cached, rec) &&
+            cached?.remoteState === (rec.officialDeletion ? 'local-only' : 'online')) {
           reachedKnownBoundary = true;
           break;
         }
@@ -365,7 +372,8 @@ const APIHandler = (function () {
         const rec = recordFromItem(item, project);
         if (!rec) continue;
         const cached = cachedMap.get(rec.id);
-        if (!forceFull && sameUpdate(cached, rec)) {
+        if (!forceFull && sameUpdate(cached, rec) &&
+            cached?.remoteState === (rec.officialDeletion ? 'local-only' : 'online')) {
           reachedKnownBoundary = true;
           break;
         }
@@ -596,6 +604,21 @@ const APIHandler = (function () {
       return { data: raw, source: 'network' };
     } catch (error) {
       status = error?.status || 0;
+      if (status === 410) {
+        // Official 410 Gone is affirmative disappearance evidence. A 404 or
+        // missing sidebar item is NOT sufficient (could be access/visibility).
+        try {
+          const result = await localDataMessage({ action: 'localDataMarkOfficialGone',
+            accountId, id: conversationId });
+          if (result.result?.marked) {
+            const cached = await localDataMessage({ action: 'localDataGetConversation',
+              accountId, id: conversationId });
+            if (cached.hit) return { data: cached.raw, source: 'cache' };
+          }
+        } catch (markError) {
+          console.warn('[ChatGPT Pro] Official 410 local retention failed:', markError.message);
+        }
+      }
       if (status === 429) {
         try {
           await localDataMessage({ action: 'detailRelease', accountId, owner, token,
@@ -625,16 +648,21 @@ const APIHandler = (function () {
       // A single-record version lookup avoids scanning the entire directory
       // once per exported conversation.
       let updateTime;
+      let localOnly = false;
       try {
         const directory = await localDataMessage({
           action: 'localDataGetDirectoryRecord', accountId, id: conversationId
         });
         updateTime = directory.record?.updateTime ?? undefined;
+        localOnly = directory.record?.remoteState === 'local-only';
         const cached = await localDataMessage({
-          action: 'localDataGetConversation', accountId, id: conversationId, updateTime
+          action: 'localDataGetConversation', accountId, id: conversationId,
+          ...(!localOnly ? { updateTime } : {})
         });
         if (cached.hit) return { data: cached.raw, source: 'cache' };
+        if (localOnly) throw new Error('仅本地对话没有可导出的完整原始 JSON');
       } catch (error) {
+        if (localOnly) throw error;
         // Temporary IDB failures must not make a valid online conversation
         // impossible to export. The raw data is still fetched from ChatGPT.
         console.warn('[ChatGPT Pro] Detail cache read skipped:', error.message);
