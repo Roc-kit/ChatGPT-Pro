@@ -441,6 +441,27 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
       token: slotOne.result.token, status: 200 })).success, 'stale executor cannot mutate cooldown');
     await send({ action: 'detailRelease', accountId: 'acct-a', owner: 'detail-tab-two',
       token: resumedSlot.result.token, status: 200 });
+    const logsBeforePrune = await send({ action: 'logList', accountId: 'acct-a' });
+    check(logsBeforePrune.result.some(log => log.type === 'rate-limit' && log.code === '429'),
+      '429 event is recorded in account-scoped logs');
+    check(logsBeforePrune.result.some(log => log.type === 'task' && log.code === 'pause'),
+      'task state changes are logged');
+    check(logsBeforePrune.result.every(log => !JSON.stringify(log).includes('test-token')),
+      'logs do not contain access tokens');
+    check((await send({ action: 'logList', accountId: 'acct-b' })).result.length === 0,
+      'log list is account isolated');
+    const logDb = await storage.openDb();
+    await new Promise((resolve, reject) => {
+      const tx = logDb.transaction('logs', 'readwrite');
+      tx.objectStore('logs').add({ accountId: 'acct-a', type: 'request', code: 'expired-test',
+        createdAt: Date.now() - 31 * 86400000 });
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    logDb.close();
+    await storage.addLog('acct-a', { type: 'task', code: 'test', message: 'retention check' });
+    check(!(await send({ action: 'logList', accountId: 'acct-a' })).result.some(log => log.code === 'expired-test'),
+      'logs older than 30 days pruned by subsequent writes');
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }

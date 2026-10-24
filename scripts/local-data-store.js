@@ -521,12 +521,52 @@ globalThis.ChatGPTProLocalData = (() => {
     return { cooldownUntil: state?.cooldownUntil || 0, busyUntil: state?.detailLease?.expiresAt || 0 };
   }
 
+  const LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+  const LOG_TYPES = new Set(['task', 'request', 'rate-limit', 'retry', 'failure']);
+
+  async function addLog(accountId, entry) {
+    validateAccount(accountId);
+    if (!LOG_TYPES.has(entry?.type)) throw new Error('不支持的日志类型');
+    const createdAt = Date.now();
+    const log = {
+      accountId, createdAt, type: entry.type,
+      taskId: typeof entry.taskId === 'string' ? entry.taskId.slice(0, 100) : null,
+      code: typeof entry.code === 'string' ? entry.code.slice(0, 40) : null,
+      message: typeof entry.message === 'string' ? entry.message.slice(0, 300) : '',
+      retryAt: Number.isFinite(entry.retryAt) ? entry.retryAt : null
+    };
+    return transaction([STORES.logs], 'readwrite', async stores => {
+      const store = stores[STORES.logs];
+      const id = await requested(store.add(log));
+      const expired = store.index('createdAt').openCursor(IDBKeyRange.upperBound(createdAt - LOG_RETENTION_MS, true));
+      await new Promise((resolve, reject) => {
+        expired.onsuccess = () => {
+          const cursor = expired.result;
+          if (!cursor) return resolve();
+          cursor.delete();
+          cursor.continue();
+        };
+        expired.onerror = () => reject(expired.error || new Error('日志保留期清理失败'));
+      });
+      return { id, createdAt };
+    });
+  }
+
+  async function listLogs(accountId, limit = 100) {
+    validateAccount(accountId);
+    const bounded = Math.max(1, Math.min(500, Number(limit) || 100));
+    const logs = await transaction([STORES.logs], 'readonly', stores =>
+      requested(stores[STORES.logs].index('byAccount').getAll(IDBKeyRange.only(accountId))));
+    return logs.sort((a, b) => b.createdAt - a.createdAt || b.id - a.id).slice(0, bounded);
+  }
+
   return Object.freeze({
     openDb, upsertDirectory, getDirectory, getDirectoryRecord,
     putSearchRecord, getSearchMetadata, getSearchRecords, clearSearchIndex,
     putConversation, getConversation, getStats, getLegacyMetadata,
     createTask, getTask, listTasks, claimTask, heartbeatTask, checkpointTask, controlTask,
     acquireDetailSlot, heartbeatDetailSlot, releaseDetailSlot, getDetailSlotStatus,
+    addLog, listLogs,
     DB_NAME, DB_VERSION, LEGACY_SEARCH, UNASSIGNED_ACCOUNT, STORES
   });
 })();

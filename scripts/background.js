@@ -259,11 +259,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     detailRelease: () => ChatGPTProLocalData.releaseDetailSlot(
       message.accountId, message.owner, message.token, message.status, message.retryAfterMs
     ),
-    detailStatus: () => ChatGPTProLocalData.getDetailSlotStatus(message.accountId)
+    detailStatus: () => ChatGPTProLocalData.getDetailSlotStatus(message.accountId),
+    logList: () => ChatGPTProLocalData.listLogs(message.accountId, message.limit)
   });
   if (Object.hasOwn(taskHandlers, message.action)) {
     taskHandlers[message.action]()
-      .then(result => sendResponse({ success: true, result }))
+      .then(async result => {
+        // Keep logs structured and independent of conversation content.
+        let event = null;
+        if (message.action === 'detailRelease' && message.status === 429) {
+          event = { type: 'rate-limit', code: '429', message: '详情请求进入共享冷却', retryAt: result.cooldownUntil };
+        } else if (message.action === 'taskCheckpoint' && message.outcome === 'failed') {
+          event = { type: 'failure', code: 'item-failed', taskId: message.id, message: '批量任务单条处理失败' };
+        } else if (message.action === 'taskControl' && ['pause', 'resume', 'cancel'].includes(message.operation)) {
+          event = { type: 'task', code: message.operation, taskId: message.id, message: '任务状态已修改' };
+        }
+        if (event) await ChatGPTProLocalData.addLog(message.accountId, event).catch(() => {});
+        sendResponse({ success: true, result });
+      })
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
