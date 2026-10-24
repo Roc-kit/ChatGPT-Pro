@@ -640,6 +640,76 @@
   cursor: default !important;
 }
 
+.chatgpt-pro-current-images {
+  width: 34px !important;
+  height: 34px !important;
+  right: 12px !important;
+  cursor: pointer !important;
+}
+
+.chatgpt-pro-current-images svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.chatgpt-pro-minimap {
+  position: fixed !important;
+  z-index: 2147483644 !important;
+  top: 50% !important;
+  right: 54px !important;
+  transform: translateY(-50%) !important;
+  width: 23px !important;
+  max-height: min(52vh, 390px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 3px !important;
+  padding: 4px !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(127, 127, 127, 0.2) !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+.chatgpt-pro-minimap-toggle {
+  flex: 0 0 18px !important;
+  width: 18px !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+  color: #64748b !important;
+  cursor: pointer !important;
+}
+
+.chatgpt-pro-minimap-rail {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  gap: 2px !important;
+  overflow-y: auto !important;
+  scrollbar-width: none !important;
+}
+
+.chatgpt-pro-minimap-marker {
+  flex: 0 0 4px !important;
+  min-height: 4px !important;
+  width: 100% !important;
+  border: 0 !important;
+  border-radius: 3px !important;
+  background: #94a3b8 !important;
+  opacity: 0.63 !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+}
+
+.chatgpt-pro-minimap-user { background: #0d9373 !important; }
+.chatgpt-pro-minimap-active { opacity: 1 !important; outline: 1px solid #0d9373 !important; }
+.chatgpt-pro-minimap-collapsed .chatgpt-pro-minimap-rail { display: none !important; }
+
+@media (max-width: 640px) {
+  .chatgpt-pro-minimap { right: 48px !important; }
+}
+
 .chatgpt-pro-resize-handle {
   position: absolute !important;
   z-index: 8 !important;
@@ -721,5 +791,7 @@ html.dark .chatgpt-pro-message-timestamp,
   .chatgpt-pro-message-timestamp,
   .chatgpt-pro-launcher,
   .chatgpt-pro-current-export,
+  .chatgpt-pro-current-images,
+  .chatgpt-pro-minimap,
   .chatgpt-pro-panel { display: none !important; }
 }

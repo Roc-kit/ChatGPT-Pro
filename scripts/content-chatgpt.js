@@ -539,6 +539,8 @@
     const y = Math.max(0, Math.min(1, Number(S.settings.currentExportPositionY) || 0));
     const top = Math.round(VIEWPORT_MARGIN + (maxTop - VIEWPORT_MARGIN) * y);
     button.style.top = `${top}px`;
+    const images = document.querySelector('[data-chatgpt-pro-current-images]');
+    if (images) images.style.top = `${Math.max(VIEWPORT_MARGIN, top - 44)}px`;
   }
 
   function saveCurrentChatExportPosition(top, button) {
@@ -571,6 +573,8 @@
       const maxTop = window.innerHeight - button.offsetHeight - VIEWPORT_MARGIN;
       const top = Math.max(VIEWPORT_MARGIN, Math.min(maxTop, startTop + dy));
       button.style.top = `${top}px`;
+      const images = document.querySelector('[data-chatgpt-pro-current-images]');
+      if (images) images.style.top = `${Math.max(VIEWPORT_MARGIN, top - 44)}px`;
     });
 
     const finish = event => {
@@ -589,9 +593,13 @@
     const existing = document.querySelector('[data-chatgpt-pro-current-export]');
     if (!id) {
       existing?.remove();
+      document.querySelector('[data-chatgpt-pro-current-images]')?.remove();
       return;
     }
-    if (existing) return;
+    if (existing) {
+      ensureCurrentChatImageButton();
+      return;
+    }
 
     const button = document.createElement('button');
     button.type = 'button';
@@ -636,6 +644,32 @@
     document.body.appendChild(button);
     placeCurrentChatExportButton(button);
     setupCurrentChatExportDrag(button);
+    ensureCurrentChatImageButton();
+  }
+
+  function ensureCurrentChatImageButton() {
+    if (!currentConversationId() || document.querySelector('[data-chatgpt-pro-current-images]')) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chatgpt-pro-current-export chatgpt-pro-current-images';
+    button.setAttribute('data-chatgpt-pro-current-images', '1');
+    button.setAttribute('aria-label', '下载当前对话所有图片 ZIP');
+    button.title = '下载当前对话所有图片 ZIP';
+    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.5"/><path d="m3 17 5-5 4 4 3-3 6 5"/></svg>';
+    button.addEventListener('click', async () => {
+      if (button.disabled) return;
+      const rec = currentConversationRecord();
+      if (!rec) return;
+      button.disabled = true;
+      try {
+        const result = await exportConversationImages(rec, text => { button.title = text; });
+        button.title = `图片 ZIP 已生成：成功 ${result.success}，失败 ${result.failures}；共 ${result.volumes} 卷`;
+      } catch (error) {
+        button.title = `图片下载失败：${error.message}`;
+      } finally { button.disabled = false; }
+    });
+    document.body.appendChild(button);
+    placeCurrentChatExportButton();
   }
 
   function removeFloatingButton() {
@@ -643,6 +677,8 @@
     S.launcher?.remove();
     S.launcher = null;
     document.querySelector('[data-chatgpt-pro-current-export]')?.remove();
+    document.querySelector('[data-chatgpt-pro-current-images]')?.remove();
+    document.querySelector('[data-chatgpt-pro-minimap]')?.remove();
   }
 
   function positionTimelinePanel() {
@@ -1243,6 +1279,115 @@
     pushU32(end, offset);
     pushU16(end, 0);
     return new Blob([...localParts, ...centralParts, Uint8Array.from(end)], { type: 'application/zip' });
+  }
+
+  function collectConversationImages(data) {
+    const seen = new Set();
+    const images = [];
+    const messages = currentBranchMessages(data);
+    messages.forEach((message, messageIndex) => {
+      const role = message?.author?.role || 'other';
+      const candidates = [];
+      for (const part of (Array.isArray(message?.content?.parts) ? message.content.parts : [])) {
+        if (part?.content_type === 'image_asset_pointer' && part.asset_pointer) {
+          candidates.push({ pointer: part.asset_pointer, name: part.file_name, mime: part.mime_type });
+        }
+      }
+      for (const attachment of (Array.isArray(message?.metadata?.attachments) ? message.metadata.attachments : [])) {
+        if (String(attachment.mime_type || '').startsWith('image/')) {
+          candidates.push({ pointer: attachment.id || attachment.asset_pointer,
+            name: attachment.name, mime: attachment.mime_type });
+        }
+      }
+      for (const candidate of candidates) {
+        const pointer = String(candidate.pointer || '');
+        const fileId = pointer.split('://').pop();
+        if (!fileId || !/^[A-Za-z0-9_.-]+$/.test(fileId) || seen.has(fileId)) continue;
+        seen.add(fileId);
+        images.push({ fileId, role, messageIndex: messageIndex + 1,
+          messageId: message.id || '', name: candidate.name || '', mime: candidate.mime || '' });
+      }
+    });
+    return images;
+  }
+
+  function imageExtension(type, name) {
+    const mime = String(type || '').toLowerCase();
+    if (mime.includes('png')) return 'png';
+    if (mime.includes('jpeg') || mime.includes('jpg')) return 'jpg';
+    if (mime.includes('webp')) return 'webp';
+    if (mime.includes('gif')) return 'gif';
+    if (mime.includes('svg')) return 'svg';
+    const ext = String(name || '').match(/\.(png|jpe?g|webp|gif|svg)$/i)?.[1];
+    return ext?.toLowerCase().replace('jpeg', 'jpg') || 'png';
+  }
+
+  async function exportConversationImages(rec, progress = () => {}) {
+    const accountId = await window.APIHandler.getAccountId(true);
+    const data = await window.APIHandler.getConversation(rec.id);
+    const images = collectConversationImages(data);
+    if (!images.length) throw new Error('当前对话分支没有可识别的图片资源');
+    const manifest = [];
+    const parts = [];
+    let files = [];
+    let size = 0;
+    const flush = () => {
+      if (files.length) { parts.push(files); files = []; size = 0; }
+    };
+    for (const [index, item] of images.entries()) {
+      progress(`正在下载图片 ${index + 1} / ${images.length}`);
+      const entry = { index: index + 1, message_index: item.messageIndex,
+        message_id: item.messageId, role: item.role, file_id: item.fileId };
+      try {
+        if (await window.APIHandler.getAccountId(true) !== accountId) throw new Error('账号已切换');
+        const info = await window.APIHandler.getConversationImageUrl(rec.id, item.fileId, accountId);
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 25000);
+        let response;
+        try {
+          const url = new URL(info.download_url);
+          response = await fetch(url.href, { credentials: url.origin === location.origin ? 'include' : 'omit', signal: controller.signal });
+        } finally { window.clearTimeout(timer); }
+        if (!response.ok) throw new Error(`图片下载 HTTP ${response.status}`);
+        const mime = response.headers.get('Content-Type') || info.mime_type || item.mime;
+        if (!String(mime).toLowerCase().startsWith('image/') &&
+            !String(mime).toLowerCase().includes('octet-stream')) throw new Error('返回内容不是图片');
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (!bytes.length) throw new Error('图片内容为空');
+        if (bytes.length > 80 * 1024 * 1024) throw new Error('单张图片超过 80 MiB 下载上限');
+        const ext = imageExtension(mime === 'application/octet-stream' ? item.mime : mime, item.name);
+        const filename = `images/${String(index + 1).padStart(3, '0')}_${item.role}_${item.messageIndex}.${ext}`;
+        if (files.length && size + bytes.length > 60 * 1024 * 1024) flush();
+        files.push({ name: filename, data: bytes });
+        size += bytes.length;
+        entry.status = 'success';
+        entry.filename = filename;
+        entry.bytes = bytes.length;
+      } catch (error) {
+        if (/账号已切换|登录账号已切换/.test(error.message)) throw error;
+        entry.status = 'failed';
+        entry.reason = error.message;
+      }
+      manifest.push(entry);
+      await sleep(180);
+    }
+    flush();
+    const failures = manifest.filter(item => item.status === 'failed');
+    const base = exportBaseFilename(rec, data);
+    const exportedAt = new Date().toISOString();
+    const description = JSON.stringify({ conversation: conversationUrl(rec, data),
+      exported_at: exportedAt, scope: 'current_branch', total: images.length, images: manifest }, null, 2);
+    // Create an error-only ZIP too, so unavailable signed URLs are not silent.
+    if (!parts.length) parts.push([]);
+    for (let index = 0; index < parts.length; index++) {
+      progress(`正在保存图片 ZIP ${index + 1} / ${parts.length}`);
+      const name = `${base}_images${parts.length > 1 ? `_part-${index + 1}` : ''}.zip`;
+      const content = [...parts[index], { name: 'manifest.json', text: description }];
+      if (failures.length) content.push({ name: 'download-errors.txt',
+        text: failures.map(item => `${item.file_id}: ${item.reason}`).join('\n') });
+      downloadBlobFile(name, buildStoredZip(content));
+    }
+    return { total: images.length, success: images.length - failures.length, failures: failures.length, volumes: parts.length };
   }
 
   function uniqueFilename(filename, used) {

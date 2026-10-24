@@ -31,6 +31,8 @@
     '连续失败，等待人工继续':'Paused after repeated failures','等待执行':'Waiting',
     '正在读取本地目录…':'Loading local directory…','聊天目录':'Conversations','全文搜索':'Full-text search',
     '已保存分卷':'Saved ZIP parts','检查更新':'Check updates','导出 MD':'Export MD','导出 JSON':'Export JSON',
+    '归档':'Archive','删除':'Delete','下载当前对话所有图片 ZIP':'Download all images from this chat (ZIP)',
+    '长对话快速导航':'Conversation minimap','展开消息导航':'Expand minimap','收起消息导航':'Collapse minimap',
     '创建时间':'Created','标题':'Title','搜索标题':'Search titles','输入标题关键词':'Filter by title',
     '清除':'Clear','确定':'Apply','项目名称 · 全部':'Projects · All','来源 · 全部':'Sources · All',
     '导出':'Export','搜索所有聊天内容':'Search all conversations','全文搜索关键词':'Search query',
