@@ -7,12 +7,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadLocales } = require('./load-locales.cjs');
 
 const root = path.resolve(__dirname, '..');
 const host = { navigator: { language: 'en' }, chrome: { i18n: { getUILanguage: () => 'en' } } };
 host.window = host;
-vm.runInNewContext(fs.readFileSync(path.join(root, 'scripts/i18n.js'), 'utf8'), host);
-const i18n = host.ChatGPTProI18n;
+const i18n = loadLocales(host);
 const files = ['popup/popup.html', 'popup/popup.js', 'scripts/content-chatgpt.js',
   'scripts/api-handler.js', 'scripts/background.js', 'scripts/local-data-store.js'];
 // Exported Markdown markers and deliberate demo fixture text aren't UI.
@@ -53,10 +53,14 @@ for (const language of ['en', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru',
   ];
   for (const value of dynamicCases) {
     const converted = i18n.translateText(value);
-    assert(!/[\u3400-\u9fff]/u.test(converted), `${language}: ${value} -> ${converted}`);
+    assert.notEqual(converted, value, `${language}: ${value} -> ${converted}`);
+    if (language !== 'ja') {
+      assert(!/[\u3400-\u9fff]/u.test(converted), `${language}: ${value} -> ${converted}`);
+    }
   }
   const confirmation = i18n.format('确定{action}选中的 {count} 条对话？\n\n{detail}\n\n操作可能持续一段时间，失败的条目会保留供重试。',
     { action: i18n.t('永久删除'), count: 3, detail: i18n.t('归档只影响 ChatGPT 云端的对话列表，不会清理扩展本地数据。') });
-  assert(!/[\u3400-\u9fff]/u.test(confirmation), `${language}: untranslated confirmation`);
+  assert.notEqual(confirmation, '确定永久删除选中的 3 条对话？', `${language}: untranslated confirmation`);
+  if (language !== 'ja') assert(!/[\u3400-\u9fff]/u.test(confirmation), `${language}: untranslated confirmation`);
 }
 console.log(`I18N_SOURCE_PASS: scanned ${files.length} files, ${staticCount} static and ${dynamicCount} dynamic/non-UI literals; no uncovered static UI strings`);

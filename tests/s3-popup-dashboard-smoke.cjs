@@ -95,6 +95,9 @@ const server = http.createServer((request, response) => {
   } else if (request.url === '/scripts/i18n.js') {
     response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
     response.end(i18nJs);
+  } else if (/^\/scripts\/locales\/(registry|zh-CN|en|zh-TW|es|hi|ar|pt-BR|bn|id|fr|ru|ja)\.js$/.test(request.url)) {
+    response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+    response.end(fs.readFileSync(path.join(__dirname, '..', request.url), 'utf8'));
   } else {
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     response.end(popupHtml.replace('<script src="popup.js"></script>', mock + '<script src="popup.js"></script>'));

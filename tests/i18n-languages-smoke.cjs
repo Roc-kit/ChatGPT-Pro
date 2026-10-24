@@ -4,14 +4,14 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadLocales } = require('./load-locales.cjs');
 
 const code = fs.readFileSync(path.join(__dirname, '../scripts/i18n.js'), 'utf8');
 const environment = { navigator: { language: 'es-MX' }, chrome: {
   i18n: { getUILanguage: () => 'es-MX' }
 } };
 environment.window = environment;
-vm.runInNewContext(code, environment, { filename: 'scripts/i18n.js' });
-const i18n = environment.ChatGPTProI18n;
+const i18n = loadLocales(environment);
 assert.equal(i18n.language, 'es', 'browser locale automatically selects a supported language');
 assert.equal(i18n.t('扩展已就绪'), 'Extensión lista');
 const languages = ['zh-CN','zh-TW','en','es','hi','ar','pt-BR','bn','id','fr','ru','ja'];
@@ -36,8 +36,13 @@ for (const language of languages) {
       '当前账号已索引 0 / 36 个 · 未归属旧索引 4 个',
       '首次建立全文索引需点击授权；不会自动抓取正文。已有索引可搜索 · 当前 119 条'
     ]) {
-      assert(!/[\u3400-\u9fff]/u.test(i18n.translateText(value)),
-        `non-Chinese language ${language} leaves untranslated UI: ${value}`);
+      const translated = i18n.translateText(value);
+      assert.notEqual(translated, value,
+        `language ${language} leaves source UI unchanged: ${value}`);
+      if (language !== 'zh-TW' && language !== 'ja') {
+        assert(!/[\u3400-\u9fff]/u.test(translated),
+          `${language} unexpectedly contains Chinese UI text: ${value}`);
+      }
     }
   }
 }
