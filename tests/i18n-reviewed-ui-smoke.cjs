@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 146, 'reviewed interface, safety, indexing, ZIP export and diagnostic hints include 146 strings');
+assert.equal(keys.length, 161, 'reviewed interface, safety, indexing, ZIP export, retry and diagnostic hints include 161 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -117,4 +117,63 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
       `${locale}/${key}: ZIP status does not use its reviewed translation`);
   }
 }
-console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, six indexing and eight ZIP status templates`);
+// Shared cooldown and retry statuses used by both indexing and bulk export.
+// Nested progress summaries must be translated without changing their counts.
+const retryStatuses = [
+  ['status.retrying', '正在重试 2 / 5 · 3 / 10 · 第 1 / 2 组',
+    { 1: '2', 2: '5', 3: '3 / 10 · 第 1 / 2 组' }, true],
+  ['status.rateLimitCooldownUntil', '请求限流冷却中，至 10:30:00',
+    { 1: '10:30:00' }],
+  ['status.rateLimitedResumeInS', '请求受限，15 秒后继续 · 3 / 10 · 第 1 / 2 组',
+    { 1: '15', 2: '3 / 10 · 第 1 / 2 组' }, true],
+  ['status.batchCompleteContinueInS', '本组完成，15 秒后继续 · 3 / 10 · 第 1 / 2 组',
+    { 1: '15', 2: '3 / 10 · 第 1 / 2 组' }, true],
+  ['status.requestFailedRetryInS', '请求失败，15 秒后重试 · 3 / 10 · 第 1 / 2 组',
+    { 1: '15', 2: '3 / 10 · 第 1 / 2 组' }, true],
+  ['status.rateLimitedResumeInS_24', '请求受限 · 15 秒后继续 · 3 / 10 · 第 1 / 2 组',
+    { 1: '15', 2: '3 / 10 · 第 1 / 2 组' }, true],
+  ['status.batchCompleteContinueInS_25', '本组完成 · 15 秒后继续 · 3 / 10 · 第 1 / 2 组',
+    { 1: '15', 2: '3 / 10 · 第 1 / 2 组' }, true],
+  ['status.requestFailedRetryInS_26', '请求失败 · 15 秒后重试 2 / 3 · 3 / 10 · 第 1 / 2 组',
+    { 1: '15', 2: '2', 3: '3', 4: '3 / 10 · 第 1 / 2 组' }, true],
+  ['status.requestCooldownSRemainingAutomaticResume',
+    '账号请求冷却中 · 剩余 15 秒 · 到期后可自动继续', { 1: '15' }],
+  ['status.sRemaining', ' · 还需 15 秒', { 1: '15' }]
+];
+for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(locale))) {
+  i18n.setLanguage(locale);
+  for (const [key, source, args, hasNestedProgress] of retryStatuses) {
+    const values = { ...args };
+    const template = packs[locale][key];
+    const slots = [...template.matchAll(/\{(\d+)\}/g)].map(match => Number(match[1]));
+    assert.deepEqual(slots.slice().sort((a, b) => a - b),
+      Object.keys(args).map(Number).sort((a, b) => a - b),
+      `${locale}/${key}: retry/cooldown placeholders changed`);
+    if (hasNestedProgress) {
+      const nestedKey = key === 'status.retrying' ? 3
+        : key === 'status.requestFailedRetryInS_26' ? 4 : 2;
+      values[nestedKey] = i18n.translateText(args[nestedKey]);
+    }
+    const rendered = template.replace(/\{(\d+)\}/g, (_, index) => values[index] ?? '');
+    // These two fragments are appended to an existing status line; the
+    // leading space belongs to the caller, not to the translated fragment.
+    const expected = ['status.sRemaining', 'status.resuming'].includes(key)
+      ? ` ${rendered}` : rendered;
+    assert.equal(i18n.translateText(source), expected,
+      `${locale}/${key}: actual retry/cooldown status differs from reviewed translation`);
+  }
+}
+// These literal fragments resolve through their own stable keys before the
+// dynamic matcher runs. Check the exact source text that the UI appends.
+const cooldownFragments = [
+  [' · 等待账号限流冷却', 'ui.waitingForAccountRateLimitCooldown_4cb2540'],
+  [' · 等待结束，正在恢复', 'ui.resumingAfterWait_586dda0']
+];
+for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(locale))) {
+  i18n.setLanguage(locale);
+  for (const [source, key] of cooldownFragments) {
+    assert.equal(i18n.translateText(source), ` ${packs[locale][key]}`,
+      `${locale}/${key}: appended cooldown fragment did not use the reviewed translation`);
+  }
+}
+console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, six indexing, eight ZIP, ten retry/cooldown templates and live wait fragments`);

@@ -1672,6 +1672,225 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           '保存済み ZIP 分割ファイル {1}/{2} のダウンロードを開始しました'
         ]
       }
+    },
+    {
+      keys: [
+        'status.retrying',
+        'status.rateLimitCooldownUntil',
+        'status.rateLimitedResumeInS',
+        'status.batchCompleteContinueInS',
+        'status.requestFailedRetryInS',
+        'status.rateLimitedResumeInS_24',
+        'status.batchCompleteContinueInS_25',
+        'status.requestFailedRetryInS_26',
+        'status.requestCooldownSRemainingAutomaticResume',
+        'status.sRemaining',
+        'status.resuming'
+      ],
+      translations: {
+        'zh-TW': [
+          '正在重試 {1}/{2} · {3}',
+          '請求限流冷卻中，預計至 {1}',
+          '請求受限 · {1} 秒後繼續 · {2}',
+          '本批次已完成 · {1} 秒後繼續 · {2}',
+          '請求失敗 · {1} 秒後重試 · {2}',
+          '請求受限 · {1} 秒後繼續 · {2}',
+          '本批次已完成 · {1} 秒後繼續 · {2}',
+          '請求失敗 · {1} 秒後重試（第 {2}/{3} 次）· {4}',
+          '請求冷卻中 · 剩餘 {1} 秒 · 到期後自動恢復',
+          '· 還需 {1} 秒',
+          '· 等待結束，正在恢復'
+        ],
+        es: [
+          'Reintentando {1}/{2} · {3}',
+          'Límite de solicitudes: espera hasta {1}',
+          'Límite de solicitudes · se reanuda en {1} s · {2}',
+          'Lote completado · continúa en {1} s · {2}',
+          'Solicitud fallida · nuevo intento en {1} s · {2}',
+          'Límite de solicitudes · se reanuda en {1} s · {2}',
+          'Lote completado · continúa en {1} s · {2}',
+          'Solicitud fallida · nuevo intento en {1} s ({2}/{3}) · {4}',
+          'En espera por límite de solicitudes · quedan {1} s · reanudación automática',
+          '· quedan {1} s',
+          '· Fin de la espera; reanudando'
+        ],
+        hi: [
+          'पुनः प्रयास {1}/{2} · {3}',
+          'अनुरोध सीमा के कारण प्रतीक्षा, समय: {1}',
+          'अनुरोध सीमा लागू · {1} सेकंड बाद जारी होगा · {2}',
+          'बैच पूरा · {1} सेकंड बाद जारी रहेगा · {2}',
+          'अनुरोध विफल · {1} सेकंड बाद पुनः प्रयास · {2}',
+          'अनुरोध सीमा लागू · {1} सेकंड बाद जारी होगा · {2}',
+          'बैच पूरा · {1} सेकंड बाद जारी रहेगा · {2}',
+          'अनुरोध विफल · {1} सेकंड बाद पुनः प्रयास ({2}/{3}) · {4}',
+          'अनुरोध सीमा के कारण प्रतीक्षा · {1} सेकंड शेष · अपने-आप फिर शुरू होगा',
+          '· {1} सेकंड बाकी',
+          '· प्रतीक्षा समाप्त, फिर से शुरू हो रहा है'
+        ],
+        ar: [
+          'جارٍ إعادة المحاولة {1}/{2} · {3}',
+          'انتظار بسبب حد الطلبات حتى {1}',
+          'تم تقييد الطلبات · المتابعة بعد {1} ثانية · {2}',
+          'اكتملت الدفعة · المتابعة بعد {1} ثانية · {2}',
+          'فشل الطلب · إعادة المحاولة بعد {1} ثانية · {2}',
+          'تم تقييد الطلبات · المتابعة بعد {1} ثانية · {2}',
+          'اكتملت الدفعة · المتابعة بعد {1} ثانية · {2}',
+          'فشل الطلب · إعادة المحاولة بعد {1} ثانية ({2}/{3}) · {4}',
+          'انتظار بسبب حد الطلبات · تبقى {1} ثانية · استئناف تلقائي',
+          '· تبقى {1} ثانية',
+          '· انتهى الانتظار، جارٍ الاستئناف'
+        ],
+        'pt-BR': [
+          'Tentando novamente {1}/{2} · {3}',
+          'Limite de requisições: pausa até {1}',
+          'Limite de requisições · retomada em {1} s · {2}',
+          'Lote concluído · continua em {1} s · {2}',
+          'Falha na solicitação · nova tentativa em {1} s · {2}',
+          'Limite de requisições · retomada em {1} s · {2}',
+          'Lote concluído · continua em {1} s · {2}',
+          'Falha na solicitação · nova tentativa em {1} s ({2}/{3}) · {4}',
+          'Aguardando por limite de requisições · restam {1} s · retomada automática',
+          '· faltam {1} s',
+          '· A espera terminou; retomando'
+        ],
+        bn: [
+          'আবার চেষ্টা করা হচ্ছে {1}/{2} · {3}',
+          'অনুরোধের সীমার কারণে অপেক্ষা, শেষ হবে {1}',
+          'অনুরোধের সীমা প্রয়োগ হয়েছে · {1} সেকেন্ড পরে চলবে · {2}',
+          'ব্যাচ সম্পন্ন · {1} সেকেন্ড পরে চলবে · {2}',
+          'অনুরোধ ব্যর্থ · {1} সেকেন্ড পরে আবার চেষ্টা · {2}',
+          'অনুরোধের সীমা প্রয়োগ হয়েছে · {1} সেকেন্ড পরে চলবে · {2}',
+          'ব্যাচ সম্পন্ন · {1} সেকেন্ড পরে চলবে · {2}',
+          'অনুরোধ ব্যর্থ · {1} সেকেন্ড পরে আবার চেষ্টা ({2}/{3}) · {4}',
+          'অনুরোধের সীমার কারণে অপেক্ষা · {1} সেকেন্ড বাকি · স্বয়ংক্রিয়ভাবে আবার শুরু হবে',
+          '· আরও {1} সেকেন্ড বাকি',
+          '· অপেক্ষা শেষ, আবার শুরু হচ্ছে'
+        ],
+        id: [
+          'Mencoba lagi {1}/{2} · {3}',
+          'Jeda batas permintaan hingga {1}',
+          'Permintaan dibatasi · lanjut dalam {1} dtk · {2}',
+          'Batch selesai · lanjut dalam {1} dtk · {2}',
+          'Permintaan gagal · coba lagi dalam {1} dtk · {2}',
+          'Permintaan dibatasi · lanjut dalam {1} dtk · {2}',
+          'Batch selesai · lanjut dalam {1} dtk · {2}',
+          'Permintaan gagal · coba lagi dalam {1} dtk ({2}/{3}) · {4}',
+          'Jeda karena batas permintaan · tersisa {1} detik · lanjut otomatis',
+          '· tersisa {1} detik',
+          '· Waktu tunggu selesai, melanjutkan'
+        ],
+        fr: [
+          'Nouvelle tentative {1}/{2} · {3}',
+          'Limitation des requêtes : attente jusqu’à {1}',
+          'Requêtes limitées · reprise dans {1} s · {2}',
+          'Lot terminé · reprise dans {1} s · {2}',
+          'Échec de la requête · nouvelle tentative dans {1} s · {2}',
+          'Requêtes limitées · reprise dans {1} s · {2}',
+          'Lot terminé · reprise dans {1} s · {2}',
+          'Échec de la requête · nouvelle tentative dans {1} s ({2}/{3}) · {4}',
+          'En attente à cause de la limite de requêtes · encore {1} s · reprise automatique',
+          '· encore {1} s',
+          '· Fin de l’attente, reprise en cours'
+        ],
+        ru: [
+          'Повторная попытка {1}/{2} · {3}',
+          'Ожидание из-за лимита запросов до {1}',
+          'Достигнут лимит запросов · продолжение через {1} с · {2}',
+          'Пакет завершён · продолжение через {1} с · {2}',
+          'Ошибка запроса · повтор через {1} с · {2}',
+          'Достигнут лимит запросов · продолжение через {1} с · {2}',
+          'Пакет завершён · продолжение через {1} с · {2}',
+          'Ошибка запроса · повтор через {1} с ({2}/{3}) · {4}',
+          'Ожидание из-за лимита запросов · осталось {1} с · автоматическое продолжение',
+          '· осталось {1} с',
+          '· Ожидание завершено, возобновление'
+        ],
+        ja: [
+          '再試行中 {1}/{2} · {3}',
+          'リクエスト制限による待機終了予定：{1}',
+          'リクエスト制限中 · {1} 秒後に再開 · {2}',
+          'バッチ完了 · {1} 秒後に続行 · {2}',
+          'リクエスト失敗 · {1} 秒後に再試行 · {2}',
+          'リクエスト制限中 · {1} 秒後に再開 · {2}',
+          'バッチ完了 · {1} 秒後に続行 · {2}',
+          'リクエスト失敗 · {1} 秒後に再試行（{2}/{3}）· {4}',
+          'リクエスト制限で待機中 · 残り {1} 秒 · 自動再開',
+          '· 残り {1} 秒',
+          '· 待機終了、再開中'
+        ]
+      }
+    },
+    {
+      // Literal wait/resume fragments are matched before dynamic templates
+      // because they are also standalone locale keys.
+      keys: [
+        'ui.waitingForAccountRateLimitCooldown',
+        'ui.waitingForAccountRateLimitCooldown_4cb2540',
+        'ui.resumingAfterWait',
+        'ui.resumingAfterWait_586dda0'
+      ],
+      translations: {
+        'zh-TW': [
+          ' · 等待帳號限流冷卻',
+          '· 等待帳號限流冷卻',
+          ' · 等待結束，正在恢復',
+          '· 等待結束，正在恢復'
+        ],
+        es: [
+          ' · Esperando a que termine la pausa por límite de solicitudes de la cuenta',
+          '· Esperando a que termine la pausa por límite de solicitudes de la cuenta',
+          ' · Fin de la espera; reanudando',
+          '· Fin de la espera; reanudando'
+        ],
+        hi: [
+          ' · खाते की अनुरोध-सीमा के कारण लगी रोक समाप्त होने की प्रतीक्षा',
+          '· खाते की अनुरोध-सीमा के कारण लगी रोक समाप्त होने की प्रतीक्षा',
+          ' · प्रतीक्षा समाप्त, फिर से शुरू हो रहा है',
+          '· प्रतीक्षा समाप्त, फिर से शुरू हो रहा है'
+        ],
+        ar: [
+          ' · انتظار انتهاء فترة تقييد الطلبات للحساب',
+          '· انتظار انتهاء فترة تقييد الطلبات للحساب',
+          ' · انتهى الانتظار، جارٍ الاستئناف',
+          '· انتهى الانتظار، جارٍ الاستئناف'
+        ],
+        'pt-BR': [
+          ' · Aguardando o fim da pausa por limite de requisições da conta',
+          '· Aguardando o fim da pausa por limite de requisições da conta',
+          ' · Fim da espera; retomando',
+          '· Fim da espera; retomando'
+        ],
+        bn: [
+          ' · অ্যাকাউন্টের অনুরোধ-সীমার বিরতি শেষ হওয়ার অপেক্ষায়',
+          '· অ্যাকাউন্টের অনুরোধ-সীমার বিরতি শেষ হওয়ার অপেক্ষায়',
+          ' · অপেক্ষা শেষ, আবার শুরু হচ্ছে',
+          '· অপেক্ষা শেষ, আবার শুরু হচ্ছে'
+        ],
+        id: [
+          ' · Menunggu jeda batas permintaan akun berakhir',
+          '· Menunggu jeda batas permintaan akun berakhir',
+          ' · Waktu tunggu selesai, melanjutkan',
+          '· Waktu tunggu selesai, melanjutkan'
+        ],
+        fr: [
+          ' · En attente de la fin de la pause liée à la limite de requêtes du compte',
+          '· En attente de la fin de la pause liée à la limite de requêtes du compte',
+          ' · Fin de l’attente, reprise en cours',
+          '· Fin de l’attente, reprise en cours'
+        ],
+        ru: [
+          ' · Ожидание окончания паузы из-за лимита запросов аккаунта',
+          '· Ожидание окончания паузы из-за лимита запросов аккаунта',
+          ' · Ожидание завершено, возобновление',
+          '· Ожидание завершено, возобновление'
+        ],
+        ja: [
+          ' · アカウントのリクエスト制限による待機中',
+          '· アカウントのリクエスト制限による待機中',
+          ' · 待機終了、再開中',
+          '· 待機終了、再開中'
+        ]
+      }
     }
   ];
   for (const block of blocks) {
