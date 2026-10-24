@@ -256,6 +256,43 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check(detailRequests === 2, 'directory version change triggers exactly one detail fetch');
     check((await storage.getConversation('acct-b', 'cached-0', 1700000004)).hit,
       'refreshed cache carries directory version');
+    const indexedRaw = {
+      id: 'atomic-index', title: 'index source', update_time: 1700000004,
+      mapping: { m: { message: { id: 'm', content: { parts: ['source text'] } } } }
+    };
+    await storage.putConversation('acct-b', {
+      id: 'atomic-index', raw: indexedRaw, updateTime: 1700000004,
+      searchRecord: { id: 'atomic-index', title: 'index source',
+        messages: [{ id: 'm', role: 'user', text: 'source text' }] }
+    });
+    const storedIndex = (await storage.getSearchRecords('acct-b')).find(record => record.id === 'atomic-index');
+    check(storedIndex.origin === 'raw' && storedIndex.dataVersion === 1700000004000,
+      'atomic raw + index store the exact same data version');
+    const storedRaw = await storage.getConversation('acct-b', 'atomic-index', 1700000004);
+    check(storedRaw.hit && storedRaw.raw.mapping.m.message.content.parts[0] === 'source text',
+      'indexed record retains complete raw JSON');
+    try {
+      await storage.putConversation('acct-b', {
+        id: 'atomic-index', raw: { ...indexedRaw, title: 'invalid update' },
+        updateTime: 1700000005, searchRecord: { messages: 'bad schema' }
+      });
+      throw Error('malformed derived index accepted');
+    } catch (error) {
+      check(/搜索索引/.test(error.message), 'invalid index rejects entire atomic write');
+    }
+    check((await storage.getConversation('acct-b', 'atomic-index')).raw.title === 'index source',
+      'bad index write cannot mutate complete JSON');
+    try {
+      await storage.putConversation('acct-b', {
+        id: 'atomic-index', raw: { ...indexedRaw, title: 'stale data' },
+        updateTime: 1700000003, searchRecord: { messages: [] }
+      });
+      throw Error('older revision accepted');
+    } catch (error) {
+      check(/已有更新版本/.test(error.message), 'old indexed snapshot cannot replace new revision');
+    }
+    check((await storage.getSearchRecords('acct-b')).find(record => record.id === 'atomic-index').messages[0].text === 'source text',
+      'rejected stale data also preserves search index');
     try {
       await storage.putSearchRecord('acct-b', {
         id: 'cached-0', updateTime: 1700000003,

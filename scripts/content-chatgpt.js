@@ -1415,7 +1415,17 @@
       try {
         const data = await fetchConversationForExport(rec, progress, onProgress);
         if (await window.APIHandler.getAccountId() !== accountId) throw new Error('登录账号已切换，索引任务已停止');
-        await runtimeMessage({ action: 'searchIndexUpsert', accountId, record: buildSearchIndexRecord(data, rec) });
+        // Store the exact source JSON and its derived text in one transaction.
+        // A partial write cannot leave the index pointing at another version.
+        await runtimeMessage({
+          action: 'localDataPutConversation', accountId,
+          record: {
+            id: rec.id,
+            raw: data,
+            updateTime: rec.updateTime ?? data?.update_time ?? data?.updated_at,
+            searchRecord: buildSearchIndexRecord(data, rec)
+          }
+        });
       } catch (error) {
         if (error.message.includes('登录账号已切换')) throw error;
         failures.push(`${rec.title || rec.id}：${error.message}`);

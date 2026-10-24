@@ -262,6 +262,13 @@ globalThis.ChatGPTProLocalData = (() => {
     // or neither. Preserve an existing text-only index only when its version
     // exactly matches this raw record; otherwise remove the stale version.
     return transaction([STORES.conversations, STORES.search], 'readwrite', async stores => {
+      const previousRaw = await requested(stores[STORES.conversations].get([accountId, id]));
+      // Indexing can finish after another tab has saved a newer revision.
+      // Never roll either the complete JSON or its derived index backward.
+      if (previousRaw?.complete && previousRaw.dataVersion != null &&
+          (dataVersion == null || previousRaw.dataVersion > dataVersion)) {
+        throw new Error('已有更新版本的完整 JSON，拒绝覆盖旧数据');
+      }
       const previousIndex = search ? null : await requested(stores[STORES.search].get([accountId, id]));
       const writes = [requested(stores[STORES.conversations].put(record))];
       if (search) writes.push(requested(stores[STORES.search].put(search)));
