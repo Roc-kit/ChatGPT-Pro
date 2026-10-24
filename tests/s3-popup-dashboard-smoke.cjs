@@ -152,6 +152,8 @@ server.listen(0, '127.0.0.1', async () => {
         'index and cache management starts collapsed');
       check(getComputedStyle(document.querySelector('.header')).backgroundColor === 'rgb(16, 163, 127)',
         'brand header uses the same accent green as switches');
+      check(getComputedStyle(document.querySelector('#apiStatus')).color === 'rgb(255, 255, 255)',
+        'ready status has readable white contrast against the green header');
       check(document.querySelector('#openChatGPT').getBoundingClientRect().top <
         document.querySelector('.header strong').getBoundingClientRect().bottom,
         'open ChatGPT action is next to the title, not on its own line');
