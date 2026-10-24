@@ -8,6 +8,7 @@ const { spawn } = require('node:child_process');
 
 const popupHtml = fs.readFileSync(path.join(__dirname, '../popup/popup.html'), 'utf8');
 const popupJs = fs.readFileSync(path.join(__dirname, '../popup/popup.js'), 'utf8');
+const i18nJs = fs.readFileSync(path.join(__dirname, '../scripts/i18n.js'), 'utf8');
 const mock = `<script>
   const tasks = [
     { id: 'i', type: 'index', status: 'running', done: 20, total: 100,
@@ -25,7 +26,7 @@ const mock = `<script>
   window.chrome = {
     runtime: { lastError: null },
     storage: { local: {
-      get(_keys, callback) { callback({ enabled: true }); },
+      get(_keys, callback) { callback({ enabled: true, uiLanguage: 'zh-CN' }); },
       set(_settings, callback) { callback?.(); }
     } },
     tabs: {
@@ -91,6 +92,9 @@ const server = http.createServer((request, response) => {
   if (request.url === '/popup.js') {
     response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
     response.end(popupJs);
+  } else if (request.url === '/scripts/i18n.js') {
+    response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+    response.end(i18nJs);
   } else {
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     response.end(popupHtml.replace('<script src="popup.js"></script>', mock + '<script src="popup.js"></script>'));

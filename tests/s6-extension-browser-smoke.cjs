@@ -184,6 +184,14 @@ async function main() {
     await eventually(async () => cdp.eval(popupSession,
       `document.querySelector('#indexStartArea').hidden === false`),
     'popup received real content-script task dashboard');
+    // Set a deterministic test language; production defaults to browser locale.
+    await cdp.eval(popupSession, `(() => {
+      const select = document.querySelector('#languageSelect');
+      select.value = 'zh-CN'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await eventually(async () => cdp.eval(popupSession,
+      `document.querySelector('#indexStart').textContent.includes('需授权')`),
+    'language switch restores original Simplified Chinese copy');
     assert.equal(await cdp.eval(popupSession,
       `document.querySelector('#filenamePreset').value`), 'datetime_title',
     'new users default to sortable creation date and time');
@@ -475,6 +483,32 @@ async function main() {
       `document.querySelectorAll('.chatgpt-pro-row').length`), 1,
     'title filter composes with project navigation');
     assert.equal(requests.details, 1, 'filtering cached directory never calls conversation detail API');
+    // Language choice is shared with the real content script, remains scoped
+    // to extension elements, and supports RTL without changing ChatGPT itself.
+    await cdp.eval(popupSession, `(() => {
+      const select = document.querySelector('#languageSelect');
+      select.value = 'es'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await eventually(async () => cdp.eval(popupSession,
+      `document.querySelector('.local-stats').textContent.includes('Conversas') ||
+       document.querySelector('.local-stats').textContent.includes('Conversaciones')`),
+    'Spanish Popup translation applied');
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('[data-panel-view="directory"]').textContent.includes('Conversaciones')`),
+    'Spanish conversation panel translated without remounting');
+    await cdp.eval(popupSession, `(() => {
+      const select = document.querySelector('#languageSelect');
+      select.value = 'ar'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-panel')?.dir === 'rtl' &&
+       document.querySelector('[data-panel-view="search"]').textContent.includes('البحث')`),
+    'Arabic RTL panel and UI labels applied');
+    assert.equal(await cdp.eval(pageSession, `document.documentElement.getAttribute('dir')`), null,
+      'localization does not alter ChatGPT document direction');
+    assert.match(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-row-title').textContent`), /R8 unique/,
+    'user conversation titles are never translated');
     assert(!browserErrors.some(Boolean), `Chrome runtime exceptions: ${browserErrors.join('; ')}`);
     console.log(`S6_EXTENSION_PASS: real MV3, timestamps, filename settings, single MD/JSON, project/title filter, cached index and two ZIP parts; requests=${JSON.stringify(requests)}`);
   } finally {

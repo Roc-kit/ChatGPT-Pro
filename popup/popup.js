@@ -1,4 +1,14 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const i18n = window.ChatGPTProI18n;
+  const languageSelect = document.getElementById('languageSelect');
+  i18n.watch(document.body);
+  languageSelect.addEventListener('change', () => {
+    const value = languageSelect.value;
+    chrome.storage.local.set({ uiLanguage: value });
+    i18n.setLanguage(value);
+    i18n.setDirection(document.documentElement);
+    i18n.apply(document.body);
+  });
   const toggle = document.getElementById('toggle');
   const sidebarTimeToggle = document.getElementById('sidebarTimeToggle');
   const messageTimeToggle = document.getElementById('messageTimeToggle');
@@ -360,7 +370,11 @@ document.addEventListener('DOMContentLoaded', () => {
     filenamePreview.textContent = previewFilename(value);
   }
 
-  chrome.storage.local.get(['enabled', 'showSidebarTime', 'showMessageTimestamps', 'openInBackground', 'closeOnOutsideClick', 'fontSize', 'exportFilenameTemplate'], values => {
+  chrome.storage.local.get(['enabled', 'showSidebarTime', 'showMessageTimestamps', 'openInBackground', 'closeOnOutsideClick', 'fontSize', 'exportFilenameTemplate', 'uiLanguage'], values => {
+    languageSelect.value = values.uiLanguage || 'auto';
+    i18n.setLanguage(languageSelect.value);
+    i18n.setDirection(document.documentElement);
+    i18n.apply(document.body);
     setToggle(toggle, values.enabled !== false);
     const showSidebarTime = values.showSidebarTime === true;
     setToggle(sidebarTimeToggle, showSidebarTime);

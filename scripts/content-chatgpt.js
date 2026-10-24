@@ -2163,6 +2163,10 @@
 
     document.body.appendChild(panel);
     S.timeline = panel;
+    // Translate only extension-owned UI. Never change ChatGPT's document
+    // language/direction or user conversation text.
+    window.ChatGPTProI18n?.setDirection(panel);
+    window.ChatGPTProI18n?.watch(panel);
     S.launcher.classList.add('chatgpt-pro-open');
     S.launcher.setAttribute('aria-expanded', 'true');
     S.launcher.textContent = '−';
@@ -2606,7 +2610,7 @@
   async function loadSettings() {
     const values = await new Promise(resolve => {
       chrome.storage.local.get(
-        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'currentExportPositionY', 'panelSize'],
+        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'currentExportPositionY', 'panelSize', 'uiLanguage'],
         data => resolve(data || {})
       );
     });
@@ -2617,6 +2621,7 @@
     if (values.openInBackground !== undefined) S.settings.openInBackground = values.openInBackground;
     if (values.closeOnOutsideClick !== undefined) S.settings.closeOnOutsideClick = values.closeOnOutsideClick;
     if (values.exportFilenameTemplate) S.settings.exportFilenameTemplate = values.exportFilenameTemplate;
+    window.ChatGPTProI18n?.setLanguage(values.uiLanguage || 'auto');
     if (values.launcherPosition?.x != null && values.launcherPosition?.y != null) {
       S.settings.launcherPosition = values.launcherPosition;
     }
@@ -2749,6 +2754,12 @@
       if (changes.openInBackground) S.settings.openInBackground = changes.openInBackground.newValue;
       if (changes.closeOnOutsideClick) S.settings.closeOnOutsideClick = changes.closeOnOutsideClick.newValue;
       if (changes.exportFilenameTemplate) S.settings.exportFilenameTemplate = changes.exportFilenameTemplate.newValue || '{created_datetime}_{title}';
+      if (changes.uiLanguage) {
+        window.ChatGPTProI18n?.setLanguage(changes.uiLanguage.newValue || 'auto');
+        window.ChatGPTProI18n?.setDirection(S.timeline);
+        window.ChatGPTProI18n?.apply(S.timeline);
+        window.ChatGPTProI18n?.apply(S.launcher);
+      }
       if (changes.panelSize?.newValue) S.settings.panelSize = changes.panelSize.newValue;
       if (restamp && S.settings.enabled) {
         removeAllBadges();
