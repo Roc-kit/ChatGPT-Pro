@@ -346,8 +346,17 @@ globalThis.ChatGPTProLocalData = (() => {
       errors: [], createdAt: now, updatedAt: now, lease: null, generation: 0,
       options: { checkLatest: options.checkLatest === true }
     };
-    await transaction([STORES.tasks], 'readwrite', stores => requested(stores[STORES.tasks].add(task)));
-    return task;
+    // A per-account type singleton prevents two tabs from each creating a
+    // different active task before either can observe the other's taskList.
+    return transaction([STORES.tasks], 'readwrite', async stores => {
+      const store = stores[STORES.tasks];
+      const existing = await requested(store.index('byAccount').getAll(IDBKeyRange.only(accountId)));
+      const current = existing.find(item => item.type === type &&
+        ['pending', 'running', 'paused'].includes(item.status));
+      if (current) return current;
+      await requested(store.add(task));
+      return task;
+    });
   }
 
   async function getTask(accountId, id) {

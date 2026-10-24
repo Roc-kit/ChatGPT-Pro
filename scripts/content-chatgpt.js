@@ -1447,54 +1447,128 @@
     };
   }
 
+  const INDEX_EXECUTOR_ID = crypto.randomUUID();
+  const indexRunners = new Set();
+
+  async function indexTaskMessage(action, accountId, fields = {}) {
+    const response = await runtimeMessage({ action, accountId, ...fields });
+    return response.result;
+  }
+
+  async function runIndexTask(accountId, taskId, onProgress) {
+    if (indexRunners.has(taskId)) return { busy: true };
+    indexRunners.add(taskId);
+    let heartbeat;
+    try {
+      const claim = await indexTaskMessage('taskClaim', accountId, { id: taskId, owner: INDEX_EXECUTOR_ID });
+      if (!claim.acquired) {
+        onProgress?.({ phase: 'running-elsewhere' });
+        return { busy: true };
+      }
+      const token = claim.token;
+      const initial = claim.task;
+      const total = initial.items.length;
+      // Keep a lease alive during network cooldowns; the worker can restart
+      // freely because all authoritative state is in IndexedDB.
+      heartbeat = window.setInterval(() => {
+        indexTaskMessage('taskHeartbeat', accountId, {
+          id: taskId, owner: INDEX_EXECUTOR_ID, token
+        }).catch(() => {});
+      }, 10000);
+      let latest = initial;
+      for (let index = initial.nextIndex; index < total; index++) {
+        const rec = initial.items[index];
+        const progress = {
+          done: index, total, title: rec.title || rec.id,
+          group: Math.floor(index / EXPORT_GROUP_SIZE) + 1,
+          totalGroups: Math.ceil(total / EXPORT_GROUP_SIZE)
+        };
+        // A pause or canceled lease aborts before any next request.
+        await indexTaskMessage('taskHeartbeat', accountId, { id: taskId, owner: INDEX_EXECUTOR_ID, token });
+        if (await window.APIHandler.getAccountId() !== accountId) throw new Error('登录账号已切换，索引任务已停止');
+        let usedNetwork = false;
+        let outcome = 'success';
+        let errorText = '';
+        try {
+          const { data, source } = await fetchConversationForExport(rec, progress, onProgress);
+          usedNetwork = source === 'network';
+          await indexTaskMessage('taskHeartbeat', accountId, { id: taskId, owner: INDEX_EXECUTOR_ID, token });
+          await runtimeMessage({
+            action: 'localDataPutConversation', accountId,
+            record: {
+              id: rec.id, raw: data,
+              updateTime: rec.updateTime ?? data?.update_time ?? data?.updated_at,
+              searchRecord: buildSearchIndexRecord(data, rec)
+            }
+          });
+        } catch (error) {
+          if (/任务租约|登录账号已切换/.test(error.message)) throw error;
+          if (error?.status === 401 || error?.status === 403) {
+            await indexTaskMessage('taskControl', accountId, { id: taskId, operation: 'pause' });
+            throw new Error('登录/权限异常，任务已暂停');
+          }
+          outcome = 'failed';
+          errorText = error.message || String(error);
+          usedNetwork = true;
+        }
+        const checkpoint = await indexTaskMessage('taskCheckpoint', accountId, {
+          id: taskId, owner: INDEX_EXECUTOR_ID, token, itemIndex: index, outcome, error: errorText
+        });
+        latest = checkpoint.task;
+        onProgress?.({ ...progress, phase: 'completed', done: index + 1, failures: latest.failureCount });
+        const isLast = index === total - 1;
+        const groupEnd = (index + 1) % EXPORT_GROUP_SIZE === 0;
+        if (!isLast && usedNetwork) {
+          await waitForExport(groupEnd ? EXPORT_GROUP_GAP_MS : EXPORT_REQUEST_GAP_MS,
+            onProgress, { ...progress, phase: groupEnd ? 'group-wait' : 'pacing', done: index + 1 });
+        }
+      }
+      return {
+        indexedCount: latest.successCount,
+        skippedCount: 0,
+        failures: latest.errors.map(error => `${error.id}：${error.message}`)
+      };
+    } finally {
+      if (heartbeat) window.clearInterval(heartbeat);
+      indexRunners.delete(taskId);
+    }
+  }
+
   async function updateFullTextIndex(records, onProgress) {
     const accountId = await window.APIHandler.getAccountId();
+    const jobs = await indexTaskMessage('taskList', accountId);
+    const existing = jobs.find(task => task.type === 'index' && ['pending', 'running', 'paused'].includes(task.status));
+    if (existing?.status === 'paused') {
+      onProgress?.({ phase: 'paused' });
+      return { paused: true };
+    }
+    if (existing) return runIndexTask(accountId, existing.id, onProgress);
+
     const metadata = await runtimeMessage({ action: 'searchIndexMetadata', accountId });
     const indexed = new Map((metadata.records || []).map(record => [record.id, Number(record.updateTime || 0)]));
     const pending = records.filter(record => indexed.get(record.id) !== timestampValue(record.updateTime));
-    const failures = [];
-    const totalGroups = Math.max(1, Math.ceil(pending.length / EXPORT_GROUP_SIZE));
+    if (!pending.length) return { indexedCount: 0, skippedCount: records.length, failures: [] };
+    const task = await indexTaskMessage('taskCreate', accountId, { type: 'index', items: pending });
+    if (task.status === 'paused') return { paused: true };
+    return runIndexTask(accountId, task.id, onProgress);
+  }
 
-    for (let index = 0; index < pending.length; index++) {
-      const rec = pending[index];
-      const progress = {
-        done: index,
-        total: pending.length,
-        group: Math.floor(index / EXPORT_GROUP_SIZE) + 1,
-        totalGroups,
-        title: rec.title || rec.id
-      };
-      let usedNetwork = false;
-      try {
-        const { data, source } = await fetchConversationForExport(rec, progress, onProgress);
-        usedNetwork = source === 'network';
-        if (await window.APIHandler.getAccountId() !== accountId) throw new Error('登录账号已切换，索引任务已停止');
-        // Store the exact source JSON and its derived text in one transaction.
-        // A partial write cannot leave the index pointing at another version.
-        await runtimeMessage({
-          action: 'localDataPutConversation', accountId,
-          record: {
-            id: rec.id,
-            raw: data,
-            updateTime: rec.updateTime ?? data?.update_time ?? data?.updated_at,
-            searchRecord: buildSearchIndexRecord(data, rec)
-          }
-        });
-      } catch (error) {
-        if (error.message.includes('登录账号已切换')) throw error;
-        failures.push(`${rec.title || rec.id}：${error.message}`);
-        usedNetwork = true;
+  let recoveringIndexTasks = false;
+  async function recoverIndexTasks() {
+    if (recoveringIndexTasks || !S.settings.enabled) return;
+    recoveringIndexTasks = true;
+    try {
+      const accountId = await window.APIHandler.getAccountId();
+      const tasks = await indexTaskMessage('taskList', accountId);
+      for (const task of tasks) {
+        if (task.type !== 'index' || !['running', 'pending'].includes(task.status)) continue;
+        if (task.status === 'running' && task.lease?.expiresAt > Date.now()) continue;
+        // The lease is acquired atomically. Another active tab wins safely.
+        await runIndexTask(accountId, task.id).catch(error => log('Index recovery skipped:', error.message));
       }
-      onProgress?.({ ...progress, phase: 'completed', done: index + 1, failures: failures.length });
-      const isLast = index === pending.length - 1;
-      const isGroupEnd = (index + 1) % EXPORT_GROUP_SIZE === 0;
-      if (!isLast && usedNetwork && isGroupEnd) {
-        await waitForExport(EXPORT_GROUP_GAP_MS, onProgress, { ...progress, phase: 'group-wait', done: index + 1 });
-      } else if (!isLast && usedNetwork) {
-        await waitForExport(EXPORT_REQUEST_GAP_MS, onProgress, { ...progress, phase: 'pacing', done: index + 1 });
-      }
+    } finally {
+      recoveringIndexTasks = false;
     }
-    return { indexedCount: pending.length - failures.length, skippedCount: records.length - pending.length, failures };
   }
 
   function searchResultTime(result) {
@@ -1806,7 +1880,11 @@
       try {
         const result = await updateFullTextIndex(currentRecords, progress => {
           const base = `${progress.done} / ${progress.total}`;
-          if (progress.phase === 'rate-limit') {
+          if (progress.phase === 'paused') {
+            searchIndexStatus.textContent = '索引任务已暂停，请在任务管理中继续';
+          } else if (progress.phase === 'running-elsewhere') {
+            searchIndexStatus.textContent = '索引任务正在其他标签页运行';
+          } else if (progress.phase === 'rate-limit') {
             searchIndexStatus.textContent = `请求受限，${progress.remainingSeconds} 秒后继续 · ${base}`;
           } else if (progress.phase === 'group-wait') {
             searchIndexStatus.textContent = `本组完成，${progress.remainingSeconds} 秒后继续 · ${base}`;
@@ -1816,9 +1894,11 @@
             searchIndexStatus.textContent = `正在更新索引 ${base}`;
           }
         });
-        searchIndexStatus.textContent = result.failures.length
-          ? `新增/更新 ${result.indexedCount} 个，失败 ${result.failures.length} 个`
-          : `索引已是最新 · 更新 ${result.indexedCount} 个，跳过 ${result.skippedCount} 个`;
+        if (!result.busy && !result.paused) {
+          searchIndexStatus.textContent = result.failures.length
+            ? `新增/更新 ${result.indexedCount} 个，失败 ${result.failures.length} 个`
+            : `索引已是最新 · 更新 ${result.indexedCount} 个，跳过 ${result.skippedCount} 个`;
+        }
       } catch (error) {
         searchIndexStatus.textContent = `索引更新失败：${error.message}`;
       } finally {
@@ -2146,6 +2226,10 @@
       }
     }, RECHECK_MS);
     setInterval(backgroundSyncConversationList, BACKGROUND_SYNC_MS);
+    // On tab restart, an expired running lease can be reclaimed. Paused jobs
+    // are intentionally excluded; no long-lived MV3 worker is required.
+    window.setInterval(() => recoverIndexTasks().catch(error => log('Index recovery failed:', error.message)), 15000);
+    recoverIndexTasks().catch(error => log('Initial index recovery failed:', error.message));
     window.addEventListener('resize', () => {
       placeLauncher();
       placeCurrentChatExportButton();

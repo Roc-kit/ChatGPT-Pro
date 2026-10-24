@@ -398,6 +398,13 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check(!(await send({ action: 'taskHeartbeat', accountId: 'acct-a', id: expiringId,
       owner: 'abandoned-tab', token: oldOwner.result.token })).success,
       'expired executor cannot renew an old lease');
+    const newTaskRequests = await Promise.all([
+      send({ action: 'taskCreate', accountId: 'acct-b', type: 'index', items: [{ id: 'one' }] }),
+      send({ action: 'taskCreate', accountId: 'acct-b', type: 'index', items: [{ id: 'two' }] })
+    ]);
+    check(newTaskRequests.every(entry => entry.success), 'two tabs can request task creation');
+    check(newTaskRequests[0].result.id === newTaskRequests[1].result.id,
+      'atomic create prevents duplicate active tasks across tabs');
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }
