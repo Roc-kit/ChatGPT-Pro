@@ -405,6 +405,42 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check(newTaskRequests.every(entry => entry.success), 'two tabs can request task creation');
     check(newTaskRequests[0].result.id === newTaskRequests[1].result.id,
       'atomic create prevents duplicate active tasks across tabs');
+    const slotOne = await send({ action: 'detailAcquire', accountId: 'acct-a', owner: 'detail-tab-one' });
+    check(slotOne.success && slotOne.result.granted, 'first detail request acquires account slot');
+    const blockedSlot = await send({ action: 'detailAcquire', accountId: 'acct-a', owner: 'detail-tab-two' });
+    check(!blockedSlot.result.granted && blockedSlot.result.reason === 'busy', 'other tab blocked by detail lease');
+    await send({ action: 'detailHeartbeat', accountId: 'acct-a', owner: 'detail-tab-one', token: slotOne.result.token });
+    const cooldown = await send({ action: 'detailRelease', accountId: 'acct-a', owner: 'detail-tab-one',
+      token: slotOne.result.token, status: 429, retryAfterMs: 1400 });
+    check(cooldown.result.cooldownUntil > Date.now(), '429 persists Retry-After cooldown');
+    const limitedSlot = await send({ action: 'detailAcquire', accountId: 'acct-a', owner: 'detail-tab-two' });
+    check(!limitedSlot.result.granted && limitedSlot.result.reason === 'cooldown',
+      'shared cooldown blocks both indexing and export detail requests');
+    await storage.upsertDirectory('acct-a', [{ id: 'cooldown-preserved', title: 'preserve scheduler state' }]);
+    check((await send({ action: 'detailStatus', accountId: 'acct-a' })).result.cooldownUntil >= cooldown.result.cooldownUntil,
+      'directory sync cannot overwrite persisted cooldown');
+    check((await send({ action: 'detailStatus', accountId: 'acct-b' })).result.cooldownUntil === 0,
+      'other account has independent cooldown');
+    const coolDb = await storage.openDb();
+    await new Promise((resolve, reject) => {
+      const tx = coolDb.transaction('accounts', 'readwrite');
+      const store = tx.objectStore('accounts');
+      const request = store.get('acct-a');
+      request.onsuccess = () => {
+        const state = request.result;
+        state.cooldownUntil = Date.now() - 1;
+        store.put(state);
+      };
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    coolDb.close();
+    const resumedSlot = await send({ action: 'detailAcquire', accountId: 'acct-a', owner: 'detail-tab-two' });
+    check(resumedSlot.result.granted, 'expired cooldown allows a new detail request');
+    check(!(await send({ action: 'detailRelease', accountId: 'acct-a', owner: 'detail-tab-one',
+      token: slotOne.result.token, status: 200 })).success, 'stale executor cannot mutate cooldown');
+    await send({ action: 'detailRelease', accountId: 'acct-a', owner: 'detail-tab-two',
+      token: resumedSlot.result.token, status: 200 });
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }

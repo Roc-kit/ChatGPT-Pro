@@ -160,7 +160,10 @@ globalThis.ChatGPTProLocalData = (() => {
       };
     });
     return transaction([STORES.accounts, STORES.directory], 'readwrite', async stores => {
-      const writes = [requested(stores[STORES.accounts].put({ id: accountId, lastSeenAt: Date.now() }))];
+      const account = await requested(stores[STORES.accounts].get(accountId));
+      const writes = [requested(stores[STORES.accounts].put({
+        ...account, id: accountId, lastSeenAt: Date.now()
+      }))];
       for (const entry of clean) writes.push(requested(stores[STORES.directory].put(entry)));
       await Promise.all(writes);
       return { saved: clean.length };
@@ -453,11 +456,77 @@ globalThis.ChatGPTProLocalData = (() => {
     });
   }
 
+  const DETAIL_LEASE_MS = 45000;
+
+  async function changeRequestState(accountId, handler) {
+    validateAccount(accountId);
+    return transaction([STORES.accounts], 'readwrite', async stores => {
+      const store = stores[STORES.accounts];
+      const state = await requested(store.get(accountId)) || { id: accountId };
+      const outcome = handler(state, Date.now());
+      if (outcome.changed) await requested(store.put(state));
+      return { ...outcome, changed: undefined };
+    });
+  }
+
+  async function acquireDetailSlot(accountId, owner) {
+    validateId(owner);
+    return changeRequestState(accountId, (state, now) => {
+      const until = Number(state.cooldownUntil || 0);
+      if (until > now) return { granted: false, reason: 'cooldown', waitMs: until - now, cooldownUntil: until };
+      const lease = state.detailLease;
+      if (lease?.expiresAt > now) {
+        return { granted: false, reason: 'busy', waitMs: Math.min(1500, lease.expiresAt - now) };
+      }
+      const token = crypto.randomUUID();
+      state.detailLease = { owner, token, expiresAt: now + DETAIL_LEASE_MS };
+      return { granted: true, token, changed: true };
+    });
+  }
+
+  async function heartbeatDetailSlot(accountId, owner, token) {
+    return changeRequestState(accountId, (state, now) => {
+      if (state.detailLease?.owner !== owner || state.detailLease?.token !== token ||
+          state.detailLease.expiresAt <= now) throw new Error('详情请求租约已失效');
+      state.detailLease.expiresAt = now + DETAIL_LEASE_MS;
+      return { renewed: true, changed: true };
+    });
+  }
+
+  async function releaseDetailSlot(accountId, owner, token, status, retryAfterMs) {
+    return changeRequestState(accountId, (state, now) => {
+      if (state.detailLease?.owner !== owner || state.detailLease?.token !== token) {
+        throw new Error('详情请求租约已失效，拒绝修改共享冷却');
+      }
+      state.detailLease = null;
+      if (status === 429) {
+        const failures = Math.min(8, Number(state.rateLimitStreak || 0) + 1);
+        state.rateLimitStreak = failures;
+        const provided = Number(retryAfterMs);
+        const delay = Number.isFinite(provided) && provided > 0
+          ? Math.min(provided, 24 * 60 * 60 * 1000)
+          : Math.min(5 * 60 * 1000, 60000 * 2 ** (failures - 1));
+        state.cooldownUntil = Math.max(state.cooldownUntil || 0, now + delay);
+      } else if (status === 200) {
+        state.rateLimitStreak = 0;
+      }
+      return { released: true, cooldownUntil: state.cooldownUntil || 0, changed: true };
+    });
+  }
+
+  async function getDetailSlotStatus(accountId) {
+    validateAccount(accountId);
+    const state = await transaction([STORES.accounts], 'readonly', stores =>
+      requested(stores[STORES.accounts].get(accountId)));
+    return { cooldownUntil: state?.cooldownUntil || 0, busyUntil: state?.detailLease?.expiresAt || 0 };
+  }
+
   return Object.freeze({
     openDb, upsertDirectory, getDirectory, getDirectoryRecord,
     putSearchRecord, getSearchMetadata, getSearchRecords, clearSearchIndex,
     putConversation, getConversation, getStats, getLegacyMetadata,
     createTask, getTask, listTasks, claimTask, heartbeatTask, checkpointTask, controlTask,
+    acquireDetailSlot, heartbeatDetailSlot, releaseDetailSlot, getDetailSlotStatus,
     DB_NAME, DB_VERSION, LEGACY_SEARCH, UNASSIGNED_ACCOUNT, STORES
   });
 })();

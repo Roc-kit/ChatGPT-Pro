@@ -520,9 +520,71 @@ const APIHandler = (function () {
     if (!forceFull) {
       const cached = await readDirectory();
       if (cached.length) return buildTimestampMap(cached);
+      const initial = buildTimestampMap(await fetchInitialRegularPage());
+      initial.partial = true;
+      return initial;
     }
     const records = await syncConversationList(forceFull);
     return buildTimestampMap(records);
+  }
+
+  async function scheduledConversationDetail(accountId, conversationId, updateTime) {
+    // Account-wide IndexedDB lease: one in-flight detail request across tabs,
+    // indexing and export. A shared 429 cooldown survives page/worker restarts.
+    const owner = crypto.randomUUID();
+    let token;
+    for (;;) {
+      if (await getAccountId() !== accountId) throw new Error('登录账号已切换，详情任务已停止');
+      const attempt = await localDataMessage({ action: 'detailAcquire', accountId, owner });
+      if (attempt.result.granted) {
+        token = attempt.result.token;
+        break;
+      }
+      await sleep(Math.min(1500, Math.max(200, attempt.result.waitMs || 1000)));
+    }
+    let heartbeat;
+    let status = 0;
+    try {
+      heartbeat = window.setInterval(() => {
+        localDataMessage({ action: 'detailHeartbeat', accountId, owner, token }).catch(() => {});
+      }, 10000);
+      // Another tab may have populated the exact version while we waited.
+      const cached = await localDataMessage({
+        action: 'localDataGetConversation', accountId, id: conversationId, updateTime
+      });
+      if (cached.hit) return { data: cached.raw, source: 'cache' };
+
+      const accessToken = await getToken();
+      const raw = await fetchAuthedJson(accessToken, `${baseUrl()}/conversation/${encodeURIComponent(conversationId)}`);
+      if (await getAccountId() !== accountId) throw new Error('登录账号已切换，已取消详情缓存写入');
+      status = 200;
+      try {
+        await localDataMessage({ action: 'localDataPutConversation', accountId,
+          record: { id: conversationId, raw, updateTime: updateTime ?? raw.update_time ?? raw.updated_at }
+        });
+      } catch (error) {
+        console.warn('[ChatGPT Pro] Detail cache write skipped:', error.message);
+      }
+      return { data: raw, source: 'network' };
+    } catch (error) {
+      status = error?.status || 0;
+      if (status === 429) {
+        try {
+          await localDataMessage({ action: 'detailRelease', accountId, owner, token,
+            status, retryAfterMs: error.retryAfterMs });
+          token = null;
+        } catch (releaseError) {
+          console.warn('[ChatGPT Pro] Cooldown persist failed:', releaseError.message);
+        }
+      }
+      throw error;
+    } finally {
+      if (heartbeat) window.clearInterval(heartbeat);
+      if (token) {
+        await localDataMessage({ action: 'detailRelease', accountId, owner, token, status })
+          .catch(error => console.warn('[ChatGPT Pro] Detail lease release failed:', error.message));
+      }
+    }
   }
 
   async function getConversation(conversationId, options = {}) {
@@ -550,18 +612,7 @@ const APIHandler = (function () {
         console.warn('[ChatGPT Pro] Detail cache read skipped:', error.message);
       }
 
-      const token = await getToken();
-      const raw = await fetchAuthedJson(token, `${baseUrl()}/conversation/${encodeURIComponent(conversationId)}`);
-      if (await getAccountId() !== accountId) throw new Error('登录账号已切换，已取消详情缓存写入');
-      try {
-        await localDataMessage({
-          action: 'localDataPutConversation', accountId,
-          record: { id: conversationId, raw, updateTime: updateTime ?? raw.update_time ?? raw.updated_at }
-        });
-      } catch (error) {
-        console.warn('[ChatGPT Pro] Detail cache write skipped:', error.message);
-      }
-      return { data: raw, source: 'network' };
+      return scheduledConversationDetail(accountId, conversationId, updateTime);
       })();
       _conversationPromises.set(key, promise);
       // Removing a failed promise is important: a later retry must be able

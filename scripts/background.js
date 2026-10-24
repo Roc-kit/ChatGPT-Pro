@@ -253,6 +253,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     ),
     taskControl: () => ChatGPTProLocalData.controlTask(message.accountId, message.id, message.operation)
   };
+  Object.assign(taskHandlers, {
+    detailAcquire: () => ChatGPTProLocalData.acquireDetailSlot(message.accountId, message.owner),
+    detailHeartbeat: () => ChatGPTProLocalData.heartbeatDetailSlot(message.accountId, message.owner, message.token),
+    detailRelease: () => ChatGPTProLocalData.releaseDetailSlot(
+      message.accountId, message.owner, message.token, message.status, message.retryAfterMs
+    ),
+    detailStatus: () => ChatGPTProLocalData.getDetailSlotStatus(message.accountId)
+  });
   if (Object.hasOwn(taskHandlers, message.action)) {
     taskHandlers[message.action]()
       .then(result => sendResponse({ success: true, result }))
