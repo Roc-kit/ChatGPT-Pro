@@ -40,6 +40,7 @@
     observedConversationId: undefined,
     observedMessageSignature: '',
     messageRouteRetryTimers: [],
+    minimap: { id: null, signature: '', entries: [], collapsed: false },
     settings: {
       enabled: true,
       showSidebarTime: false,
@@ -269,6 +270,94 @@
     window.addEventListener('popstate', checkView);
     window.addEventListener('hashchange', checkView);
     window.setInterval(checkView, MESSAGE_ROUTE_CHECK_MS);
+    // Minimap is DOM-only: never fetch additional conversation details.
+    window.setInterval(syncConversationMinimap, 2200);
+    document.addEventListener('scroll', updateMinimapActive, { passive: true, capture: true });
+    window.addEventListener('resize', updateMinimapActive, { passive: true });
+  }
+
+  function updateMinimapActive() {
+    if (S.minimap.collapsed || !S.minimap.entries.length) return;
+    let active = null;
+    let distance = Infinity;
+    for (const entry of S.minimap.entries) {
+      if (!entry.target.isConnected) continue;
+      const delta = Math.abs(entry.target.getBoundingClientRect().top - window.innerHeight * 0.38);
+      if (delta < distance) { distance = delta; active = entry; }
+    }
+    for (const entry of S.minimap.entries) {
+      entry.button.classList.toggle('chatgpt-pro-minimap-active', entry === active);
+      if (entry === active) entry.button.setAttribute('aria-current', 'location');
+      else entry.button.removeAttribute('aria-current');
+    }
+  }
+
+  function syncConversationMinimap() {
+    const id = S.settings.enabled && currentConversationId();
+    const previous = document.querySelector('[data-chatgpt-pro-minimap]');
+    if (!id) {
+      previous?.remove();
+      S.minimap.id = null;
+      S.minimap.signature = '';
+      S.minimap.entries = [];
+      return;
+    }
+    const messages = window.ChatGPTDomAdapter.messageElements()
+      .filter(element => ['user', 'assistant'].includes(window.ChatGPTDomAdapter.messageRole(element)));
+    // Short conversations do not need an extra overlay.
+    if (messages.length < 8) {
+      previous?.remove();
+      S.minimap.signature = '';
+      S.minimap.entries = [];
+      return;
+    }
+    const signature = `${id}:${messages.map((element, index) =>
+      window.ChatGPTDomAdapter.messageIds(element).join(',') || `position-${index}`).join('|')}`;
+    if (previous && S.minimap.signature === signature &&
+        S.minimap.entries.every((entry, index) => entry.target === messages[index])) {
+      updateMinimapActive();
+      return;
+    }
+    const panel = document.createElement('nav');
+    panel.className = 'chatgpt-pro-minimap';
+    panel.setAttribute('data-chatgpt-pro-minimap', '1');
+    panel.setAttribute('aria-label', '长对话快速导航');
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'chatgpt-pro-minimap-toggle';
+    toggle.textContent = S.minimap.collapsed ? '›' : '‹';
+    toggle.title = S.minimap.collapsed ? '展开消息导航' : '收起消息导航';
+    const rail = document.createElement('div');
+    rail.className = 'chatgpt-pro-minimap-rail';
+    const entries = [];
+    for (const [index, target] of messages.entries()) {
+      const role = window.ChatGPTDomAdapter.messageRole(target);
+      const marker = document.createElement('button');
+      marker.type = 'button';
+      marker.className = `chatgpt-pro-minimap-marker chatgpt-pro-minimap-${role}`;
+      const preview = String(target.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 90);
+      marker.title = `${index + 1}/${messages.length} · ${role === 'user' ? '用户' : 'ChatGPT'}：${preview}`;
+      marker.setAttribute('aria-label', marker.title);
+      marker.addEventListener('click', () => target.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+      rail.append(marker);
+      entries.push({ target, button: marker });
+    }
+    toggle.addEventListener('click', () => {
+      S.minimap.collapsed = !S.minimap.collapsed;
+      panel.classList.toggle('chatgpt-pro-minimap-collapsed', S.minimap.collapsed);
+      toggle.textContent = S.minimap.collapsed ? '›' : '‹';
+      toggle.title = S.minimap.collapsed ? '展开消息导航' : '收起消息导航';
+      chrome.storage.local.set({ minimapCollapsed: S.minimap.collapsed });
+      updateMinimapActive();
+    });
+    panel.append(toggle, rail);
+    panel.classList.toggle('chatgpt-pro-minimap-collapsed', S.minimap.collapsed);
+    previous?.remove();
+    document.body.append(panel);
+    S.minimap.id = id;
+    S.minimap.signature = signature;
+    S.minimap.entries = entries;
+    updateMinimapActive();
   }
 
   function makeBadge(text) {
@@ -2825,7 +2914,7 @@
   async function loadSettings() {
     const values = await new Promise(resolve => {
       chrome.storage.local.get(
-        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'currentExportPositionY', 'panelSize', 'uiLanguage'],
+        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'currentExportPositionY', 'panelSize', 'uiLanguage', 'minimapCollapsed'],
         data => resolve(data || {})
       );
     });
@@ -2841,6 +2930,7 @@
       S.settings.launcherPosition = values.launcherPosition;
     }
     if (values.currentExportPositionY != null) S.settings.currentExportPositionY = values.currentExportPositionY;
+    S.minimap.collapsed = values.minimapCollapsed === true;
     if (values.panelSize?.width && values.panelSize?.height) S.settings.panelSize = values.panelSize;
   }
 
