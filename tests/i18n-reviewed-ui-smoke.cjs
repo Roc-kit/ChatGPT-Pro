@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 161, 'reviewed interface, safety, indexing, ZIP export, retry and diagnostic hints include 161 strings');
+assert.equal(keys.length, 193, 'reviewed interface, popup controls, safety, indexing, ZIP export, retry and diagnostic hints include 193 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -41,6 +41,11 @@ const samples = [
   ['hi', 'ui.delete', 'मिटाएँ'],
   ['bn', 'ui.fullTextSearch', 'সম্পূর্ণ টেক্সটে খুঁজুন'],
   ['zh-TW', 'ui.indexDataManagement', '索引與資料管理'],
+  ['es', 'ui.fullTextIndexCache', 'Índice de texto completo y caché'],
+  ['ja', 'ui.initialIndexingConsentRequired', '初回インデックス（許可が必要）'],
+  ['fr', 'ui.downloadPreviouslySavedZIPPartsAgain', 'Retélécharger les dernières parties ZIP enregistrées'],
+  ['id', 'ui.noTasksForThisAccount', 'Tidak ada tugas untuk akun ini'],
+  ['pt-BR', 'ui.localDataCountForThisAccount', 'Dados locais da conta atual'],
   ['ja', 'ui.completeJSONNotSavedLocallyRemoteDeletionCanceled',
     '完全な JSON がローカルに保存されていないため、クラウド上のチャットは削除していません。'],
   ['ja', 'ui.indexingIsRunningInAnotherTab', '別のタブでインデックス作成が実行中です。'],
@@ -176,4 +181,4 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
       `${locale}/${key}: appended cooldown fragment did not use the reviewed translation`);
   }
 }
-console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, six indexing, eight ZIP, ten retry/cooldown templates and live wait fragments`);
+console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including popup controls, indexing, ZIP export, retry/cooldown and live wait fragments`);
