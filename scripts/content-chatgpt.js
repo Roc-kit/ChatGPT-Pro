@@ -40,7 +40,7 @@
     observedConversationId: undefined,
     observedMessageSignature: '',
     messageRouteRetryTimers: [],
-    minimap: { id: null, signature: '', entries: [], collapsed: false },
+    minimap: { id: null, signature: '', entries: [], collapsed: false, active: null, frame: 0 },
     settings: {
       enabled: true,
       showSidebarTime: false,
@@ -271,25 +271,42 @@
     window.addEventListener('hashchange', checkView);
     window.setInterval(checkView, MESSAGE_ROUTE_CHECK_MS);
     // Minimap is DOM-only: never fetch additional conversation details.
-    window.setInterval(syncConversationMinimap, 2200);
-    document.addEventListener('scroll', updateMinimapActive, { passive: true, capture: true });
-    window.addEventListener('resize', updateMinimapActive, { passive: true });
+    window.setInterval(syncConversationMinimap, 3000);
+    const scheduleActive = () => {
+      if (S.minimap.frame) return;
+      S.minimap.frame = window.requestAnimationFrame(() => {
+        S.minimap.frame = 0;
+        updateMinimapActive();
+      });
+    };
+    document.addEventListener('scroll', scheduleActive, { passive: true, capture: true });
+    window.addEventListener('resize', scheduleActive, { passive: true });
   }
 
   function updateMinimapActive() {
     if (S.minimap.collapsed || !S.minimap.entries.length) return;
-    let active = null;
-    let distance = Infinity;
-    for (const entry of S.minimap.entries) {
-      if (!entry.target.isConnected) continue;
-      const delta = Math.abs(entry.target.getBoundingClientRect().top - window.innerHeight * 0.38);
-      if (delta < distance) { distance = delta; active = entry; }
+    const items = S.minimap.entries;
+    if (!items[0].target.isConnected || !items[items.length - 1].target.isConnected) return;
+    const anchor = window.innerHeight * 0.38;
+    let low = 0;
+    let high = items.length;
+    // DOM-ordered messages permit logarithmic lookup on scroll instead of
+    // measuring every message in conversations with thousands of turns.
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (items[middle].target.getBoundingClientRect().top < anchor) low = middle + 1;
+      else high = middle;
     }
-    for (const entry of S.minimap.entries) {
-      entry.button.classList.toggle('chatgpt-pro-minimap-active', entry === active);
-      if (entry === active) entry.button.setAttribute('aria-current', 'location');
-      else entry.button.removeAttribute('aria-current');
-    }
+    const previous = items[Math.max(0, low - 1)];
+    const next = items[Math.min(items.length - 1, low)];
+    const active = Math.abs(previous.target.getBoundingClientRect().top - anchor)
+      <= Math.abs(next.target.getBoundingClientRect().top - anchor) ? previous : next;
+    if (active === S.minimap.active) return;
+    S.minimap.active?.button.classList.remove('chatgpt-pro-minimap-active');
+    S.minimap.active?.button.removeAttribute('aria-current');
+    active.button.classList.add('chatgpt-pro-minimap-active');
+    active.button.setAttribute('aria-current', 'location');
+    S.minimap.active = active;
   }
 
   function syncConversationMinimap() {
@@ -300,6 +317,7 @@
       S.minimap.id = null;
       S.minimap.signature = '';
       S.minimap.entries = [];
+      S.minimap.active = null;
       return;
     }
     const messages = window.ChatGPTDomAdapter.messageElements()
@@ -309,6 +327,7 @@
       previous?.remove();
       S.minimap.signature = '';
       S.minimap.entries = [];
+      S.minimap.active = null;
       return;
     }
     const signature = `${id}:${messages.map((element, index) =>
@@ -357,6 +376,7 @@
     S.minimap.id = id;
     S.minimap.signature = signature;
     S.minimap.entries = entries;
+    S.minimap.active = null;
     updateMinimapActive();
   }
 
@@ -629,7 +649,7 @@
     const top = Math.round(VIEWPORT_MARGIN + (maxTop - VIEWPORT_MARGIN) * y);
     button.style.top = `${top}px`;
     const images = document.querySelector('[data-chatgpt-pro-current-images]');
-    if (images) images.style.top = `${Math.max(VIEWPORT_MARGIN, top - 44)}px`;
+    if (images) images.style.top = `${top >= 54 ? top - 44 : top + 44}px`;
   }
 
   function saveCurrentChatExportPosition(top, button) {
@@ -663,7 +683,7 @@
       const top = Math.max(VIEWPORT_MARGIN, Math.min(maxTop, startTop + dy));
       button.style.top = `${top}px`;
       const images = document.querySelector('[data-chatgpt-pro-current-images]');
-      if (images) images.style.top = `${Math.max(VIEWPORT_MARGIN, top - 44)}px`;
+      if (images) images.style.top = `${top >= 54 ? top - 44 : top + 44}px`;
     });
 
     const finish = event => {
