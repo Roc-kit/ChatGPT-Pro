@@ -167,6 +167,48 @@ async function searchFullText(query, limit = 200) {
   }));
 }
 
+function matchingResults(records, query, limit = 200, origin = 'account') {
+  const tokens = normalizeSearchText(query).split(/\s+/).filter(Boolean);
+  if (!tokens.length) return [];
+  const maxResults = Math.max(1, Math.min(500, Number(limit) || 200));
+  const results = [];
+  const sorted = [...records].sort((a, b) => (b.updateTime || 0) - (a.updateTime || 0));
+  for (const record of sorted) {
+    let conversationMatched = false;
+    for (const message of record.messages || []) {
+      if (!tokens.every(token => normalizeSearchText(message.text).includes(token))) continue;
+      conversationMatched = true;
+      results.push({
+        conversationId: record.id, title: record.title, href: record.href,
+        updateTime: record.updateTime, messageId: message.id, role: message.role,
+        createTime: message.createTime, snippet: searchSnippet(message.text, tokens), origin
+      });
+      if (results.length >= maxResults) return results;
+    }
+    if (!conversationMatched && tokens.every(token => normalizeSearchText(record.title).includes(token))) {
+      results.push({
+        conversationId: record.id, title: record.title, href: record.href,
+        updateTime: record.updateTime, messageId: '', role: '', createTime: 0,
+        snippet: '标题匹配', origin
+      });
+      if (results.length >= maxResults) return results;
+    }
+  }
+  return results;
+}
+
+async function searchForAccount(accountId, query, limit) {
+  const records = await ChatGPTProLocalData.getSearchRecords(accountId);
+  return matchingResults(records, query, limit);
+}
+
+async function searchUnassignedLegacy(query, limit) {
+  // This is deliberately a separate, explicit query. It must never be merged
+  // into a signed-in account's ordinary search result set.
+  const records = await withSearchStore('readonly', store => requestResult(store.getAll()));
+  return matchingResults(records, query, limit, 'legacy-unassigned');
+}
+
 async function clearSearchIndex() {
   await withSearchStore('readwrite', store => requestResult(store.clear()));
   return { success: true };
@@ -215,6 +257,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
+  if (message.action === 'localDataGetDirectory') {
+    ChatGPTProLocalData.getDirectory(message.accountId)
+      .then(records => sendResponse({ success: true, records }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
   if (message.action === 'localDataStats') {
     ChatGPTProLocalData.getStats(message.accountId)
       .then(result => sendResponse({ success: true, ...result }))
@@ -228,11 +276,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message.action === 'searchIndexUpsert') {
-    upsertSearchRecord(message.record).then(sendResponse).catch(error => sendResponse({ success: false, error: error.message }));
+    ChatGPTProLocalData.putSearchRecord(message.accountId, message.record)
+      .then(result => sendResponse({ success: true, ...result }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
   if (message.action === 'searchIndexMetadata') {
-    searchIndexMetadata()
+    ChatGPTProLocalData.getSearchMetadata(message.accountId)
       .then(records => sendResponse({ success: true, records }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
@@ -242,13 +292,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message.action === 'searchFullText') {
-    searchFullText(message.query, message.limit)
+    searchForAccount(message.accountId, message.query, message.limit)
+      .then(results => sendResponse({ success: true, results }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+  if (message.action === 'searchUnassignedLegacy') {
+    searchUnassignedLegacy(message.query, message.limit)
       .then(results => sendResponse({ success: true, results }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
   if (message.action === 'searchIndexClear') {
-    clearSearchIndex().then(sendResponse).catch(error => sendResponse({ success: false, error: error.message }));
+    ChatGPTProLocalData.clearSearchIndex(message.accountId)
+      .then(result => sendResponse({ success: true, ...result }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
   if (message.action === 'getSettings') {

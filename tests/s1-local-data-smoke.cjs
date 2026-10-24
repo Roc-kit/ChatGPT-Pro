@@ -7,6 +7,7 @@ const { spawn } = require('node:child_process');
 
 const source = fs.readFileSync(path.join(__dirname, '../scripts/local-data-store.js'));
 const background = fs.readFileSync(path.join(__dirname, '../scripts/background.js'));
+const apiHandler = fs.readFileSync(path.join(__dirname, '../scripts/api-handler.js'));
 const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</pre><script>
 (async function () {
   const check = (ok, message) => { if (!ok) throw Error(message); };
@@ -49,11 +50,29 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     upgradeDb.close();
     // Exercise the actual background search path against the upgraded DB.
     window.importScripts = () => {};
+    const callbacks = [];
+    const localSettings = {
+      chatgpt_pro_directory_v1: [{ id: 'unknown-old-owner', title: 'unassigned legacy directory' }]
+    };
     window.chrome = {
       runtime: {
         onInstalled: { addListener() {} },
-        onMessage: { addListener() {} }
-      }
+        onMessage: { addListener(callback) { callbacks.push(callback); } },
+        sendMessage(message, respond) {
+          for (const callback of callbacks) {
+            if (callback(message, {}, respond) === true) return;
+          }
+          throw Error('No runtime listener for ' + message.action);
+        }
+      },
+      storage: { local: {
+        get(keys, respond) {
+          const names = Array.isArray(keys) ? keys : [keys];
+          respond(Object.fromEntries(names.filter(key => key in localSettings).map(key => [key, localSettings[key]])));
+        },
+        set(values, respond) { Object.assign(localSettings, values); respond?.(); },
+        remove(keys, respond) { for (const key of Array.isArray(keys) ? keys : [keys]) delete localSettings[key]; respond?.(); }
+      } }
     };
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
@@ -65,6 +84,8 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     const pruneResult = await pruneSearchIndex([]);
     check(pruneResult.removed === 0 && pruneResult.retainedUnverified === 1, 'unverified deletion never prunes');
     check((await searchFullText('legacy')).length === 1, 'prune preserved searchable data');
+    check((await searchUnassignedLegacy('legacy', 10))[0].origin === 'legacy-unassigned', 'explicit legacy search');
+    check((await searchForAccount('acct-a', 'legacy', 10)).length === 0, 'legacy not included in account search');
 
     const rawA = { id: 'same-id', title: 'A', mapping: { m: { message: { content: 'A text' } } } };
     const rawB = { id: 'same-id', title: 'B', mapping: { m: { message: { content: 'B text' } } } };
@@ -92,6 +113,25 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     const countB = await storage.getStats('acct-b');
     check(countA.directory === 2 && countA.complete === 1 && countA.indexed === 1, 'A stats');
     check(countB.directory === 1 && countB.complete === 1 && countB.indexed === 1, 'B stats');
+    check((await storage.getDirectory('acct-a')).length === 2, 'directory scoped read');
+    check((await storage.getDirectory('acct-b')).length === 1, 'other account directory scoped read');
+    check((await searchForAccount('acct-a', 'A text')).length === 1, 'A scoped search match');
+    check((await searchForAccount('acct-b', 'A text')).length === 0, 'A search never crosses account');
+    check((await searchForAccount('acct-b', 'B text')).length === 1, 'B scoped search match');
+    check((await storage.getSearchMetadata('acct-a')).length === 1, 'scoped index metadata');
+    const send = message => new Promise(resolve => chrome.runtime.sendMessage(message, resolve));
+    check((await send({ action: 'searchFullText', accountId: 'acct-a', query: 'A text' })).results.length === 1,
+      'runtime search action is scoped');
+    check((await send({ action: 'searchFullText', accountId: 'acct-b', query: 'A text' })).results.length === 0,
+      'runtime search cannot return another account');
+    check((await send({ action: 'searchFullText', query: 'A text' })).success === false,
+      'runtime search without account is rejected');
+    check((await send({ action: 'searchUnassignedLegacy', query: 'legacy' })).results.length === 1,
+      'runtime legacy search requires distinct action');
+    const reused = await storage.putSearchRecord('acct-b', {
+      id: 'same-id', updateTime: 1700000001000, title: 'bad replacement', messages: []
+    });
+    check(reused.reused && (await storage.getSearchRecords('acct-b'))[0].origin === 'raw', 'complete raw index cannot be replaced');
     try {
       await storage.putConversation('acct-a', { id: 'same-id', raw: { title: 'incomplete' } });
       throw Error('invalid JSON was accepted');
@@ -105,7 +145,77 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check((await storage.getLegacyMetadata()).unassignedCount === 1, 'legacy unassigned not reassigned');
     try { await storage.getConversation(storage.UNASSIGNED_ACCOUNT, 'old-chat'); throw Error('unassigned exposed'); }
     catch (error) { check(/账号 ID/.test(error.message), 'unassigned account is not active'); }
-    document.getElementById('result').textContent = 'S1_PASS: migration, legacy preservation, isolation, versions, invalidation, validation';
+
+    // Exercise the real page API client and the background message handlers,
+    // without network requests to ChatGPT or changing the user's browser data.
+    let activeAccount = 'acct-a';
+    let missingIdentity = false;
+    let switchMidSync = false;
+    const sentUrls = [];
+    window.fetch = async (input, options) => {
+      const url = String(input);
+      sentUrls.push(url);
+      let json;
+      if (url.includes('/api/auth/session')) {
+        json = { user: missingIdentity ? {} : { id: activeAccount }, accessToken: 'test-token' };
+      } else if (url.includes('/backend-api/conversations')) {
+        const id = switchMidSync ? 'race-old-account' : 'remote-' + activeAccount;
+        json = { items: [{ id, title: activeAccount,
+          update_time: 1700000003 }], total: 1 };
+        if (switchMidSync) { activeAccount = 'acct-b'; switchMidSync = false; }
+      } else if (url.includes('/backend-api/gizmos/snorlax/sidebar')) {
+        json = { items: [] };
+      } else throw Error('Unexpected request ' + url);
+      return { ok: true, status: 200, json: async () => json, headers: { get() { return null; } } };
+    };
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = '/api-handler.js'; s.onload = resolve; s.onerror = reject;
+      document.head.append(s);
+    });
+    check((await window.APIHandler.getCachedConversationList()).every(row => row.id !== 'unknown-old-owner'),
+      'legacy global directory must never enter identified account');
+    const aSynced = await window.APIHandler.syncConversationList();
+    check(aSynced.some(row => row.id === 'remote-acct-a'), 'session user A directory sync');
+    activeAccount = 'acct-b';
+    check((await window.APIHandler.getCachedConversationList()).every(row => row.id !== 'remote-acct-a'),
+      'account switch never exposes A directory');
+    const bSynced = await window.APIHandler.syncConversationList();
+    check(bSynced.some(row => row.id === 'remote-acct-b') && bSynced.every(row => row.id !== 'remote-acct-a'),
+      'account B sync only B records');
+    activeAccount = 'acct-a';
+    check((await window.APIHandler.getCachedConversationList()).some(row => row.id === 'remote-acct-a'),
+      'switch back restores A directory');
+    check(localSettings.chatgpt_pro_directory_v1[0].id === 'unknown-old-owner',
+      'legacy directory remains unmodified');
+    check(sentUrls.filter(url => url.includes('/api/auth/session')).length < 15,
+      'no per-conversation session request amplification');
+    const sessionBeforePoll = sentUrls.filter(url => url.includes('/api/auth/session')).length;
+    await window.APIHandler.getCachedConversationList(false);
+    await window.APIHandler.getCachedConversationList(false);
+    check(sentUrls.filter(url => url.includes('/api/auth/session')).length === sessionBeforePoll,
+      'status polling reuses recent identity without network calls');
+    // Explicit clear must not remove raw JSON, another account, or old legacy data.
+    const cleared = await send({ action: 'searchIndexClear', accountId: 'acct-a' });
+    check(cleared.success && cleared.removed === 0, 'already-invalid A search clear is idempotent');
+    check((await storage.getSearchRecords('acct-b')).length === 1, 'clear must not affect B');
+    check((await searchUnassignedLegacy('legacy')).length === 1, 'clear must not touch old index');
+    check((await storage.getConversation('acct-a', 'same-id')).hit, 'clear must not touch complete raw');
+    check((await send({ action: 'searchIndexClear' })).success === false, 'unscoped clear rejected');
+    // A session switch partway through a network sync must not commit its
+    // response to either account, even when the old token request succeeded.
+    activeAccount = 'acct-a';
+    switchMidSync = true;
+    try { await window.APIHandler.syncConversationList(true); throw Error('cross-account sync succeeded'); }
+    catch (error) { check(/登录账号已切换/.test(error.message), 'in-flight account switch aborts sync'); }
+    check(!(await storage.getDirectory('acct-a')).some(row => row.id === 'race-old-account'),
+      'stale response not written to A');
+    check(!(await storage.getDirectory('acct-b')).some(row => row.id === 'race-old-account'),
+      'stale response not written to B');
+    missingIdentity = true;
+    try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
+    catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }
+    document.getElementById('result').textContent = 'S1_PASS: upgrade, legacy search, account switching, scoped directory/search, JSON versions';
   } catch (error) {
     document.getElementById('result').textContent = 'S1_FAIL: ' + (error.stack || error.message);
   }
@@ -119,6 +229,9 @@ const server = http.createServer((req, res) => {
   } else if (req.url === '/background.js') {
     res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
     res.end(background);
+  } else if (req.url === '/api-handler.js') {
+    res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+    res.end(apiHandler);
   } else {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(harness);

@@ -12,7 +12,8 @@ const APIHandler = (function () {
     MAX_PROJECT_PAGES: 50,
     MAX_PROJECTS: 100,
     INTER_PAGE_MS: 250,
-    TOKEN_TTL_MS: 10 * 60 * 1000,
+    // Revalidate identity regularly: a ChatGPT tab may change signed-in users.
+    TOKEN_TTL_MS: 20 * 1000,
     FETCH_LOCK_MS: 90 * 1000,
     MIN_SYNC_INTERVAL_MS: 60 * 1000
   };
@@ -23,10 +24,20 @@ const APIHandler = (function () {
   const LEGACY_DIRECTORY = 'ct_directory_v2';
   const LEGACY_DIRECTORY_TS = 'ct_directory_ts';
   const LEGACY_LOCK = 'ct_fetch_lock';
+  const K_ACCOUNT_DIRECTORY_TS = 'chatgpt_pro_directory_ts_account_';
 
   let _token = null;
   let _tokenFetchedAt = 0;
+  let _accountId = null;
+  let _sessionPromise = null;
   let _syncPromise = null;
+  let _syncAccountId = null;
+
+  // Revalidate when a previously backgrounded tab comes back into focus.
+  window.addEventListener('focus', () => { _tokenFetchedAt = 0; });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) _tokenFetchedAt = 0;
+  });
 
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -68,20 +79,48 @@ const APIHandler = (function () {
     return Boolean(a && b) && timestampValue(a.updateTime) === timestampValue(b.updateTime);
   }
 
-  async function getToken() {
-    if (_token && Date.now() - _tokenFetchedAt < CFG.TOKEN_TTL_MS) return _token;
+  async function getSessionIdentity(force = false) {
+    if (!force && _token && _accountId && Date.now() - _tokenFetchedAt < CFG.TOKEN_TTL_MS) {
+      return { token: _token, accountId: _accountId };
+    }
+    if (_sessionPromise) return _sessionPromise;
+    _sessionPromise = (async () => {
+      // Never fall back to email, display name or a previously cached user:
+      // these are not authoritative account identifiers.
+      const resp = await fetch('https://chatgpt.com/api/auth/session', {
+        method: 'GET', credentials: 'include', headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
+      if (!resp.ok) throw new Error(`Session ${resp.status}`);
+      const data = await resp.json();
+      const accountId = data?.user?.id;
+      const token = data?.accessToken || data?.access_token;
+      if (typeof accountId !== 'string' || !accountId.trim() || !token) {
+        throw new Error('ChatGPT 登录账号无法确认，已停止读取账号缓存');
+      }
+      const changed = _accountId && _accountId !== accountId;
+      _accountId = accountId;
+      _token = token;
+      _tokenFetchedAt = Date.now();
+      if (changed) window.dispatchEvent(new CustomEvent('chatgpt-pro-account-changed'));
+      return { accountId, token };
+    })();
+    try { return await _sessionPromise; }
+    catch (error) {
+      if (_accountId) window.dispatchEvent(new CustomEvent('chatgpt-pro-account-changed'));
+      _token = null;
+      _accountId = null;
+      _tokenFetchedAt = 0;
+      throw error;
+    } finally { _sessionPromise = null; }
+  }
 
-    const resp = await fetch('https://chatgpt.com/api/auth/session', {
-      method: 'GET',
-      credentials: 'include',
-      headers: { 'Accept': 'application/json' }
-    });
-    if (!resp.ok) throw new Error(`Session ${resp.status}`);
-    const data = await resp.json();
-    _token = data?.accessToken || data?.access_token || null;
-    _tokenFetchedAt = Date.now();
-    if (!_token) throw new Error('Session response did not contain an access token');
-    return _token;
+  async function getAccountId(force = false) {
+    return (await getSessionIdentity(force)).accountId;
+  }
+
+  async function getToken() {
+    return (await getSessionIdentity()).token;
   }
 
   async function fetchAuthedJson(token, url) {
@@ -98,7 +137,9 @@ const APIHandler = (function () {
         signal: ctrl.signal
       });
       if (resp.status === 401) {
+        if (_accountId) window.dispatchEvent(new CustomEvent('chatgpt-pro-account-changed'));
         _token = null;
+        _accountId = null;
         _tokenFetchedAt = 0;
         const error = new Error('401_UNAUTHORIZED');
         error.status = 401;
@@ -176,30 +217,40 @@ const APIHandler = (function () {
       updateTime: item.updateTime ?? null,
       href: String(item.href || `/c/${item.id}`),
       projectId: item.projectId ? String(item.projectId) : null,
-      projectName: String(item.projectName || '')
+      projectName: String(item.projectName || ''),
+      remoteState: item.remoteState || 'online',
+      checkedAt: item.checkedAt || null
     };
   }
 
-  async function readDirectory() {
-    const data = await store.get([K_DIRECTORY, K_DIRECTORY_TS, LEGACY_DIRECTORY, LEGACY_DIRECTORY_TS]);
-    const current = Array.isArray(data[K_DIRECTORY]) ? data[K_DIRECTORY] : null;
-    const legacy = Array.isArray(data[LEGACY_DIRECTORY]) ? data[LEGACY_DIRECTORY] : null;
-    const records = current || legacy || [];
-    if (!current && legacy) {
-      await store.set({
-        [K_DIRECTORY]: legacy,
-        [K_DIRECTORY_TS]: data[LEGACY_DIRECTORY_TS] || Date.now()
+  async function localDataMessage(message) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(message, response => {
+        if (chrome.runtime.lastError || !response?.success) {
+          reject(new Error(chrome.runtime.lastError?.message || response?.error || '本地数据读取失败'));
+          return;
+        }
+        resolve(response);
       });
-      await store.del([LEGACY_DIRECTORY, LEGACY_DIRECTORY_TS, LEGACY_LOCK]);
-    }
-    return records.map(sanitizeStoredRecord).filter(Boolean);
+    });
   }
 
-  async function writeDirectory(records) {
+  async function readDirectory(accountId = null) {
+    accountId ||= await getAccountId(true);
+    const response = await localDataMessage({ action: 'localDataGetDirectory', accountId });
+    return response.records.map(sanitizeStoredRecord).filter(Boolean);
+  }
+
+  async function writeDirectory(records, accountId = null) {
+    accountId ||= await getAccountId();
     const clean = records.map(sanitizeStoredRecord).filter(Boolean);
     clean.sort((a, b) => timestampValue(b.updateTime) - timestampValue(a.updateTime));
-    await store.set({ [K_DIRECTORY]: clean, [K_DIRECTORY_TS]: Date.now() });
-    return clean;
+    // A logout/account switch during a slow sync must never attribute the
+    // previous account's response to the new session.
+    if (await getAccountId(true) !== accountId) throw new Error('登录账号已切换，请重新同步');
+    await localDataMessage({ action: 'localDataUpsertDirectory', accountId, records: clean });
+    await store.set({ [`${K_ACCOUNT_DIRECTORY_TS}${accountId}`]: Date.now() });
+    return readDirectory(accountId);
   }
 
   function buildTimestampMap(records) {
@@ -310,43 +361,47 @@ const APIHandler = (function () {
     return changed;
   }
 
-  async function acquireFetchLock() {
+  async function acquireFetchLock(accountId) {
     const owner = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const current = await store.get([K_LOCK]);
-    const lock = current[K_LOCK];
+    const key = `${K_LOCK}:${accountId}`;
+    const current = await store.get([key]);
+    const lock = current[key];
     if (lock?.at && Date.now() - lock.at < CFG.FETCH_LOCK_MS) return null;
-    await store.set({ [K_LOCK]: { owner, at: Date.now() } });
-    const verify = await store.get([K_LOCK]);
-    return verify[K_LOCK]?.owner === owner ? owner : null;
+    await store.set({ [key]: { owner, at: Date.now() } });
+    const verify = await store.get([key]);
+    return verify[key]?.owner === owner ? owner : null;
   }
 
-  async function releaseFetchLock(owner) {
-    const current = await store.get([K_LOCK]);
-    if (current[K_LOCK]?.owner === owner) await store.del([K_LOCK]);
+  async function releaseFetchLock(owner, accountId) {
+    const key = `${K_LOCK}:${accountId}`;
+    const current = await store.get([key]);
+    if (current[key]?.owner === owner) await store.del([key]);
   }
 
-  async function waitForOtherTabSync(previousTs) {
+  async function waitForOtherTabSync(previousTs, accountId) {
+    const key = `${K_ACCOUNT_DIRECTORY_TS}${accountId}`;
     for (let i = 0; i < 20; i++) {
       await sleep(500);
-      const current = await store.get([K_DIRECTORY_TS]);
-      if ((current[K_DIRECTORY_TS] || 0) > previousTs) return readDirectory();
+      const current = await store.get([key]);
+      if ((current[key] || 0) > previousTs) return readDirectory(accountId);
     }
     return null;
   }
 
-  async function runSync(forceFull) {
-    const before = await store.get([K_DIRECTORY_TS]);
-    const previousTs = before[K_DIRECTORY_TS] || 0;
-    let lockOwner = await acquireFetchLock();
+  async function runSync(forceFull, accountId) {
+    const key = `${K_ACCOUNT_DIRECTORY_TS}${accountId}`;
+    const before = await store.get([key]);
+    const previousTs = before[key] || 0;
+    let lockOwner = await acquireFetchLock(accountId);
 
     if (!lockOwner) {
-      const otherResult = await waitForOtherTabSync(previousTs);
+      const otherResult = await waitForOtherTabSync(previousTs, accountId);
       if (otherResult) return otherResult;
-      lockOwner = await acquireFetchLock();
+      lockOwner = await acquireFetchLock(accountId);
     }
 
     try {
-      const existing = forceFull ? [] : await readDirectory();
+      const existing = forceFull ? [] : await readDirectory(accountId);
       const cachedMap = new Map(existing.map(item => [item.id, item]));
       const resultMap = new Map(existing.map(item => [item.id, item]));
 
@@ -402,8 +457,9 @@ const APIHandler = (function () {
             await sleep(CFG.INTER_PAGE_MS);
           }
 
-          return writeDirectory([...resultMap.values()]);
+          return writeDirectory([...resultMap.values()], accountId);
         } catch (e) {
+          if (e.message?.includes('登录账号已切换')) throw e;
           if (e.message === '401_UNAUTHORIZED' && attempt === 0) {
             token = await getToken();
             continue;
@@ -412,32 +468,47 @@ const APIHandler = (function () {
           await sleep(CFG.RETRY_BASE_MS * Math.pow(2, attempt));
         }
       }
-      return writeDirectory([...resultMap.values()]);
+      return writeDirectory([...resultMap.values()], accountId);
     } finally {
-      if (lockOwner) await releaseFetchLock(lockOwner);
+      if (lockOwner) await releaseFetchLock(lockOwner, accountId);
     }
   }
 
   async function syncConversationList(forceFull = false) {
-    if (_syncPromise) return _syncPromise;
+    // Do not return an earlier account's in-flight result after switching users.
+    const expectedAccountId = await getAccountId(true);
+    if (_syncPromise) {
+      if (_syncAccountId !== expectedAccountId) {
+        await _syncPromise.catch(() => {});
+        return syncConversationList(forceFull);
+      }
+      const result = await _syncPromise;
+      if (await getAccountId(true) !== expectedAccountId) throw new Error('登录账号已切换，请重新同步');
+      return result;
+    }
     if (!forceFull) {
-      const state = await store.get([K_DIRECTORY, K_DIRECTORY_TS]);
-      const hasDirectory = Array.isArray(state[K_DIRECTORY]) && state[K_DIRECTORY].length > 0;
-      const age = Date.now() - (state[K_DIRECTORY_TS] || 0);
+      const accountId = expectedAccountId;
+      const key = `${K_ACCOUNT_DIRECTORY_TS}${accountId}`;
+      const state = await store.get([key]);
+      const cached = await readDirectory(accountId);
+      const hasDirectory = cached.length > 0;
+      const age = Date.now() - (state[key] || 0);
       if (hasDirectory && age >= 0 && age < CFG.MIN_SYNC_INTERVAL_MS) {
-        return state[K_DIRECTORY].map(sanitizeStoredRecord).filter(Boolean);
+        return cached;
       }
     }
-    _syncPromise = runSync(forceFull);
+    _syncAccountId = expectedAccountId;
+    _syncPromise = runSync(forceFull, expectedAccountId);
     try {
       return await _syncPromise;
     } finally {
       _syncPromise = null;
+      _syncAccountId = null;
     }
   }
 
-  async function getCachedConversationList() {
-    return readDirectory();
+  async function getCachedConversationList(verifyIdentity = true) {
+    return readDirectory(await getAccountId(verifyIdentity));
   }
 
   async function getConversationList(forceFull = false) {
@@ -460,19 +531,10 @@ const APIHandler = (function () {
   }
 
   async function clearCache() {
-    await store.del([
-      K_DIRECTORY,
-      K_DIRECTORY_TS,
-      K_LOCK,
-      LEGACY_DIRECTORY,
-      LEGACY_DIRECTORY_TS,
-      LEGACY_LOCK,
-      // Legacy keys from v2.1 and upstream versions.
-      'ct_data',
-      'ct_ts',
-      'conversationCache',
-      'cacheTime'
-    ]);
+    // Force the next directory revalidation, not a destructive deletion of
+    // another account's or an unassigned legacy directory.
+    const accountId = await getAccountId();
+    await store.del([`${K_ACCOUNT_DIRECTORY_TS}${accountId}`]);
   }
 
   return {
@@ -480,6 +542,7 @@ const APIHandler = (function () {
     syncConversationList,
     getConversationList,
     getConversationTimestamps,
+    getAccountId,
     getConversation,
     clearCache
   };

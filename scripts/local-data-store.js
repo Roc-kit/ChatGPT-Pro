@@ -167,6 +167,73 @@ globalThis.ChatGPTProLocalData = (() => {
     });
   }
 
+  async function getDirectory(accountId) {
+    validateAccount(accountId);
+    const records = await transaction([STORES.directory], 'readonly', stores =>
+      requested(stores[STORES.directory].index('byAccount').getAll(IDBKeyRange.only(accountId))));
+    return records.sort((a, b) => (b.updateTime || 0) - (a.updateTime || 0));
+  }
+
+  function cleanSearchRecord(accountId, record, origin = 'text-only') {
+    validateAccount(accountId);
+    const id = validateId(record?.id);
+    if (!Array.isArray(record.messages)) throw new Error('索引记录缺少消息数组');
+    const updateTime = normalizeTime(record.updateTime);
+    return {
+      accountId, id, updateTime, dataVersion: updateTime,
+      origin, indexedAt: Date.now(),
+      title: String(record.title || 'Untitled conversation'),
+      href: String(record.href || `/c/${id}`),
+      messages: record.messages.map(message => ({
+        id: String(message?.id || ''), role: String(message?.role || ''),
+        text: String(message?.text || ''), createTime: normalizeTime(message?.createTime) || 0
+      })).filter(message => message.text)
+    };
+  }
+
+  async function putSearchRecord(accountId, record) {
+    const entry = cleanSearchRecord(accountId, record);
+    // Prevent a later text-only write from overwriting a newer raw-derived index.
+    return transaction([STORES.conversations, STORES.search], 'readwrite', async stores => {
+      const raw = await requested(stores[STORES.conversations].get([accountId, entry.id]));
+      if (raw?.complete && raw.dataVersion === entry.dataVersion) {
+        const existing = await requested(stores[STORES.search].get([accountId, entry.id]));
+        if (existing?.origin === 'raw') return { indexedAt: existing.indexedAt, reused: true };
+      }
+      await requested(stores[STORES.search].put(entry));
+      return { indexedAt: entry.indexedAt, reused: false };
+    });
+  }
+
+  async function getSearchMetadata(accountId) {
+    validateAccount(accountId);
+    const records = await transaction([STORES.search], 'readonly', stores =>
+      requested(stores[STORES.search].index('byAccount').getAll(IDBKeyRange.only(accountId))));
+    return records.map(record => ({ id: record.id, updateTime: record.updateTime, indexedAt: record.indexedAt }));
+  }
+
+  async function getSearchRecords(accountId) {
+    validateAccount(accountId);
+    return transaction([STORES.search], 'readonly', stores =>
+      requested(stores[STORES.search].index('byAccount').getAll(IDBKeyRange.only(accountId))));
+  }
+
+  async function clearSearchIndex(accountId) {
+    validateAccount(accountId);
+    return transaction([STORES.search], 'readwrite', stores => new Promise((resolve, reject) => {
+      let removed = 0;
+      const cursorRequest = stores[STORES.search].index('byAccount').openCursor(IDBKeyRange.only(accountId));
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (!cursor) { resolve({ removed }); return; }
+        cursor.delete();
+        removed++;
+        cursor.continue();
+      };
+      cursorRequest.onerror = () => reject(cursorRequest.error || new Error('无法清理当前账号索引'));
+    }));
+  }
+
   async function putConversation(accountId, { id, raw, updateTime, searchRecord = null }) {
     validateAccount(accountId);
     validateId(id);
@@ -178,14 +245,8 @@ globalThis.ChatGPTProLocalData = (() => {
     const savedAt = Date.now();
     const record = { accountId, id, raw, updateTime: dataVersion, dataVersion, savedAt, complete: true };
     const search = searchRecord && {
-      accountId, id, dataVersion, updateTime: dataVersion,
-      title: String(searchRecord.title || raw.title || 'Untitled conversation'),
-      href: String(searchRecord.href || `/c/${id}`),
-      indexedAt: savedAt,
-      messages: searchRecord.messages.map(message => ({
-        id: String(message.id || ''), role: String(message.role || ''),
-        text: String(message.text || ''), createTime: normalizeTime(message.createTime) || 0
-      })).filter(message => message.text)
+      ...cleanSearchRecord(accountId, { ...searchRecord, id, updateTime: dataVersion }),
+      origin: 'raw', indexedAt: savedAt
     };
     // A single transaction either commits raw JSON and its matching index,
     // or neither. Missing derived index invalidates any older one.
@@ -236,7 +297,8 @@ globalThis.ChatGPTProLocalData = (() => {
   }
 
   return Object.freeze({
-    openDb, upsertDirectory, putConversation, getConversation, getStats, getLegacyMetadata,
+    openDb, upsertDirectory, getDirectory, putSearchRecord, getSearchMetadata, getSearchRecords, clearSearchIndex,
+    putConversation, getConversation, getStats, getLegacyMetadata,
     DB_NAME, DB_VERSION, LEGACY_SEARCH, UNASSIGNED_ACCOUNT, STORES
   });
 })();
