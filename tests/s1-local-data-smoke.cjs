@@ -400,6 +400,30 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check(!(await send({ action: 'taskHeartbeat', accountId: 'acct-a', id: expiringId,
       owner: 'abandoned-tab', token: oldOwner.result.token })).success,
       'expired executor cannot renew an old lease');
+    await send({ action: 'taskControl', accountId: 'acct-a', id: expiringId, operation: 'cancel' });
+    const otherTypes = await Promise.all([
+      send({ action: 'taskCreate', accountId: 'acct-c', type: 'index', items: [{ id: 'c-index' }] }),
+      send({ action: 'taskCreate', accountId: 'acct-c', type: 'export-md', items: [{ id: 'c-export' }] })
+    ]);
+    const differentTaskClaims = await Promise.all(otherTypes.map((reply, i) => send({
+      action: 'taskClaim', accountId: 'acct-c', id: reply.result.id,
+      owner: i === 0 ? 'index-tab' : 'export-tab'
+    })));
+    check(differentTaskClaims.filter(reply => reply.result.acquired).length === 1,
+      'index and export cannot claim different tasks of same account simultaneously');
+    const winner = differentTaskClaims[0].result.acquired ? 0 : 1;
+    const loser = 1 - winner;
+    check(differentTaskClaims[loser].result.reason === 'account-busy',
+      'cross-type contender receives account-wide busy reason');
+    await send({ action: 'taskControl', accountId: 'acct-c', id: otherTypes[winner].result.id,
+      operation: 'pause' });
+    const nextClaim = await send({ action: 'taskClaim', accountId: 'acct-c',
+      id: otherTypes[loser].result.id, owner: loser === 0 ? 'index-tab' : 'export-tab' });
+    check(nextClaim.result.acquired, 'waiting other-type task runs after current account lease ends');
+    check(!(await send({ action: 'taskCheckpoint', accountId: 'acct-c', id: otherTypes[winner].result.id,
+      owner: winner === 0 ? 'index-tab' : 'export-tab', token: differentTaskClaims[winner].result.token,
+      itemIndex: 0, outcome: 'success' })).success,
+      'paused prior type cannot commit stale work while another type runs');
     const newTaskRequests = await Promise.all([
       send({ action: 'taskCreate', accountId: 'acct-b', type: 'index', items: [{ id: 'one' }] }),
       send({ action: 'taskCreate', accountId: 'acct-b', type: 'index', items: [{ id: 'two' }] })

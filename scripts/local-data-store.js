@@ -402,7 +402,7 @@ globalThis.ChatGPTProLocalData = (() => {
       const store = stores[STORES.tasks];
       const task = await requested(store.get(id));
       if (!task || task.accountId !== accountId) throw new Error('找不到当前账号任务');
-      const result = handler(task, Date.now());
+      const result = await handler(task, Date.now(), store);
       if (result?.changed) {
         task.updatedAt = Date.now();
         await requested(store.put(task));
@@ -413,9 +413,18 @@ globalThis.ChatGPTProLocalData = (() => {
 
   async function claimTask(accountId, id, owner) {
     validateId(owner);
-    return mutateTask(accountId, id, (task, now) => {
+    return mutateTask(accountId, id, async (task, now, store) => {
       if (['paused', 'completed', 'failed', 'canceled'].includes(task.status)) return { acquired: false };
       if (task.lease && task.lease.expiresAt > now && task.lease.owner !== owner) return { acquired: false };
+      // An account may have several queued task types but only one active
+      // executor. The compound status index and claim share the same IDB
+      // readwrite transaction, so competing tabs cannot both acquire work.
+      const running = await requested(store.index('byAccountStatus').getAll(
+        IDBKeyRange.only([accountId, 'running'])
+      ));
+      if (running.some(other => other.id !== id && other.lease?.expiresAt > now)) {
+        return { acquired: false, reason: 'account-busy' };
+      }
       if (task.lease?.owner === owner && task.lease.expiresAt > now) {
         task.lease.expiresAt = now + TASK_LEASE_MS;
         return { acquired: true, token: task.lease.token, changed: true };

@@ -1488,7 +1488,7 @@
       const response = await runtimeMessage({ action: 'taskClaim', accountId,
         id: taskId, owner: EXPORT_EXECUTOR_ID });
       const claim = response.result;
-      if (!claim.acquired) return { busy: true };
+      if (!claim.acquired) return { busy: true, busyReason: claim.reason || 'task-busy' };
       const { task, token } = claim;
       const format = task.type === 'export-json' ? 'json' : 'md';
       const session = { accountId, taskId, owner: EXPORT_EXECUTOR_ID, token, task, automatic };
@@ -1590,8 +1590,8 @@
     try {
       const claim = await indexTaskMessage('taskClaim', accountId, { id: taskId, owner: INDEX_EXECUTOR_ID });
       if (!claim.acquired) {
-        onProgress?.({ phase: 'running-elsewhere' });
-        return { busy: true };
+        onProgress?.({ phase: 'running-elsewhere', busyReason: claim.reason });
+        return { busy: true, busyReason: claim.reason || 'task-busy' };
       }
       const token = claim.token;
       const initial = claim.task;
@@ -2083,7 +2083,9 @@
           if (progress.phase === 'paused') {
             searchIndexStatus.textContent = '索引任务已暂停，请在任务管理中继续';
           } else if (progress.phase === 'running-elsewhere') {
-            searchIndexStatus.textContent = '索引任务正在其他标签页运行';
+            searchIndexStatus.textContent = progress.busyReason === 'account-busy'
+              ? '同账号已有其他任务在执行，索引任务将排队'
+              : '索引任务正在其他标签页运行';
           } else if (progress.phase === 'rate-limit') {
             searchIndexStatus.textContent = `请求受限，${progress.remainingSeconds} 秒后继续 · ${base}`;
           } else if (progress.phase === 'group-wait') {
@@ -2190,7 +2192,9 @@
             }
           });
           if (result.paused) status.textContent = '已有同类型的暂停任务，请在任务管理中继续';
-          else if (result.busy) status.textContent = '同账号的导出任务正在其他标签页执行';
+          else if (result.busy) status.textContent = result.busyReason === 'account-busy'
+            ? '同账号已有其他任务执行，导出任务将排队'
+            : '同账号的导出任务正在其他标签页执行';
           else status.textContent = `已持久化 ${result.volumeCount} 卷 · 成功 ${result.successCount} 个、失败 ${result.failureCount} 个（浏览器下载需单独确认）`;
           selectedIds.clear();
           renderCurrent();
@@ -2277,7 +2281,10 @@
             'data-content-search-unit-key'
           ].includes(mutation.attributeName)) ||
           Array.from(mutation.addedNodes).some(node =>
-            node.nodeType === 1 && window.ChatGPTDomAdapter.containsMessageNode(node)
+            node.nodeType === 1 && (
+              window.ChatGPTDomAdapter.containsMessageNode(node) ||
+              window.ChatGPTDomAdapter.containsMessageDecorationTarget(node)
+            )
           )
         );
         if (messageRelevant) {
