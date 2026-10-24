@@ -215,6 +215,18 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelector('[data-chatgpt-pro-current-images]').title === 'Downloading images 2 / 10'`),
     'dynamic image download tooltip translated after attribute change');
+    await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `Boolean(document.querySelector('.chatgpt-pro-panel'))`), 'English panel opened');
+    const untranslated = await cdp.eval(pageSession, `(() => {
+      const root = document.querySelector('.chatgpt-pro-panel');
+      return [...root.querySelectorAll('button, label, option, [role="tab"], [title], [aria-label]')]
+        .flatMap(el => [el.getAttribute('title'), el.getAttribute('aria-label'),
+          el.children.length ? '' : el.textContent])
+        .filter(Boolean).filter(text => /[\\u3400-\\u9fff]/u.test(text));
+    })()`);
+    assert.deepEqual(untranslated, [], 'static conversation controls have no untranslated Chinese in English mode');
+    await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
     // Set a deterministic test language; production defaults to browser locale.
     await cdp.eval(popupSession, `(() => {
       const select = document.querySelector('#languageSelect');

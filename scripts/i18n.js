@@ -70,6 +70,7 @@
     '打开聊天目录':'Open conversations', '导出整个对话（Markdown）':'Export entire chat (Markdown)',
     '正在导出整个对话…':'Exporting entire conversation…', '已导出整个对话':'Conversation exported',
     '下载当前对话所有图片 ZIP':'Download all conversation images (ZIP)',
+    '按项目筛选':'Filter by project',
     '导出前增量检查聊天目录；仅更新有变化的完整缓存':'Check for updated conversations before exporting; reuse unchanged cache',
     '官方明确删除标记，原始数据和导出保留在本地':'Deleted remotely; original data and exports remain local',
     '只清理此对话的扩展本地原始 JSON、全文索引和目录':'Remove this chat from local JSON, full-text index, and directory only',
