@@ -29,7 +29,11 @@ for (const language of languages) {
       '正在导出整个对话…', '已导出整个对话', '归档', '删除',
       '导出失败：HTTP 429', '图片下载失败：HTTP 404',
       '图片 ZIP 已生成：成功 4，失败 1；共 2 卷',
-      '正在下载图片 2 / 12', '正在保存图片 ZIP 1 / 2'
+      '正在下载图片 2 / 12', '正在保存图片 ZIP 1 / 2',
+      '时间戳字号', '时间戳字号（侧边栏及消息）',
+      '当前账号已索引 119 / 119 个 · 未归属旧索引 104 个',
+      '当前账号已索引 0 / 36 个 · 未归属旧索引 4 个',
+      '首次建立全文索引需点击授权；不会自动抓取正文。已有索引可搜索 · 当前 119 条'
     ]) {
       assert(!/[\u3400-\u9fff]/u.test(i18n.translateText(value)),
         `non-Chinese language ${language} leaves untranslated UI: ${value}`);

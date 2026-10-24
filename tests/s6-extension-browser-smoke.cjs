@@ -239,6 +239,11 @@ async function main() {
         .filter(Boolean).filter(text => /[\\u3400-\\u9fff]/u.test(text));
     })()`);
     assert.deepEqual(untranslated, [], 'static conversation controls have no untranslated Chinese in English mode');
+    await cdp.eval(pageSession, `document.querySelector('[data-panel-view="search"]').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-search-index-status')?.textContent.includes('Authorize to build a full-text index')`),
+    'full-text search status uses wildcard translation for changing counts');
+    await cdp.eval(pageSession, `document.querySelector('[data-panel-view="directory"]').click()`);
     await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
     // Set a deterministic test language; production defaults to browser locale.
     await cdp.eval(popupSession, `(() => {

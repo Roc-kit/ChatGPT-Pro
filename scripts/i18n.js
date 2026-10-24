@@ -67,6 +67,8 @@
     '重新下载最近一次已持久化的批量 ZIP 分卷':'Redownload latest saved bulk ZIP parts',
     '正在检查更新…':'Checking for updates…',
     '长对话快速导航（Minimap）':'Conversation minimap', '消息':'Message',
+    '时间戳字号':'Timestamp font size',
+    '时间戳字号（侧边栏及消息）':'Timestamp font size (sidebar and messages)',
     '打开聊天目录':'Open conversations', '导出整个对话（Markdown）':'Export entire chat (Markdown)',
     '正在导出整个对话…':'Exporting entire conversation…', '已导出整个对话':'Conversation exported',
     '下载当前对话所有图片 ZIP':'Download all conversation images (ZIP)',
@@ -395,6 +397,10 @@
   // Explicit wildcard templates for extension-generated UI only. Do not
   // translate arbitrary ChatGPT page content or the user's chat titles.
   const DYNAMIC = [
+    [/^当前账号已索引 (\d+) \/ (\d+) 个 · 未归属旧索引 (\d+) 个$/, m =>
+      `Indexed ${m[1]} / ${m[2]} for this account · ${m[3]} unassigned legacy entries`],
+    [/^首次建立全文索引需点击授权；不会自动抓取正文。已有索引可搜索 · 当前 (\d+) 条$/, m =>
+      `Authorize to build a full-text index; chat bodies are not fetched automatically. Existing index is searchable · ${m[1]} indexed`],
     [/^选择 (.+)$/, m => `${t('选择')} ${m[1]}`],
     [/^标题筛选：(.+)$/, m => `${t('按标题筛选')}: ${m[1]}`],
     [/^已选 (\d+)$/, m => `${t('选择')} ${m[1]}`],
