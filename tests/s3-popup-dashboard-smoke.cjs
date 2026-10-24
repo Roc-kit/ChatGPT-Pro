@@ -95,7 +95,7 @@ const server = http.createServer((request, response) => {
   } else if (request.url === '/scripts/i18n.js') {
     response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
     response.end(i18nJs);
-  } else if (/^\/scripts\/locales\/(registry|dynamic-map|zh-CN|en|zh-TW|es|hi|ar|pt-BR|bn|id|fr|ru|ja)\.js$/.test(request.url)) {
+  } else if (/^\/scripts\/locales\/(registry|dynamic-map|reviewed-ui|zh-CN|en|zh-TW|es|hi|ar|pt-BR|bn|id|fr|ru|ja)\.js$/.test(request.url)) {
     response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
     response.end(fs.readFileSync(path.join(__dirname, '..', request.url), 'utf8'));
   } else {

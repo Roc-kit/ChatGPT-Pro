@@ -11,7 +11,7 @@ function loadLocales(environment) {
   const context = vm.createContext(environment);
   for (const file of ['scripts/locales/registry.js',
     ...localeNames.map(lang => `scripts/locales/${lang}.js`),
-    'scripts/locales/dynamic-map.js', 'scripts/i18n.js']) {
+    'scripts/locales/dynamic-map.js', 'scripts/locales/reviewed-ui.js', 'scripts/i18n.js']) {
     vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context, { filename: file });
   }
   return environment.ChatGPTProI18n;

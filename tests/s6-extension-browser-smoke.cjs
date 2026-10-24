@@ -212,7 +212,25 @@ async function main() {
         'Background tabs, panel behavior, export filenames');
       assert.equal(await cdp.eval(popupSession, `document.querySelector('#size').disabled`), false,
         'timestamp size remains editable independently of timestamp toggles');
-      console.log('POPUP_LAYOUT_PASS: compact defaults, collapsible advanced/index sections, English labels, numeric timestamp control');
+      await cdp.eval(popupSession, `(() => {
+        const select = document.querySelector('#languageSelect');
+        select.value = 'ja'; select.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await eventually(async () => cdp.eval(popupSession,
+        `document.querySelector('#advancedSettings .summary-copy strong').textContent === '詳細設定'`),
+      'Japanese Popup renders model-reviewed advanced settings text');
+      assert.equal(await cdp.eval(popupSession,
+        `document.querySelector('.section .label').textContent`), 'ローカルデータ');
+      await cdp.eval(popupSession, `(() => {
+        const select = document.querySelector('#languageSelect');
+        select.value = 'ar'; select.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await eventually(async () => cdp.eval(popupSession,
+        `document.querySelector('#advancedSettings .summary-copy strong').textContent === 'الإعدادات المتقدمة'`),
+      'Arabic Popup renders model-reviewed advanced settings text');
+      assert.equal(await cdp.eval(popupSession, `document.documentElement.dir`), 'rtl',
+        'Arabic uses RTL layout after language switch');
+      console.log('POPUP_LAYOUT_PASS: compact defaults, collapsible advanced/index sections, English/Japanese/Arabic labels, numeric timestamp control');
       return;
     }
     // Keep the real ChatGPT fixture as the active tab while inspecting the
