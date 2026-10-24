@@ -7,10 +7,15 @@
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; width: 340px; font: 13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:#1f2937; background:#fff; }
-    .header { padding:16px 18px; background:#202123; color:#fff; }
-    .header strong { font-size:16px; }
-    .header small { display:block; margin-top:4px; color:#c7c9cc; }
-    .section { padding:13px 16px; border-bottom:1px solid #e5e7eb; }
+    .header { padding:15px 16px 13px; background:#10a37f; color:#fff; }
+    .header-top { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .header strong { font-size:16px; letter-spacing:-.3px; white-space:nowrap; }
+    #extensionVersion { font-size:10px; font-weight:500; opacity:.85; }
+    #openChatGPT { flex:0 0 auto; width:auto; padding:7px 9px; font-size:11px; border-color:#ffffff99; color:#fff; background:transparent; }
+    #openChatGPT:hover { background:#ffffff20; }
+    .header .api-status { margin-top:8px; font-size:11px; color:#eafff8; }
+    .header .api-status.err { color:#fff5d7; }
+    .section { padding:12px 16px; border-bottom:1px solid #e5e7eb; }
     .row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
     .label { margin-bottom:7px; font-size:11px; font-weight:600; color:#6b7280; text-transform:uppercase; }
     select,button,input { width:100%; padding:8px 10px; border:1px solid #d1d5db; border-radius:7px; background:inherit; color:inherit; font:inherit; }
@@ -20,9 +25,12 @@
     .toggle::after { content:""; position:absolute; width:19px; height:19px; left:2px; top:2px; border-radius:50%; background:#fff; box-shadow:0 1px 3px #0003; transition:.15s; }
     .toggle.active { background:#10a37f; }
     .toggle.active::after { transform:translateX(19px); }
-    .status { padding:12px 16px; display:flex; align-items:center; justify-content:space-between; background:#f8fafc; }
-    .local-stats { display:flex; gap:12px; flex-wrap:wrap; font-size:11px; margin-top:8px; }
-    .local-stats strong { font-size:13px; }
+    .setting-row { min-height:38px; }
+    .setting-row + .setting-row { border-top:1px solid #f0f2f1; }
+    .local-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+    .local-stats > span { display:flex; flex-direction:column-reverse; align-items:center; gap:3px; padding:10px 3px; border-radius:8px; background:#f5f8f7; font-size:10px; color:#76857e; }
+    .local-stats strong { color:#1f2937; font-size:20px; line-height:1.2; }
+    .inline-select { width:auto; max-width:155px; padding:6px 9px; font-size:11px; }
     .data-actions { display:flex; gap:8px; margin-top:9px; }
     .data-actions button { font-size:11px; padding:7px 5px; }
     #count { font-weight:700; }
@@ -43,13 +51,29 @@
     .task-progress > span { display:block; height:100%; background:#10a37f; }
     .task-actions { display:flex; gap:6px; margin-top:7px; }
     .task-actions button { flex:0 0 auto; width:auto; padding:5px 8px; font-size:11px; }
-    .task-list { max-height:300px; overflow-y:auto; }
-    .task-log-list { margin-top:6px; max-height:160px; overflow-y:auto; font-size:11px; line-height:1.6; color:#6b7280; }
+    .task-list { max-height:175px; overflow-y:auto; padding:0 16px; }
+    .task-list:empty { display:none; }
+    .task-overview { border-top:1px solid #edf1ef; }
+    .task-overview:has(.task-list:empty) { display:none; }
+    .management { background:#f9fbfa; }
+    .management-summary { display:flex; align-items:center; justify-content:space-between; gap:8px; cursor:pointer; padding:13px 16px; list-style:none; font-size:11px; color:#718179; }
+    .management-summary::-webkit-details-marker { display:none; }
+    .management-summary strong { color:#0d9373; font-weight:600; }
+    .management[open] .management-summary strong::after { content:' ⌄'; }
+    .management:not([open]) .management-summary strong::after { content:' ›'; }
+    .management-body { padding:0 16px 13px; background:#fff; border-top:1px solid #edf1ef; }
+    .management-body .row { margin-top:10px; }
+    .management-body #refresh { margin-top:10px; }
     #taskFeedback { min-height:15px; }
     @media (prefers-color-scheme: dark) {
       body { background:#202123; color:#f3f4f6; }
       .section { border-color:#374151; }
-      .status { background:#2a2b2f; }
+      .header { background:#10a37f; color:white; }
+      .local-stats > span { background:#2a2b2f; }
+      .local-stats strong { color:#f3f4f6; }
+      .setting-row + .setting-row { border-color:#374151; }
+      .management { background:#2a2b2f; }
+      .management-body { background:#202123; border-color:#374151; }
       select,button,input { border-color:#4b5563; }
       .template-preview { background:#2a2b2f; color:#cbd5e1; }
       .template-preview strong { color:#f3f4f6; }
@@ -60,48 +84,30 @@
 </head>
 <body>
   <div class="header">
-    <strong>ChatGPT Pro&nbsp;&nbsp;<span id="extensionVersion">v3.0.0</span></strong>
-    <button id="openChatGPT" type="button" style="margin-top:9px">打开 ChatGPT</button>
+    <div class="header-top">
+      <strong>ChatGPT Pro <span id="extensionVersion">v3.0.0</span></strong>
+      <button id="openChatGPT" type="button">打开 ChatGPT ↗</button>
+    </div>
+    <div class="api-status ok" id="apiStatus"><span id="apiStatusText">正在初始化</span></div>
   </div>
-  <div class="section row">
-    <span>启用扩展</span>
-    <div class="toggle active" id="toggle" role="switch" aria-checked="true"></div>
-  </div>
-  <div class="status">
-    <span>本地数据概况</span>
-    <span class="api-status ok" id="apiStatus"><span id="apiStatusText">正在初始化</span></span>
-  </div>
-  <div class="section" style="padding-top:7px">
+  <div class="section">
+    <div class="label">本地数据</div>
     <div class="local-stats" aria-label="当前账号本地数据数量">
       <span>目录 <strong id="count">–</strong></span>
       <span>完整 JSON <strong id="rawCount">–</strong></span>
       <span>已索引 <strong id="indexedCount">–</strong></span>
     </div>
   </div>
-  <div class="section row">
-    <span>原生侧边栏显示时间</span>
-    <div class="toggle" id="sidebarTimeToggle" role="switch" aria-checked="false"></div>
-  </div>
-  <div class="section row">
-    <span>聊天消息显示时间戳</span>
-    <div class="toggle" id="messageTimeToggle" role="switch" aria-checked="false"></div>
-  </div>
-  <div class="section row">
-    <span>后台新标签页打开</span>
-    <div class="toggle active" id="openInBackgroundToggle" role="switch" aria-checked="true"></div>
-  </div>
-  <div class="section row">
-    <span>点击弹窗外部关闭弹窗</span>
-    <div class="toggle active" id="outsideCloseToggle" role="switch" aria-checked="true"></div>
-  </div>
   <div class="section">
-    <div class="label">侧边栏时间字号</div>
-    <select id="size">
-      <option value="small">小</option>
-      <option value="medium">中</option>
-      <option value="large">大</option>
-    </select>
-    <div class="hint">侧边栏格式：2026-08-24 10:05 D1（D1=周一，D7=周日）。消息时间戳格式：2026-08-24 09:46:21。</div>
+    <div class="label">功能设置</div>
+    <div class="row setting-row"><span>启用扩展</span><div class="toggle active" id="toggle" role="switch" aria-checked="true"></div></div>
+    <div class="row setting-row"><span>侧边栏显示时间</span><div class="toggle" id="sidebarTimeToggle" role="switch" aria-checked="false"></div></div>
+    <div class="row setting-row"><span>聊天消息显示时间戳</span><div class="toggle" id="messageTimeToggle" role="switch" aria-checked="false"></div></div>
+    <div class="row setting-row"><span>后台新标签页打开</span><div class="toggle active" id="openInBackgroundToggle" role="switch" aria-checked="true"></div></div>
+    <div class="row setting-row"><span>点击弹窗外关闭</span><div class="toggle active" id="outsideCloseToggle" role="switch" aria-checked="true"></div></div>
+    <div class="row setting-row"><span>时间字号</span><select id="size" class="inline-select" aria-label="侧边栏时间字号">
+      <option value="small">小</option><option value="medium">中</option><option value="large">大</option>
+    </select></div>
   </div>
   <div class="section">
     <div class="label">导出文件名</div>
@@ -118,11 +124,14 @@
     <div class="template-preview"><strong>示例：</strong><span id="filenamePreview"></span></div>
     <div class="hint">自定义可用：{title}、{created_date}、{updated_date}、{source}、{conversation_id}。Markdown 和 JSON 共用此规则。</div>
   </div>
-  <div class="section" id="taskManager">
-    <div class="row task-header">
-      <strong>本地任务</strong>
-      <button id="taskRefresh" type="button">刷新</button>
-    </div>
+  <div class="task-overview" id="taskOverview">
+    <div class="hint" id="taskCooldownText" role="status" hidden></div>
+    <div class="task-list" id="taskList"></div>
+  </div>
+  <details id="taskManager" class="management">
+    <summary class="management-summary"><span id="taskStatusText">当前没有运行中的任务</span><strong>索引与数据管理</strong></summary>
+    <div class="management-body">
+      <div class="row task-header"><strong>全文索引与缓存</strong><button id="taskRefresh" type="button">刷新状态</button></div>
     <div id="indexStartArea" style="margin-bottom:9px" hidden>
       <button type="button" id="indexStart">建立全文索引（需授权）</button>
       <div class="hint" id="indexConsentStatus">首次需要授权扫描当前账号全部可读取的聊天；完成后自动增量更新。</div>
@@ -136,17 +145,10 @@
       </div>
     </div>
     <div class="hint" id="taskFeedback" aria-live="polite">正在读取任务…</div>
-    <div class="hint" id="taskCooldownText" role="status" hidden></div>
-    <div class="task-list" id="taskList"></div>
-    <details id="taskLogsWrap">
-      <summary style="font-size:11px;cursor:pointer">最近运行记录</summary>
-      <div class="task-log-list" id="taskLogList"></div>
-    </details>
-  </div>
-  <div class="section">
     <button id="refresh"><span id="refreshText">完整刷新 / 重建缓存</span></button>
     <div class="hint">通常无需使用：聊天目录会保存在本地，平时只增量检查新增或发生变化的记录。</div>
-  </div>
+    </div>
+  </details>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -23,7 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const taskFeedback = document.getElementById('taskFeedback');
   const taskCooldownText = document.getElementById('taskCooldownText');
   const taskList = document.getElementById('taskList');
-  const taskLogList = document.getElementById('taskLogList');
+  const taskOverview = document.getElementById('taskOverview');
+  const taskStatusText = document.getElementById('taskStatusText');
   const taskRefresh = document.getElementById('taskRefresh');
   const indexStartArea = document.getElementById('indexStartArea');
   const indexStart = document.getElementById('indexStart');
@@ -106,6 +107,8 @@ document.addEventListener('DOMContentLoaded', () => {
     taskCooldownText.hidden = true;
     setToggle(autoIndexToggle, false);
     clearIndex.disabled = clearRaw.disabled = true;
+    taskStatusText.textContent = '请打开 ChatGPT';
+    taskOverview.hidden = true;
   }
 
   const taskNames = { index: '全文索引', 'export-md': 'Markdown 导出', 'export-json': 'JSON 导出' };
@@ -163,8 +166,16 @@ document.addEventListener('DOMContentLoaded', () => {
       ? '索引任务已创建，请使用下方任务控制和进度查看'
       : initialDone ? (policy.autoEnabled === false ? '首次索引已完成，自动更新已关闭' : '首次索引已完成，之后自动检查增量变化')
         : policy.consentAt ? '已授权，首次完整索引尚未完成' : '首次扫描需确认授权；原始 JSON 仅保存在本机';
+    // Only unfinished work belongs in the small Popup. Completed/canceled
+    // jobs and their events remain in persistent task storage, not this UI.
+    const activeTasks = (data.tasks || []).filter(task =>
+      ['pending', 'running', 'paused'].includes(task.status));
+    taskStatusText.textContent = activeTasks.length
+      ? activeTasks.map(task => `${taskNames[task.type] || '本地任务'} · ${taskStates[task.status]}`).join(' / ')
+      : '当前没有运行中的任务';
+    taskOverview.hidden = activeTasks.length === 0 && cooldownDeadline <= Date.now();
     taskList.replaceChildren();
-    for (const task of data.tasks || []) {
+    for (const task of activeTasks) {
       const card = document.createElement('div');
       card.className = 'task-card';
       const meta = document.createElement('div');
@@ -212,31 +223,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       if (task.savedVolumes > 0 && task.type.startsWith('export-')) {
         addTaskButton(actions, '下载分卷', () => sendToActiveChatGPT({ action: 'taskDownloadVolumes', id: task.id }));
-        if (['completed', 'canceled', 'failed'].includes(task.status)) {
-          addTaskButton(actions, '清理分卷', () => {
-            if (!window.confirm('只清理扩展数据库中此任务保存的 ZIP 分卷？不会删除原始聊天缓存、全文索引、任务历史或已下载文件。')) {
-              return Promise.resolve({ deleted: 0 });
-            }
-            return sendToActiveChatGPT({ action: 'taskClearVolumes', id: task.id });
-          });
-        }
       }
       card.append(meta, progress, detail, actions);
       taskList.appendChild(card);
     }
-    if (!taskList.childElementCount) {
-      const empty = document.createElement('div');
-      empty.className = 'hint';
-      empty.textContent = '当前账号暂无任务';
-      taskList.appendChild(empty);
-    }
-    taskLogList.replaceChildren();
-    for (const log of data.logs || []) {
-      const entry = document.createElement('div');
-      entry.textContent = `${new Date(log.createdAt).toLocaleString()} · ${log.message || log.code || log.type}`;
-      taskLogList.appendChild(entry);
-    }
-    if (!taskLogList.childElementCount) taskLogList.textContent = '暂无记录';
     updateTaskCountdowns();
   }
 
@@ -255,7 +245,6 @@ document.addEventListener('DOMContentLoaded', () => {
       resetAccountPresentation();
       indexStartArea.hidden = true;
       taskList.replaceChildren();
-      taskLogList.replaceChildren();
       taskFeedback.textContent = `任务不可用：${error.message}`;
     } finally {
       taskLoading = false;

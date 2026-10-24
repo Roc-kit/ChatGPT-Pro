@@ -137,15 +137,26 @@ server.listen(0, '127.0.0.1', async () => {
       } }));
     });
     for (let i = 0; i < 60; i++) {
-      if (await evaluate('document.querySelectorAll(".task-card").length') === 3) break;
+      if (await evaluate('document.querySelectorAll(".task-card").length') === 2) break;
       await sleep(50);
     }
     const result = await evaluate(`(async () => {
       const check = (ok, desc) => { if (!ok) throw Error(desc); };
-      check(document.querySelectorAll('.task-card').length === 3, 'all three tasks displayed');
+      check(document.querySelectorAll('.task-card').length === 2,
+        'only running and paused jobs displayed, completed history hidden');
       check(document.querySelector('[role="progressbar"]').getAttribute('aria-valuenow') === '20',
         'accessible progress shows cursor');
-      check(document.querySelector('#taskLogList').textContent.includes('请求冷却'), 'event log shown');
+      check(!document.querySelector('#taskLogList') && !document.querySelector('#taskLogsWrap'),
+        'event history is absent from the compact popup');
+      check(!document.querySelector('#taskManager').open,
+        'index and cache management starts collapsed');
+      check(getComputedStyle(document.querySelector('.header')).backgroundColor === 'rgb(16, 163, 127)',
+        'brand header uses the same accent green as switches');
+      check(document.querySelector('#openChatGPT').getBoundingClientRect().top <
+        document.querySelector('.header strong').getBoundingClientRect().bottom,
+        'open ChatGPT action is next to the title, not on its own line');
+      document.querySelector('#taskManager summary').click();
+      check(document.querySelector('#taskManager').open, 'footer management entry expands controls');
       const selectAction = (index, label) => [...document.querySelectorAll('.task-card')[index]
         .querySelectorAll('button')].find(button => button.textContent === label);
       selectAction(0, '暂停').click();
@@ -159,14 +170,13 @@ server.listen(0, '127.0.0.1', async () => {
       check(window.__testState.calls.some(msg => msg.action === 'taskDownloadVolumes' && msg.id === 'm'),
         'download targets the specific persisted task');
       check(document.querySelector('#taskFeedback').textContent.includes('下载'), 'download feedback visible');
-      selectAction(2, '清理分卷').click();
-      await new Promise(resolve => setTimeout(resolve, 50));
-      check(window.__testState.calls.some(msg => msg.action === 'taskClearVolumes' && msg.id === 'j'),
-        'manual cleanup targets the completed task');
-      check(!selectAction(2, '下载分卷'), 'cleaned ZIP no longer offers download button');
+      check(!document.querySelector('.task-card').textContent.includes('5/5'),
+        'completed JSON task never creates an extra history progress bar');
       window.__testState.tasks[0].status = 'completed';
       document.querySelector('#taskRefresh').click();
       await new Promise(resolve => setTimeout(resolve, 50));
+      check(document.querySelectorAll('.task-card').length === 1,
+        'completed index task disappears while paused export remains actionable');
       check(!document.querySelector('#indexStart').disabled &&
         document.querySelector('#indexStart').textContent.includes('需授权'),
         'first index CTA requires consent and no active index job');
