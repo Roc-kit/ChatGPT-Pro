@@ -12,6 +12,8 @@
   const PANEL_MIN_HEIGHT = 280;
   const PANEL_COMPACT_WIDTH = 500;
   const EXPORT_GROUP_SIZE = 50;
+  const EXPORT_VOLUME_MAX_FILES = 50;
+  const EXPORT_VOLUME_MAX_BYTES = 24 * 1024 * 1024;
   const EXPORT_REQUEST_GAP_MS = 900;
   const EXPORT_GROUP_GAP_MS = 10 * 1000;
   const EXPORT_RATE_LIMIT_DEFAULT_MS = 60 * 1000;
@@ -1264,7 +1266,7 @@
     for (let retry = 0; retry <= EXPORT_MAX_RETRIES; retry++) {
       try {
         onProgress?.({ ...progress, phase: retry ? 'retrying' : 'fetching', retry });
-        return await window.APIHandler.getConversation(rec.id);
+        return await window.APIHandler.getConversation(rec.id, { withSource: true });
       } catch (error) {
         if (retry >= EXPORT_MAX_RETRIES) throw error;
         const rateLimited = error?.status === 429;
@@ -1294,11 +1296,62 @@
   }
 
   async function exportConversationBatch(records, format, onProgress) {
-    const files = [];
-    const used = new Set();
+    if (!records.length) throw new Error('没有可导出的聊天');
+    const encoder = new TextEncoder();
+    const used = new Set(['manifest.json', '导出失败.txt']);
     const failures = [];
+    const manifestEntries = []; // Metadata only: never retain all message bodies.
+    let volumeFiles = [];
+    let volumeEntries = [];
+    let volumeBytes = 0;
+    let volumeNumber = 1;
+    let startedVolumes = 0;
+    let successCount = 0;
+    const startedAt = new Date().toISOString();
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const prefix = `ChatGPT-Pro_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}_${format.toUpperCase()}`;
+
+    const flushVolume = (isFinal = false) => {
+      if (!volumeEntries.length) return;
+      const displayedEntries = isFinal ? manifestEntries : volumeEntries;
+      const manifest = {
+        schema_version: 1,
+        format,
+        started_at: startedAt,
+        volume: volumeNumber,
+        scope: isFinal ? 'complete' : 'volume',
+        total_requested: records.length,
+        processed: manifestEntries.length,
+        success_count: manifestEntries.filter(entry => entry.status === 'success').length,
+        failure_count: manifestEntries.filter(entry => entry.status === 'failed').length,
+        // Final volume gives the full cross-volume file map. Earlier volumes
+        // are self-describing and usable independently if a task is interrupted.
+        conversations: displayedEntries
+      };
+      const entries = [...volumeFiles, {
+        name: 'manifest.json', data: encoder.encode(`${JSON.stringify(manifest, null, 2)}\n`)
+      }];
+      const errors = isFinal ? failures : volumeEntries.filter(entry => entry.status === 'failed');
+      if (errors.length) {
+        entries.push({
+          name: '导出失败.txt',
+          data: encoder.encode(errors.map(entry => `${entry.title} (${entry.id})：${entry.error}`).join('\n') + '\n')
+        });
+      }
+      downloadBlobFile(`${prefix}_part${String(volumeNumber).padStart(3, '0')}.zip`, buildStoredZip(entries));
+      startedVolumes++;
+      onProgress?.({ phase: 'volume-ready', volume: volumeNumber, done: manifestEntries.length,
+        total: records.length, successes: successCount, failures: failures.length });
+      volumeNumber++;
+      volumeFiles = [];
+      volumeEntries = [];
+      volumeBytes = 0;
+    };
+
     const totalGroups = Math.ceil(records.length / EXPORT_GROUP_SIZE);
     for (let index = 0; index < records.length; index++) {
+      if (volumeEntries.length >= EXPORT_VOLUME_MAX_FILES) flushVolume();
       const rec = records[index];
       const progress = {
         done: index,
@@ -1307,49 +1360,48 @@
         totalGroups,
         title: rec.title || rec.id
       };
+      let usedNetwork = false;
+      let fetched = false;
       try {
-        const data = await fetchConversationForExport(rec, progress, onProgress);
+        const { data, source } = await fetchConversationForExport(rec, progress, onProgress);
+        fetched = true;
+        usedNetwork = source === 'network';
         const base = exportBaseFilename(rec, data);
-        if (format === 'json') {
-          files.push({ name: uniqueFilename(`${base}.json`, used), text: buildConversationJson(data, rec) });
-        } else {
-          files.push({ name: uniqueFilename(`${base}.md`, used), text: buildConversationMarkdown(data, rec) });
-        }
+        const filename = uniqueFilename(`${base}.${format === 'json' ? 'json' : 'md'}`, used);
+        const body = format === 'json' ? buildConversationJson(data, rec) : buildConversationMarkdown(data, rec);
+        const bytes = encoder.encode(body);
+        if (volumeEntries.length && volumeBytes + bytes.byteLength > EXPORT_VOLUME_MAX_BYTES) flushVolume();
+        volumeFiles.push({ name: filename, data: bytes });
+        volumeBytes += bytes.byteLength;
+        const entry = { id: rec.id, title: rec.title || data?.title || '', status: 'success',
+          filename, volume: volumeNumber, bytes: bytes.byteLength };
+        volumeEntries.push(entry);
+        manifestEntries.push(entry);
+        successCount++;
       } catch (error) {
-        failures.push(`${rec.title || rec.id} (${rec.id})：${error.message}`);
+        const entry = { id: rec.id, title: rec.title || rec.id, status: 'failed',
+          filename: null, volume: volumeNumber, error: error.message || String(error) };
+        failures.push(entry);
+        volumeEntries.push(entry);
+        manifestEntries.push(entry);
+        if (!fetched) usedNetwork = true;
       }
       onProgress?.({ ...progress, phase: 'completed', done: index + 1, failures: failures.length });
 
       const isLast = index === records.length - 1;
       const isGroupEnd = (index + 1) % EXPORT_GROUP_SIZE === 0;
-      if (!isLast && isGroupEnd) {
+      if (!isLast && usedNetwork && isGroupEnd) {
         await waitForExport(EXPORT_GROUP_GAP_MS, onProgress, {
-          ...progress,
-          phase: 'group-wait',
-          done: index + 1,
-          failures: failures.length
+          ...progress, phase: 'group-wait', done: index + 1, failures: failures.length
         });
-      } else if (!isLast) {
+      } else if (!isLast && usedNetwork) {
         await waitForExport(EXPORT_REQUEST_GAP_MS, onProgress, {
-          ...progress,
-          phase: 'pacing',
-          done: index + 1,
-          failures: failures.length
+          ...progress, phase: 'pacing', done: index + 1, failures: failures.length
         });
       }
     }
-    if (!files.length) throw new Error(failures[0] || '没有可导出的聊天');
-    if (failures.length) {
-      files.push({
-        name: '导出失败.txt',
-        text: `以下 ${failures.length} 个聊天未能导出：\n\n${failures.join('\n')}\n`
-      });
-    }
-    const now = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    const zipName = `ChatGPT-Pro_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}_${format.toUpperCase()}.zip`;
-    downloadBlobFile(zipName, buildStoredZip(files));
-    return { successCount: records.length - failures.length, failureCount: failures.length };
+    flushVolume(true);
+    return { successCount, failureCount: failures.length, volumeCount: startedVolumes };
   }
 
   function runtimeMessage(message) {
@@ -1412,8 +1464,10 @@
         totalGroups,
         title: rec.title || rec.id
       };
+      let usedNetwork = false;
       try {
-        const data = await fetchConversationForExport(rec, progress, onProgress);
+        const { data, source } = await fetchConversationForExport(rec, progress, onProgress);
+        usedNetwork = source === 'network';
         if (await window.APIHandler.getAccountId() !== accountId) throw new Error('登录账号已切换，索引任务已停止');
         // Store the exact source JSON and its derived text in one transaction.
         // A partial write cannot leave the index pointing at another version.
@@ -1429,13 +1483,14 @@
       } catch (error) {
         if (error.message.includes('登录账号已切换')) throw error;
         failures.push(`${rec.title || rec.id}：${error.message}`);
+        usedNetwork = true;
       }
       onProgress?.({ ...progress, phase: 'completed', done: index + 1, failures: failures.length });
       const isLast = index === pending.length - 1;
       const isGroupEnd = (index + 1) % EXPORT_GROUP_SIZE === 0;
-      if (!isLast && isGroupEnd) {
+      if (!isLast && usedNetwork && isGroupEnd) {
         await waitForExport(EXPORT_GROUP_GAP_MS, onProgress, { ...progress, phase: 'group-wait', done: index + 1 });
-      } else if (!isLast) {
+      } else if (!isLast && usedNetwork) {
         await waitForExport(EXPORT_REQUEST_GAP_MS, onProgress, { ...progress, phase: 'pacing', done: index + 1 });
       }
     }
@@ -1834,13 +1889,15 @@
               status.textContent = `请求失败 · ${progress.remainingSeconds} 秒后重试 ${progress.retry} / ${EXPORT_MAX_RETRIES} · ${base}`;
             } else if (progress.phase === 'retrying') {
               status.textContent = `正在重试 ${progress.retry} / ${EXPORT_MAX_RETRIES} · ${base}`;
+            } else if (progress.phase === 'volume-ready') {
+              status.textContent = `已开始下载第 ${progress.volume} 个 ZIP 分卷 · ${progress.done} / ${progress.total}`;
             } else if (progress.phase !== 'pacing') {
               status.textContent = `正在导出 ${base}…`;
             }
           });
           status.textContent = result.failureCount
-            ? `已导出 ${result.successCount} 个，失败 ${result.failureCount} 个 · ZIP 已生成`
-            : `已导出 ${result.successCount} 个 ${format.toUpperCase()} · ZIP 已生成`;
+            ? `成功 ${result.successCount} 个、失败 ${result.failureCount} 个 · 已发起 ${result.volumeCount} 个 ZIP 下载`
+            : `已导出 ${result.successCount} 个 ${format.toUpperCase()} · 已发起 ${result.volumeCount} 个 ZIP 下载`;
           selectedIds.clear();
           renderCurrent();
         } catch (error) {

@@ -525,12 +525,13 @@ const APIHandler = (function () {
     return buildTimestampMap(records);
   }
 
-  async function getConversation(conversationId) {
+  async function getConversation(conversationId, options = {}) {
     if (!conversationId) throw new Error('Missing conversation id');
     const accountId = await getAccountId();
     const key = JSON.stringify([accountId, conversationId]);
-    if (_conversationPromises.has(key)) return _conversationPromises.get(key);
-    const promise = (async () => {
+    let promise = _conversationPromises.get(key);
+    if (!promise) {
+      promise = (async () => {
       // A single-record version lookup avoids scanning the entire directory
       // once per exported conversation.
       let updateTime;
@@ -542,7 +543,7 @@ const APIHandler = (function () {
         const cached = await localDataMessage({
           action: 'localDataGetConversation', accountId, id: conversationId, updateTime
         });
-        if (cached.hit) return cached.raw;
+        if (cached.hit) return { data: cached.raw, source: 'cache' };
       } catch (error) {
         // Temporary IDB failures must not make a valid online conversation
         // impossible to export. The raw data is still fetched from ChatGPT.
@@ -560,11 +561,19 @@ const APIHandler = (function () {
       } catch (error) {
         console.warn('[ChatGPT Pro] Detail cache write skipped:', error.message);
       }
-      return raw;
-    })();
-    _conversationPromises.set(key, promise);
-    try { return await promise; }
-    finally { _conversationPromises.delete(key); }
+      return { data: raw, source: 'network' };
+      })();
+      _conversationPromises.set(key, promise);
+      // Removing a failed promise is important: a later retry must be able
+      // to fetch afresh. Attach a handler to avoid an unhandled rejection.
+      promise.then(() => {
+        if (_conversationPromises.get(key) === promise) _conversationPromises.delete(key);
+      }, () => {
+        if (_conversationPromises.get(key) === promise) _conversationPromises.delete(key);
+      });
+    }
+    const result = await promise;
+    return options.withSource === true ? result : result.data;
   }
 
   async function clearCache() {

@@ -235,6 +235,8 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     await window.APIHandler.getAccountId(true);
     const cachedResults = await Promise.all(cachedDirectory.map(item => window.APIHandler.getConversation(item.id)));
     check(cachedResults.length === 100 && cachedResults.every(item => item.title === 'stored-A'), '100 complete cached chats reused');
+    const sourceTagged = await window.APIHandler.getConversation('cached-0', { withSource: true });
+    check(sourceTagged.source === 'cache' && sourceTagged.data.title === 'stored-A', 'cached source is identified without extra API request');
     check(detailRequests === 0, '100 cached chats generate zero detail API calls');
     activeAccount = 'acct-b';
     await window.APIHandler.getAccountId(true);
@@ -245,6 +247,8 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     ]);
     check(first.title === 'remote-details' && first === second && second === third,
       'simultaneous detail callers share same result');
+    check((await window.APIHandler.getConversation('cached-0', { withSource: true })).source === 'cache',
+      'network miss becomes a tagged cache hit');
     check(detailRequests === 1, 'same conversation request coalesced into one network call');
     check((await storage.getConversation('acct-b', 'cached-0')).hit, 'network response cached in B');
     check((await storage.getConversation('acct-a', 'cached-0')).raw.title === 'stored-A',
