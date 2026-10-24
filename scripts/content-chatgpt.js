@@ -1295,24 +1295,67 @@
     downloadTextFile(`${exportBaseFilename(rec, data)}.json`, buildConversationJson(data, rec), 'application/json;charset=utf-8');
   }
 
-  async function exportConversationBatch(records, format, onProgress) {
+  async function uploadTaskZipVolume(session, volume, filename, blob, toIndex, entries) {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const chunkSize = 256 * 1024;
+    let count = 0;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      const chunk = bytes.subarray(offset, offset + chunkSize);
+      let binary = '';
+      for (let index = 0; index < chunk.length; index += 32768) {
+        binary += String.fromCharCode(...chunk.subarray(index, index + 32768));
+      }
+      await runtimeMessage({
+        action: 'taskVolumeChunk', accountId: session.accountId,
+        id: session.taskId, owner: session.owner, token: session.token,
+        volume, index: count, base64: btoa(binary)
+      });
+      count++;
+    }
+    await runtimeMessage({
+      action: 'taskVolumeFinish', accountId: session.accountId,
+      id: session.taskId, owner: session.owner, token: session.token,
+      payload: { volume, filename, toIndex, entries, chunkCount: count }
+    });
+  }
+
+  async function downloadTaskZipVolume(accountId, taskId, volume) {
+    const info = (await runtimeMessage({ action: 'taskVolumeGet', accountId, id: taskId, volume })).result;
+    if (!info) throw new Error('找不到已保存的 ZIP 分卷');
+    const parts = [];
+    for (let offset = 0; offset < info.size; offset += 256 * 1024) {
+      const reply = (await runtimeMessage({
+        action: 'taskVolumeRead', accountId, id: taskId, volume, offset, size: 256 * 1024
+      })).result;
+      const decoded = atob(reply.base64);
+      const bytes = new Uint8Array(decoded.length);
+      for (let index = 0; index < decoded.length; index++) bytes[index] = decoded.charCodeAt(index);
+      parts.push(bytes);
+    }
+    downloadBlobFile(info.filename, new Blob(parts, { type: 'application/zip' }));
+    return info.filename;
+  }
+
+  async function exportConversationBatch(records, format, onProgress, session = null) {
     if (!records.length) throw new Error('没有可导出的聊天');
     const encoder = new TextEncoder();
-    const used = new Set(['manifest.json', '导出失败.txt']);
-    const failures = [];
-    const manifestEntries = []; // Metadata only: never retain all message bodies.
+    const manifestEntries = [...(session?.task.exportEntries || [])];
+    const failures = manifestEntries.filter(entry => entry.status === 'failed');
+    const used = new Set(['manifest.json', '导出失败.txt',
+      ...manifestEntries.map(entry => entry.filename).filter(Boolean)]);
     let volumeFiles = [];
     let volumeEntries = [];
     let volumeBytes = 0;
-    let volumeNumber = 1;
-    let startedVolumes = 0;
-    let successCount = 0;
-    const startedAt = new Date().toISOString();
-    const now = new Date();
+    let volumeNumber = (session?.task.volumeCount || 0) + 1;
+    let volumeStartIndex = session?.task.nextIndex || 0;
+    let startedVolumes = session?.task.volumeCount || 0;
+    let successCount = session?.task.successCount || 0;
+    const now = new Date(session?.task.createdAt || Date.now());
+    const startedAt = now.toISOString();
     const pad = n => String(n).padStart(2, '0');
     const prefix = `ChatGPT-Pro_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}_${format.toUpperCase()}`;
 
-    const flushVolume = (isFinal = false) => {
+    const flushVolume = async (isFinal = false, endIndex = records.length) => {
       if (!volumeEntries.length) return;
       const displayedEntries = isFinal ? manifestEntries : volumeEntries;
       const manifest = {
@@ -1339,19 +1382,28 @@
           data: encoder.encode(errors.map(entry => `${entry.title} (${entry.id})：${entry.error}`).join('\n') + '\n')
         });
       }
-      downloadBlobFile(`${prefix}_part${String(volumeNumber).padStart(3, '0')}.zip`, buildStoredZip(entries));
+      const filename = `${prefix}_part${String(volumeNumber).padStart(3, '0')}.zip`;
+      const zipBlob = buildStoredZip(entries);
+      if (session) {
+        // Never move the durable task cursor before the exact ZIP bytes are
+        // stored successfully. Chrome may block the subsequent download.
+        await uploadTaskZipVolume(session, volumeNumber, filename, zipBlob, endIndex, volumeEntries);
+      }
+      if (!session?.automatic) downloadBlobFile(filename, zipBlob);
       startedVolumes++;
-      onProgress?.({ phase: 'volume-ready', volume: volumeNumber, done: manifestEntries.length,
+      onProgress?.({ phase: 'volume-ready', volume: volumeNumber,
+        downloadInitiated: !session?.automatic, done: manifestEntries.length,
         total: records.length, successes: successCount, failures: failures.length });
       volumeNumber++;
+      volumeStartIndex = endIndex;
       volumeFiles = [];
       volumeEntries = [];
       volumeBytes = 0;
     };
 
     const totalGroups = Math.ceil(records.length / EXPORT_GROUP_SIZE);
-    for (let index = 0; index < records.length; index++) {
-      if (volumeEntries.length >= EXPORT_VOLUME_MAX_FILES) flushVolume();
+    for (let index = volumeStartIndex; index < records.length; index++) {
+      if (volumeEntries.length >= EXPORT_VOLUME_MAX_FILES) await flushVolume(false, index);
       const rec = records[index];
       const progress = {
         done: index,
@@ -1362,6 +1414,14 @@
       };
       let usedNetwork = false;
       let fetched = false;
+      let prepared = null;
+      if (session) {
+        await runtimeMessage({ action: 'taskHeartbeat', accountId: session.accountId,
+          id: session.taskId, owner: session.owner, token: session.token });
+        if (await window.APIHandler.getAccountId() !== session.accountId) {
+          throw new Error('登录账号已切换，导出任务已停止');
+        }
+      }
       try {
         const { data, source } = await fetchConversationForExport(rec, progress, onProgress);
         fetched = true;
@@ -1370,21 +1430,34 @@
         const filename = uniqueFilename(`${base}.${format === 'json' ? 'json' : 'md'}`, used);
         const body = format === 'json' ? buildConversationJson(data, rec) : buildConversationMarkdown(data, rec);
         const bytes = encoder.encode(body);
-        if (volumeEntries.length && volumeBytes + bytes.byteLength > EXPORT_VOLUME_MAX_BYTES) flushVolume();
-        volumeFiles.push({ name: filename, data: bytes });
-        volumeBytes += bytes.byteLength;
-        const entry = { id: rec.id, title: rec.title || data?.title || '', status: 'success',
-          filename, volume: volumeNumber, bytes: bytes.byteLength };
-        volumeEntries.push(entry);
-        manifestEntries.push(entry);
-        successCount++;
+        prepared = { bytes, filename, title: rec.title || data?.title || '' };
       } catch (error) {
+        if (session && (/任务租约|登录账号已切换/.test(error.message))) throw error;
+        if (session && (error.status === 401 || error.status === 403)) {
+          await runtimeMessage({ action: 'taskControl', accountId: session.accountId,
+            id: session.taskId, operation: 'pause' });
+          throw new Error('登录/权限异常，导出任务已暂停；本地分卷与检查点仍保留');
+        }
         const entry = { id: rec.id, title: rec.title || rec.id, status: 'failed',
           filename: null, volume: volumeNumber, error: error.message || String(error) };
         failures.push(entry);
         volumeEntries.push(entry);
         manifestEntries.push(entry);
         if (!fetched) usedNetwork = true;
+      }
+      if (prepared) {
+        if (volumeEntries.length && volumeBytes + prepared.bytes.byteLength > EXPORT_VOLUME_MAX_BYTES) {
+          // Save errors must abort this task, never turn a successfully
+          // converted conversation into an unrelated item failure.
+          await flushVolume(false, index);
+        }
+        volumeFiles.push({ name: prepared.filename, data: prepared.bytes });
+        volumeBytes += prepared.bytes.byteLength;
+        const entry = { id: rec.id, title: prepared.title, status: 'success',
+          filename: prepared.filename, volume: volumeNumber, bytes: prepared.bytes.byteLength };
+        volumeEntries.push(entry);
+        manifestEntries.push(entry);
+        successCount++;
       }
       onProgress?.({ ...progress, phase: 'completed', done: index + 1, failures: failures.length });
 
@@ -1400,8 +1473,63 @@
         });
       }
     }
-    flushVolume(true);
+    await flushVolume(true, records.length);
     return { successCount, failureCount: failures.length, volumeCount: startedVolumes };
+  }
+
+  const EXPORT_EXECUTOR_ID = crypto.randomUUID();
+  const exportRunners = new Set();
+
+  async function runExportTask(accountId, taskId, onProgress, automatic = false) {
+    if (exportRunners.has(taskId)) return { busy: true };
+    exportRunners.add(taskId);
+    let heartbeat;
+    try {
+      const response = await runtimeMessage({ action: 'taskClaim', accountId,
+        id: taskId, owner: EXPORT_EXECUTOR_ID });
+      const claim = response.result;
+      if (!claim.acquired) return { busy: true };
+      const { task, token } = claim;
+      const format = task.type === 'export-json' ? 'json' : 'md';
+      const session = { accountId, taskId, owner: EXPORT_EXECUTOR_ID, token, task, automatic };
+      heartbeat = window.setInterval(() => {
+        runtimeMessage({ action: 'taskHeartbeat', accountId,
+          id: taskId, owner: EXPORT_EXECUTOR_ID, token }).catch(() => {});
+      }, 10000);
+      return exportConversationBatch(task.items, format, onProgress, session);
+    } finally {
+      if (heartbeat) window.clearInterval(heartbeat);
+      exportRunners.delete(taskId);
+    }
+  }
+
+  async function startExportTask(records, format, onProgress) {
+    const accountId = await window.APIHandler.getAccountId();
+    const response = await runtimeMessage({ action: 'taskCreate', accountId,
+      type: format === 'json' ? 'export-json' : 'export-md', items: records });
+    if (response.result.status === 'paused') return { paused: true };
+    const result = await runExportTask(accountId, response.result.id, onProgress);
+    return { ...result, taskId: response.result.id };
+  }
+
+  let recoveringExportTasks = false;
+  async function recoverExportTasks() {
+    if (recoveringExportTasks || !S.settings.enabled) return;
+    recoveringExportTasks = true;
+    try {
+      const accountId = await window.APIHandler.getAccountId();
+      const response = await runtimeMessage({ action: 'taskList', accountId });
+      for (const task of response.result || []) {
+        if (!task.type.startsWith('export-') || !['pending', 'running'].includes(task.status)) continue;
+        if (task.status === 'running' && task.lease?.expiresAt > Date.now()) continue;
+        // Auto-recovery prepares ZIPs but never initiates downloads without
+        // an explicit user action. Saved volumes stay available locally.
+        await runExportTask(accountId, task.id, null, true)
+          .catch(error => log('Export recovery skipped:', error.message));
+      }
+    } finally {
+      recoveringExportTasks = false;
+    }
   }
 
   function runtimeMessage(message) {
@@ -1693,6 +1821,7 @@
           <button type="button" class="chatgpt-pro-panel-tab" role="tab" aria-selected="false" data-panel-view="search">全文搜索</button>
         </div>
         <span class="chatgpt-pro-panel-status">正在读取本地目录…</span>
+        <button type="button" class="chatgpt-pro-saved-volumes" style="flex:0 0 auto;height:26px;padding:0 6px;border:1px solid #cbd5e1;border-radius:6px;background:transparent;color:inherit;font-size:10px;cursor:pointer;white-space:nowrap" title="重新下载最近一次已持久化的批量 ZIP 分卷">已保存分卷</button>
         <div class="chatgpt-pro-batch-actions" hidden>
           <span class="chatgpt-pro-batch-count">已选 0</span>
           <label title="导出前增量检查聊天目录；仅更新有变化的完整缓存" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:11px">
@@ -1777,6 +1906,7 @@
     const projectFilter = panel.querySelector('.chatgpt-pro-project-filter');
     const selectAll = panel.querySelector('.chatgpt-pro-select-all input');
     const batchActions = panel.querySelector('.chatgpt-pro-batch-actions');
+    const savedVolumesButton = panel.querySelector('.chatgpt-pro-saved-volumes');
     const exportCheckLatest = panel.querySelector('.chatgpt-pro-export-check-latest');
     const batchCount = panel.querySelector('.chatgpt-pro-batch-count');
     const batchButtons = Array.from(panel.querySelectorAll('[data-batch-format]'));
@@ -1798,6 +1928,7 @@
       selectAll.checked = visible.length > 0 && selectedVisible === visible.length;
       selectAll.indeterminate = selectedVisible > 0 && selectedVisible < visible.length;
       batchActions.hidden = activeView !== 'directory' || selectedIds.size === 0;
+      savedVolumesButton.hidden = !batchActions.hidden || activeView !== 'directory';
       batchCount.textContent = `已选 ${selectedIds.size}`;
     };
 
@@ -1840,6 +1971,7 @@
       });
       if (activeView === 'search') {
         batchActions.hidden = true;
+        savedVolumesButton.hidden = true;
         status.textContent = '本地全文搜索';
         refreshSearchIndexStatus();
         window.setTimeout(() => fullTextInput.focus(), 0);
@@ -1973,7 +2105,7 @@
             const freshById = new Map(fresh.map(record => [record.id, record]));
             selected = selected.map(record => freshById.get(record.id) || record);
           }
-          const result = await exportConversationBatch(selected, format, progress => {
+          const result = await startExportTask(selected, format, progress => {
             const base = `${progress.done} / ${progress.total} · 第 ${progress.group} / ${progress.totalGroups} 组`;
             if (progress.phase === 'rate-limit') {
               status.textContent = `请求受限 · ${progress.remainingSeconds} 秒后继续 · ${base}`;
@@ -1984,14 +2116,14 @@
             } else if (progress.phase === 'retrying') {
               status.textContent = `正在重试 ${progress.retry} / ${EXPORT_MAX_RETRIES} · ${base}`;
             } else if (progress.phase === 'volume-ready') {
-              status.textContent = `已开始下载第 ${progress.volume} 个 ZIP 分卷 · ${progress.done} / ${progress.total}`;
+              status.textContent = `第 ${progress.volume} 个 ZIP 已保存${progress.downloadInitiated ? '并发起下载' : ''} · ${progress.done} / ${progress.total}`;
             } else if (progress.phase !== 'pacing') {
               status.textContent = `正在导出 ${base}…`;
             }
           });
-          status.textContent = result.failureCount
-            ? `成功 ${result.successCount} 个、失败 ${result.failureCount} 个 · 已发起 ${result.volumeCount} 个 ZIP 下载`
-            : `已导出 ${result.successCount} 个 ${format.toUpperCase()} · 已发起 ${result.volumeCount} 个 ZIP 下载`;
+          if (result.paused) status.textContent = '已有同类型的暂停任务，请在任务管理中继续';
+          else if (result.busy) status.textContent = '同账号的导出任务正在其他标签页执行';
+          else status.textContent = `已持久化 ${result.volumeCount} 卷 · 成功 ${result.successCount} 个、失败 ${result.failureCount} 个（浏览器下载需单独确认）`;
           selectedIds.clear();
           renderCurrent();
         } catch (error) {
@@ -2002,6 +2134,24 @@
         }
       });
     }
+    savedVolumesButton.addEventListener('click', async () => {
+      savedVolumesButton.disabled = true;
+      try {
+        const accountId = await window.APIHandler.getAccountId();
+        const reply = await runtimeMessage({ action: 'taskList', accountId });
+        const saved = (reply.result || []).find(task => task.type.startsWith('export-') && task.volumeCount > 0);
+        if (!saved) {
+          status.textContent = '当前账号没有已持久化的 ZIP 分卷';
+          return;
+        }
+        for (let volume = 1; volume <= saved.volumeCount; volume++) {
+          await downloadTaskZipVolume(accountId, saved.id, volume);
+          status.textContent = `已发起下载 ${volume} / ${saved.volumeCount} 卷（最近一次导出任务）`;
+        }
+      } catch (error) {
+        status.textContent = `下载已保存分卷失败：${error.message}`;
+      } finally { savedVolumesButton.disabled = false; }
+    });
 
     requestAnimationFrame(positionTimelinePanel);
 
@@ -2230,6 +2380,8 @@
     // are intentionally excluded; no long-lived MV3 worker is required.
     window.setInterval(() => recoverIndexTasks().catch(error => log('Index recovery failed:', error.message)), 15000);
     recoverIndexTasks().catch(error => log('Initial index recovery failed:', error.message));
+    window.setInterval(() => recoverExportTasks().catch(error => log('Export recovery failed:', error.message)), 15000);
+    recoverExportTasks().catch(error => log('Initial export recovery failed:', error.message));
     window.addEventListener('resize', () => {
       placeLauncher();
       placeCurrentChatExportButton();

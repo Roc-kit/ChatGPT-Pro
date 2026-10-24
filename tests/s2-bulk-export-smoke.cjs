@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { randomUUID } = require('node:crypto');
 
 const source = fs.readFileSync(path.join(__dirname, '../scripts/content-chatgpt.js'), 'utf8');
 function extract(begin, end) {
@@ -40,7 +41,7 @@ function makeHarness(options = {}) {
   const delays = [];
   let networkCalls = 0;
   const context = {
-    Blob, TextEncoder, Uint8Array, Date, console,
+    Blob, TextEncoder, Uint8Array, Date, console, crypto: { randomUUID },
     EXPORT_GROUP_SIZE: 50,
     EXPORT_VOLUME_MAX_FILES: 50,
     EXPORT_VOLUME_MAX_BYTES: 24 * 1024 * 1024,

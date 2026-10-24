@@ -66,7 +66,10 @@ globalThis.ChatGPTProLocalData = (() => {
 
         // Copy before leaving the upgrade transaction. Legacy records remain
         // readable even if a future migration or consumer fails.
-        if (event.oldVersion < DB_VERSION) {
+        // The legacy search copy belongs specifically to v1 -> v2. Later
+        // schema upgrades must not overwrite previously reviewed unassigned
+        // records with another copy of the original legacy search.
+        if (event.oldVersion < 2) {
           const destination = tx.objectStore(STORES.search);
           const cursorRequest = legacy.openCursor();
           cursorRequest.onsuccess = () => {
