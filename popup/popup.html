@@ -112,17 +112,19 @@
   <div class="section">
     <div class="label">导出文件名</div>
     <select id="filenamePreset">
+      <option value="datetime_title">创建时间 + 对话标题</option>
+      <option value="datetime_source_title">创建时间 + 来源 + 对话标题</option>
       <option value="title">对话标题</option>
-      <option value="date_title">日期 + 对话标题</option>
       <option value="source_title">来源 + 对话标题</option>
-      <option value="date_source_title">日期 + 来源 + 对话标题</option>
+      <option value="date_title">仅日期 + 对话标题</option>
+      <option value="date_source_title">仅日期 + 来源 + 对话标题</option>
       <option value="custom">自定义模板</option>
     </select>
     <div class="template-custom" id="customTemplateWrap" hidden>
-      <input id="filenameTemplate" type="text" spellcheck="false" placeholder="{created_date}_{title}">
+      <input id="filenameTemplate" type="text" spellcheck="false" placeholder="{created_datetime}_{title}">
     </div>
-    <div class="template-preview"><strong>示例：</strong><span id="filenamePreview"></span></div>
-    <div class="hint">自定义可用：{title}、{created_date}、{updated_date}、{source}、{conversation_id}。Markdown 和 JSON 共用此规则。</div>
+    <div class="template-preview"><strong>文件名预览：</strong><span id="filenamePreview"></span></div>
+    <div class="hint">支持创建/更新时间（精确到秒）：{created_datetime}、{updated_datetime}；也支持 {title}、{created_date}、{updated_date}、{source}、{conversation_id}。MD 和 JSON 共用规则。</div>
   </div>
   <div class="task-overview" id="taskOverview">
     <div class="hint" id="taskCooldownText" role="status" hidden></div>

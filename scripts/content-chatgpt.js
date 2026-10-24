@@ -47,7 +47,7 @@
       fontSize: 'small',
       openInBackground: true,
       closeOnOutsideClick: true,
-      exportFilenameTemplate: '{title}',
+      exportFilenameTemplate: '{created_datetime}_{title}',
       launcherPosition: { x: 0.94, y: 0.76 },
       currentExportPositionY: 0.82,
       panelSize: { width: 580, height: 560 }
@@ -1034,12 +1034,13 @@
     return (cleaned || 'ChatGPT 聊天记录').slice(0, 120);
   }
 
-  function filenameDate(value) {
+  function filenameDate(value, withTime = false) {
     const ms = timestampValue(value);
     if (!ms) return '';
     const d = new Date(ms);
     const pad = n => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    return withTime ? `${date}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}` : date;
   }
 
   function filenameSource(rec) {
@@ -1047,15 +1048,19 @@
   }
 
   function exportBaseFilename(rec, data) {
+    const created = rec?.createTime ?? data?.create_time ?? data?.created_at;
+    const updated = rec?.updateTime ?? data?.update_time ?? data?.updated_at;
     const values = {
       title: data?.title || rec?.title || 'ChatGPT 聊天记录',
-      created_date: filenameDate(rec?.createTime ?? data?.create_time ?? data?.created_at),
-      updated_date: filenameDate(rec?.updateTime ?? data?.update_time ?? data?.updated_at),
+      created_date: filenameDate(created),
+      updated_date: filenameDate(updated),
+      created_datetime: filenameDate(created, true),
+      updated_datetime: filenameDate(updated, true),
       source: filenameSource(rec || {}),
       conversation_id: rec?.id || data?.id || data?.conversation_id || ''
     };
-    const template = String(S.settings.exportFilenameTemplate || '{title}');
-    const rendered = template.replace(/\{(title|created_date|updated_date|source|conversation_id)\}/g, (_, key) => values[key] || '');
+    const template = String(S.settings.exportFilenameTemplate || '{created_datetime}_{title}');
+    const rendered = template.replace(/\{(title|created_date|updated_date|created_datetime|updated_datetime|source|conversation_id)\}/g, (_, key) => values[key] || '');
     return sanitizeFilename(rendered.replace(/_+/g, '_').replace(/^[_\s]+|[_\s]+$/g, '') || values.title);
   }
 
@@ -2743,7 +2748,7 @@
       }
       if (changes.openInBackground) S.settings.openInBackground = changes.openInBackground.newValue;
       if (changes.closeOnOutsideClick) S.settings.closeOnOutsideClick = changes.closeOnOutsideClick.newValue;
-      if (changes.exportFilenameTemplate) S.settings.exportFilenameTemplate = changes.exportFilenameTemplate.newValue || '{title}';
+      if (changes.exportFilenameTemplate) S.settings.exportFilenameTemplate = changes.exportFilenameTemplate.newValue || '{created_datetime}_{title}';
       if (changes.panelSize?.newValue) S.settings.panelSize = changes.panelSize.newValue;
       if (restamp && S.settings.enabled) {
         removeAllBadges();

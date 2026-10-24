@@ -33,6 +33,12 @@ const CHAT = { id: CHAT_ID, title: 'Offline acceptance test', update_time: 17700
       message: { id: 'answer', author: { role: 'assistant' }, content: { content_type: 'text', parts: ['hello from controlled fixture'] }, create_time: 1770000001 } }
   }
 };
+const pad2 = value => String(value).padStart(2, '0');
+const fixtureDateTime = (() => {
+  const date = new Date(CHAT.update_time * 1000);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}_` +
+    `${pad2(date.getHours())}-${pad2(date.getMinutes())}-${pad2(date.getSeconds())}`;
+})();
 
 class PipeCDP {
   constructor(chrome) {
@@ -178,6 +184,11 @@ async function main() {
     await eventually(async () => cdp.eval(popupSession,
       `document.querySelector('#indexStartArea').hidden === false`),
     'popup received real content-script task dashboard');
+    assert.equal(await cdp.eval(popupSession,
+      `document.querySelector('#filenamePreset').value`), 'datetime_title',
+    'new users default to sortable creation date and time');
+    assert.match(await cdp.eval(popupSession,
+      `document.querySelector('#filenamePreview').textContent`), /2026-10-24_09-47-12/);
     assert.match(await cdp.eval(popupSession,
       `document.querySelector('#indexStart').textContent`), /需授权/);
 
@@ -228,11 +239,13 @@ async function main() {
     'select-all can clear row selection');
 
     await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-row-export button').click()`);
-    await eventually(async () => fs.existsSync(path.join(downloadPath, 'Offline acceptance test.md')),
-      'Markdown exported with no full-text index');
+    await eventually(async () => fs.existsSync(path.join(downloadPath,
+      `${fixtureDateTime}_Offline acceptance test.md`)),
+      'Markdown exported with sortable create timestamp and no full-text index');
     await cdp.eval(pageSession, `document.querySelectorAll('.chatgpt-pro-row-export button')[1].click()`);
-    await eventually(async () => fs.existsSync(path.join(downloadPath, 'Offline acceptance test.json')),
-      'raw JSON exported with no full-text index');
+    await eventually(async () => fs.existsSync(path.join(downloadPath,
+      `${fixtureDateTime}_Offline acceptance test.json`)),
+      'raw JSON exported with sortable create timestamp and no full-text index');
     assert.equal(requests.details, 1, 'unindexed single exports fetch uncached original JSON only once');
     await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-row-checkbox').click()`);
     await cdp.eval(pageSession, `document.querySelector('[data-batch-format="json"]').click()`);
@@ -277,7 +290,7 @@ async function main() {
         data => resolve(data.exportFilenameTemplate === '{created_date}_{title}')))`),
     'filename preset persists to the real extension settings');
     assert.match(await cdp.eval(popupSession,
-      `document.querySelector('#filenamePreview').textContent`), /2026-09-05/);
+      `document.querySelector('#filenamePreview').textContent`), /2026-10-24/);
 
     await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
     await eventually(async () => cdp.eval(pageSession,
@@ -301,6 +314,24 @@ async function main() {
     assert.equal(singleJson.conversation.mapping.question.message.id, 'question',
       'JSON preserves complete original conversation mapping');
     assert.equal(requests.details, 1, 'both single exports share cached full JSON');
+    // Custom templates can also sort by exact update timestamp. Saved older
+    // date-only presets remain valid and were covered above.
+    await cdp.eval(popupSession, `(() => {
+      const preset = document.querySelector('#filenamePreset');
+      preset.value = 'custom';
+      preset.dispatchEvent(new Event('change', { bubbles: true }));
+      const template = document.querySelector('#filenameTemplate');
+      template.value = '{updated_datetime}_更新_{title}';
+      template.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    await eventually(async () => cdp.eval(popupSession,
+      `new Promise(resolve => chrome.storage.local.get('exportFilenameTemplate',
+        data => resolve(data.exportFilenameTemplate === '{updated_datetime}_更新_{title}')))`),
+    'custom precise update timestamp stored');
+    await cdp.eval(pageSession, `document.querySelectorAll('.chatgpt-pro-row-export button')[1].click()`);
+    await eventually(async () => fs.existsSync(path.join(downloadPath,
+      `${fixtureDateTime}_更新_Offline acceptance test.json`)),
+    'custom updated datetime export works');
     await cdp.eval(pageSession, `document.querySelector('[data-panel-view="search"]').click()`);
     await cdp.eval(pageSession, `(() => {
       const input = document.querySelector('.chatgpt-pro-fulltext-input');

@@ -318,6 +318,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const filenamePresets = {
+    datetime_title: '{created_datetime}_{title}',
+    datetime_source_title: '{created_datetime}_{source}_{title}',
     title: '{title}',
     date_title: '{created_date}_{title}',
     source_title: '{source}_{title}',
@@ -332,12 +334,15 @@ document.addEventListener('DOMContentLoaded', () => {
   function previewFilename(template) {
     const sample = {
       title: 'NocoBase 官方 Demo 分析',
-      created_date: '2026-09-05',
-      updated_date: '2026-09-07',
+      created_date: '2026-10-24',
+      updated_date: '2026-10-25',
+      created_datetime: '2026-10-24_09-47-12',
+      updated_datetime: '2026-10-25_13-21-05',
       source: 'FlowBase',
       conversation_id: 'abc123'
     };
-    const value = String(template || '{title}').replace(/\{(title|created_date|updated_date|source|conversation_id)\}/g, (_, key) => sample[key]);
+    const value = String(template || '{created_datetime}_{title}')
+      .replace(/\{(title|created_date|updated_date|created_datetime|updated_datetime|source|conversation_id)\}/g, (_, key) => sample[key]);
     return `${value || sample.title}.md`;
   }
 
@@ -350,7 +355,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function saveFilenameTemplate(template) {
-    const value = String(template || '').trim() || '{title}';
+    const value = String(template || '').trim() || '{created_datetime}_{title}';
     chrome.storage.local.set({ exportFilenameTemplate: value });
     filenamePreview.textContent = previewFilename(value);
   }
@@ -364,7 +369,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setToggle(outsideCloseToggle, values.closeOnOutsideClick !== false);
     setSidebarControlsEnabled(showSidebarTime);
     size.value = values.fontSize || 'small';
-    updateFilenameUi(values.exportFilenameTemplate || '{title}');
+    updateFilenameUi(values.exportFilenameTemplate || '{created_datetime}_{title}');
   });
 
   function setStatus(ok, text) {
@@ -423,13 +428,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const preset = filenamePreset.value;
     customTemplateWrap.hidden = preset !== 'custom';
     if (preset === 'custom') {
-      const current = filenameTemplate.value.trim() || '{created_date}_{title}';
+      const current = filenameTemplate.value.trim() || '{created_datetime}_{title}';
       filenameTemplate.value = current;
       saveFilenameTemplate(current);
       filenameTemplate.focus();
       return;
     }
-    saveFilenameTemplate(filenamePresets[preset] || '{title}');
+    saveFilenameTemplate(filenamePresets[preset] || '{created_datetime}_{title}');
   });
   filenameTemplate.addEventListener('input', () => saveFilenameTemplate(filenameTemplate.value));
 
