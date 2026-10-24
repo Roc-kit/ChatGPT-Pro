@@ -16,6 +16,20 @@
 
 **后续：** 批次 B（目录/项目请求与详情共享 429 冷却、连续失败暂停）尚未实施；最终真实账号下载权限与性能基线等仍按剩余工作文档验收，不宣布整个重构结束。
 
+## 2026-10-24：剩余工作批次 B（跨 API 冷却与连续失败暂停）
+
+**状态：批次 B 开发及隔离模拟验收完成。** 独立提交主题：`fix(index): share directory cooldown and pause repeated failures`。
+
+- `scripts/api-handler.js`：普通目录、项目目录及 GPT 元数据请求复用现有账号级 IndexedDB 冷却截止时间；429 先持久化再按 Retry-After 或递增退避重试本次 URL，不重新扫描已取得的所有页面；详情请求仍沿用已有排他租约，避免重复写入冷却。401 最多尝试一次重新确认会话；403 直接停止；账户切换会中止请求。严格全量扫描失败不写入完整扫描标记；非严格扫描跨项目连续失败达到 3 次后停止。
+- `scripts/local-data-store.js`、`scripts/background.js`：在现有 accounts 中共用冷却计数器与截止时间，不添加数据库或调度器。目录 429、目录同步失败和索引任务连续失败写入脱敏日志；同账号任务 3 条连续失败时持久化暂停状态，用户手动恢复会重置计数但保留断点。
+- `scripts/content-chatgpt.js`：索引任务识别持久化的连续失败暂停；导出任务连续失败时先保存部分 ZIP 和任务游标，再暂停；恢复后从未完成记录继续，不重复下载已保存分卷。
+- `tests/s1-local-data-smoke.cjs`：真实 Chrome IndexedDB + 受控模拟 API 验证：目录与详情双向共享持久化冷却、跨账号隔离、目录写入不覆盖冷却、无 Retry-After 的递增退避、429 恢复、401/403 有限重试及保留本地数据、失败阈值暂停和恢复、运行日志。
+- `tests/s3-export-runner-smoke.cjs`：验证 3 条失败后的 ZIP、manifest 与游标落盘，显式恢复后剩余条目独立分卷完成。没有人为请求官方 ChatGPT 接口产生 429。
+
+针对性测试：`node tests/s1-local-data-smoke.cjs`、`node tests/s3-index-runner-smoke.cjs`、`node tests/s3-export-runner-smoke.cjs`、`node tests/s2-bulk-export-smoke.cjs`，以及受影响脚本的 `node --check`、`git diff --check`。均通过。
+
+**后续：** 批次 C 需补齐 Popup 任务阶段/倒计时、全文搜索首次引导、防抖/查询缓存和仅本地完整预览；真实账号与性能验收仍保留到 D。
+
 ## 2026-10-24：S1-1 本地存储基础设施
 
 状态：**本功能单元完成**；S1 尚未整体结束，S2–S6 未开始。

@@ -768,6 +768,99 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
       (await send({ action: 'indexPolicyGet', accountId: consentId })).result.autoEnabled,
       'fresh user-initiated full indexing restores auto-update default');
 
+    // Batch B: directory 429 and detail share the same account-scoped gate.
+    const sharedCooldown = await send({ action: 'directoryRateLimited', accountId: 'batch-b-a', retryAfterMs: 120 });
+    check(sharedCooldown.success && sharedCooldown.result.cooldownUntil > Date.now(),
+      'directory 429 writes persistent Retry-After deadline');
+    const sameAccountWait = await send({ action: 'detailAcquire', accountId: 'batch-b-a', owner: 'other-tab' });
+    check(!sameAccountWait.result.granted && sameAccountWait.result.reason === 'cooldown',
+      'detail in another tab shares directory cooldown');
+    const otherAccountSlot = await send({ action: 'detailAcquire', accountId: 'batch-b-b', owner: 'other-user' });
+    check(otherAccountSlot.result.granted, 'another account remains independent');
+    await send({ action: 'detailRelease', accountId: 'batch-b-b', owner: 'other-user',
+      token: otherAccountSlot.result.token, status: 200 });
+    await storage.upsertDirectory('batch-b-a', [{ id: 'during-cooldown' }]);
+    check((await send({ action: 'detailStatus', accountId: 'batch-b-a' })).result.cooldownUntil ===
+      sharedCooldown.result.cooldownUntil, 'directory update cannot erase cooldown');
+    const noRetryAfter = await send({ action: 'directoryRateLimited', accountId: 'batch-b-fallback' });
+    check(noRetryAfter.result.cooldownUntil > Date.now() + 59000,
+      'missing Retry-After gets durable exponential-backoff default');
+    const repeated429 = await send({ action: 'directoryRateLimited', accountId: 'batch-b-fallback' });
+    check(repeated429.result.cooldownUntil > noRetryAfter.result.cooldownUntil + 50000,
+      'repeated 429 increases persistent fallback backoff');
+    check((await send({ action: 'logList', accountId: 'batch-b-a' })).result.some(entry =>
+      entry.type === 'rate-limit' && entry.code === '429'), 'directory rate limit is observable');
+
+    // A real browser fetch path, with controlled mock HTTP status responses.
+    activeAccount = 'acct-a';
+    const originalFetch = window.fetch;
+    let simulatedCode = 0;
+    let simulatedHits = 0;
+    window.fetch = async (url, opts) => {
+      if (String(url).includes('/backend-api/conversations') && simulatedCode) {
+        simulatedHits++;
+        if (simulatedCode !== 429 || simulatedHits === 1) {
+          return { ok: false, status: simulatedCode, json: async () => ({}),
+            headers: { get: header => header === 'Retry-After' && simulatedCode === 429 ? '0.02' : null } };
+        }
+      }
+      return originalFetch(url, opts);
+    };
+    simulatedCode = 429;
+    const syncedAfter429 = await window.APIHandler.syncConversationList(true, { requireComplete: true });
+    check(simulatedHits === 2 && syncedAfter429.some(item => item.id === 'remote-acct-a'),
+      'directory request recovers at stored Retry-After deadline without restarting the full scan');
+    check((await send({ action: 'logList', accountId: 'acct-a' })).result.some(entry =>
+      entry.type === 'rate-limit' && entry.code === '429'), 'simulated directory 429 is recorded');
+    simulatedCode = 403; simulatedHits = 0;
+    try {
+      await window.APIHandler.syncConversationList(true, { requireComplete: true });
+      throw Error('403 unexpectedly succeeded');
+    } catch (error) { check(error.status === 403, '403 aborts sync instead of retrying forever'); }
+    check(simulatedHits === 1 && (await storage.getDirectory('acct-a')).length > 0,
+      '403 performs one directory attempt and preserves local data');
+    simulatedCode = 401; simulatedHits = 0;
+    try {
+      await window.APIHandler.syncConversationList(true, { requireComplete: true });
+      throw Error('401 unexpectedly succeeded');
+    } catch (error) { check(error.status === 401, 'persistent authentication failure stops sync'); }
+    check(simulatedHits <= 2, '401 at most triggers one session revalidation, not unbounded retries');
+    window.fetch = originalFetch;
+    // Re-establish identity for the following unknown-identity test.
+    await window.APIHandler.getAccountId(true);
+
+    const failureItems = Array.from({ length: 5 }, (_, i) => ({ id: 'failure-' + i }));
+    const failureTask = await send({ action: 'taskCreate', accountId: 'batch-b-fail',
+      type: 'index', items: failureItems });
+    const failureClaim = await send({ action: 'taskClaim', accountId: 'batch-b-fail',
+      id: failureTask.result.id, owner: 'batch-b-tab' });
+    check(failureClaim.result.acquired, 'failure test starts a leased task');
+    for (let i = 0; i < 3; i++) {
+      const outcome = await send({ action: 'taskCheckpoint', accountId: 'batch-b-fail',
+        id: failureTask.result.id, owner: 'batch-b-tab', token: failureClaim.result.token,
+        itemIndex: i, outcome: 'failed', error: 'mock-item-error' });
+      check(outcome.success && outcome.result.task.nextIndex === i + 1,
+        'each failed item is durably checkpointed');
+    }
+    const pausedTask = await send({ action: 'taskGet', accountId: 'batch-b-fail', id: failureTask.result.id });
+    check(pausedTask.result.status === 'paused' && pausedTask.result.consecutiveFailures === 3 &&
+      pausedTask.result.nextIndex === 3, 'three consecutive failures pause and retain cursor');
+    check((await send({ action: 'logList', accountId: 'batch-b-fail' })).result.some(entry =>
+      entry.code === 'consecutive-failures-paused'), 'automatic pause appears in structured logs');
+    check(!(await send({ action: 'taskCheckpoint', accountId: 'batch-b-fail',
+      id: failureTask.result.id, owner: 'batch-b-tab', token: failureClaim.result.token,
+      itemIndex: 3, outcome: 'success' })).success, 'paused task rejects stale lease');
+    await send({ action: 'taskControl', accountId: 'batch-b-fail', id: failureTask.result.id,
+      operation: 'resume' });
+    const resumedFailureClaim = await send({ action: 'taskClaim', accountId: 'batch-b-fail',
+      id: failureTask.result.id, owner: 'batch-b-next-tab' });
+    check(resumedFailureClaim.result.acquired, 'user can resume after troubleshooting');
+    const resumedCheckpoint = await send({ action: 'taskCheckpoint', accountId: 'batch-b-fail',
+      id: failureTask.result.id, owner: 'batch-b-next-tab', token: resumedFailureClaim.result.token,
+      itemIndex: 3, outcome: 'success' });
+    check(resumedCheckpoint.result.task.consecutiveFailures === 0 &&
+      resumedCheckpoint.result.task.nextIndex === 4, 'resuming resets failure streak, preserving cursor');
+
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }

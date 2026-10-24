@@ -526,6 +526,7 @@ globalThis.ChatGPTProLocalData = (() => {
   }
 
   const TASK_LEASE_MS = 30 * 1000;
+  const MAX_CONSECUTIVE_ITEM_FAILURES = 3;
   const TASK_TYPES = new Set(['index', 'export-md', 'export-json']);
 
   function cleanTaskItems(items) {
@@ -552,6 +553,7 @@ globalThis.ChatGPTProLocalData = (() => {
     const task = {
       id: crypto.randomUUID(), accountId, type, items: records,
       status: 'pending', nextIndex: 0, successCount: 0, failureCount: 0,
+      consecutiveFailures: 0,
       errors: [], createdAt: now, updatedAt: now, lease: null, generation: 0,
       options: { checkLatest: options.checkLatest === true }
     };
@@ -650,13 +652,17 @@ globalThis.ChatGPTProLocalData = (() => {
       ensureLease(task, owner, token, now);
       if (itemIndex !== task.nextIndex || itemIndex >= task.items.length) throw new Error('任务检查点顺序不正确');
       task.nextIndex++;
-      if (outcome === 'success') task.successCount++;
+      if (outcome === 'success') { task.successCount++; task.consecutiveFailures = 0; }
       else {
         task.failureCount++;
+        task.consecutiveFailures = (task.consecutiveFailures || 0) + 1;
         task.errors.push({ id: task.items[itemIndex].id, message: String(error).slice(0, 500) });
       }
       if (task.nextIndex === task.items.length) {
         task.status = 'completed';
+        task.lease = null;
+      } else if (task.consecutiveFailures >= MAX_CONSECUTIVE_ITEM_FAILURES) {
+        task.status = 'paused';
         task.lease = null;
       }
       return { changed: true };
@@ -668,7 +674,10 @@ globalThis.ChatGPTProLocalData = (() => {
     return mutateTask(accountId, id, task => {
       if (['completed', 'failed', 'canceled'].includes(task.status)) return { changed: false };
       if (action === 'pause' && ['running', 'pending'].includes(task.status)) task.status = 'paused';
-      else if (action === 'resume' && task.status === 'paused') task.status = 'pending';
+      else if (action === 'resume' && task.status === 'paused') {
+        task.status = 'pending';
+        task.consecutiveFailures = 0;
+      }
       else if (action === 'cancel') task.status = 'canceled';
       else return { changed: false };
       task.lease = null;
@@ -723,9 +732,10 @@ globalThis.ChatGPTProLocalData = (() => {
           ...(entry.status === 'failed' ? { error: String(entry.error || '').slice(0, 500) } : {})
         };
         task.exportEntries.push(safe);
-        if (safe.status === 'success') task.successCount++;
+        if (safe.status === 'success') { task.successCount++; task.consecutiveFailures = 0; }
         else {
           task.failureCount++;
+          task.consecutiveFailures = (task.consecutiveFailures || 0) + 1;
           task.errors.push({ id: safe.id, message: safe.error });
         }
       }
@@ -903,17 +913,28 @@ globalThis.ChatGPTProLocalData = (() => {
       }
       state.detailLease = null;
       if (status === 429) {
-        const failures = Math.min(8, Number(state.rateLimitStreak || 0) + 1);
-        state.rateLimitStreak = failures;
-        const provided = Number(retryAfterMs);
-        const delay = Number.isFinite(provided) && provided > 0
-          ? Math.min(provided, 24 * 60 * 60 * 1000)
-          : Math.min(5 * 60 * 1000, 60000 * 2 ** (failures - 1));
-        state.cooldownUntil = Math.max(state.cooldownUntil || 0, now + delay);
+        setSharedRateLimit(state, now, retryAfterMs);
       } else if (status === 200) {
-        state.rateLimitStreak = 0;
+        if ((state.cooldownUntil || 0) <= now) state.rateLimitStreak = 0;
       }
       return { released: true, cooldownUntil: state.cooldownUntil || 0, changed: true };
+    });
+  }
+
+  function setSharedRateLimit(state, now, retryAfterMs) {
+    const failures = Math.min(8, Number(state.rateLimitStreak || 0) + 1);
+    state.rateLimitStreak = failures;
+    const provided = Number(retryAfterMs);
+    const delay = Number.isFinite(provided) && provided > 0
+      ? Math.min(provided, 24 * 60 * 60 * 1000)
+      : Math.min(5 * 60 * 1000, 60000 * 2 ** (failures - 1));
+    state.cooldownUntil = Math.max(state.cooldownUntil || 0, now + delay);
+  }
+
+  async function noteDirectoryRateLimit(accountId, retryAfterMs) {
+    return changeRequestState(accountId, (state, now) => {
+      setSharedRateLimit(state, now, retryAfterMs);
+      return { cooldownUntil: state.cooldownUntil, changed: true };
     });
   }
 
@@ -975,6 +996,7 @@ globalThis.ChatGPTProLocalData = (() => {
     clearCompletedExportVolumes,
     readExportVolumeChunk, uploadExportChunk, finalizeExportChunks,
     acquireDetailSlot, heartbeatDetailSlot, releaseDetailSlot, getDetailSlotStatus,
+    noteDirectoryRateLimit,
     addLog, listLogs,
     DB_NAME, DB_VERSION, LEGACY_SEARCH, UNASSIGNED_ACCOUNT, STORES
   });

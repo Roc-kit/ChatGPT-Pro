@@ -6,6 +6,7 @@ const APIHandler = (function () {
   const CFG = {
     TIMEOUT_MS: 12000,
     MAX_RETRIES: 3,
+    MAX_PROJECT_FAILURES: 3,
     RETRY_BASE_MS: 1500,
     PAGE_SIZE: 100,
     MAX_PAGES: 30,
@@ -124,37 +125,63 @@ const APIHandler = (function () {
     return (await getSessionIdentity()).token;
   }
 
-  async function fetchAuthedJson(token, url) {
-    const ctrl = new AbortController();
-    const timeout = setTimeout(() => ctrl.abort(), CFG.TIMEOUT_MS);
-    try {
-      const resp = await fetch(url, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        },
-        signal: ctrl.signal
-      });
-      if (resp.status === 401) {
-        if (_accountId) window.dispatchEvent(new CustomEvent('chatgpt-pro-account-changed'));
-        _token = null;
-        _accountId = null;
-        _tokenFetchedAt = 0;
-        const error = new Error('401_UNAUTHORIZED');
-        error.status = 401;
-        throw error;
+  // Directory and project pages are not serialized with detail requests, but
+  // every batch request honors the same durable per-account 429 deadline.
+  async function waitForSharedCooldown(accountId) {
+    for (;;) {
+      if (await getAccountId() !== accountId) throw new Error('登录账号已切换，停止批量请求');
+      const state = await localDataMessage({ action: 'detailStatus', accountId });
+      const remaining = Number(state.result?.cooldownUntil || 0) - Date.now();
+      if (remaining <= 0) return;
+      await sleep(Math.min(1500, remaining));
+    }
+  }
+
+  async function fetchAuthedJson(token, url, options = {}) {
+    const accountId = await getAccountId();
+    // Detail 429 is handled by its existing fencing lease on release. Directory
+    // 429 is handled here, without creating a second lease or scheduler.
+    const maxRateLimitRetries = options.detail ? 0 : CFG.MAX_RETRIES;
+    for (let attempt = 0; attempt <= maxRateLimitRetries; attempt++) {
+      await waitForSharedCooldown(accountId);
+      const identity = await getSessionIdentity();
+      if (identity.accountId !== accountId) throw new Error('登录账号已切换，停止批量请求');
+      const ctrl = new AbortController();
+      const timeout = setTimeout(() => ctrl.abort(), CFG.TIMEOUT_MS);
+      try {
+        const resp = await fetch(url, {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${identity.token || token}`
+          },
+          signal: ctrl.signal
+        });
+        if (resp.status === 401) {
+          if (_accountId) window.dispatchEvent(new CustomEvent('chatgpt-pro-account-changed'));
+          _token = null;
+          _accountId = null;
+          _tokenFetchedAt = 0;
+          const error = new Error('401_UNAUTHORIZED');
+          error.status = 401;
+          throw error;
+        }
+        if (!resp.ok) {
+          const error = new Error(`HTTP ${resp.status}: ${url}`);
+          error.status = resp.status;
+          error.retryAfterMs = retryAfterMs(resp.headers.get('Retry-After'));
+          if (resp.status === 429 && !options.detail) {
+            await localDataMessage({ action: 'directoryRateLimited', accountId,
+              retryAfterMs: error.retryAfterMs });
+            if (attempt < maxRateLimitRetries) continue;
+          }
+          throw error;
+        }
+        return resp.json();
+      } finally {
+        clearTimeout(timeout);
       }
-      if (!resp.ok) {
-        const error = new Error(`HTTP ${resp.status}: ${url}`);
-        error.status = resp.status;
-        error.retryAfterMs = retryAfterMs(resp.headers.get('Retry-After'));
-        throw error;
-      }
-      return resp.json();
-    } finally {
-      clearTimeout(timeout);
     }
   }
 
@@ -444,6 +471,7 @@ const APIHandler = (function () {
       const resultMap = new Map(existing.map(item => [item.id, item]));
 
       let token = await getToken();
+      let projectFailures = 0;
       for (let attempt = 0; attempt <= CFG.MAX_RETRIES; attempt++) {
         try {
           if (strictFull && attempt > 0) resultMap.clear();
@@ -464,6 +492,7 @@ const APIHandler = (function () {
             try {
               const metadata = await fetchCustomGptMetadata(token, gizmoId);
               if (!metadata) continue;
+              projectFailures = 0;
               for (const [id, rec] of resultMap) {
                 if (rec.projectId !== gizmoId) continue;
                 resultMap.set(id, {
@@ -473,6 +502,11 @@ const APIHandler = (function () {
                 });
               }
             } catch (e) {
+              if (e.status === 401 || e.status === 403 || e.status === 429) throw e;
+              projectFailures++;
+              if (projectFailures >= CFG.MAX_PROJECT_FAILURES) {
+                throw new Error('GPT 项目元数据连续失败已停止，请稍后手动重试');
+              }
               console.warn(`[ChatGPT Pro] GPT ${gizmoId} metadata skipped:`, e.message);
             }
             await sleep(CFG.INTER_PAGE_MS);
@@ -482,6 +516,7 @@ const APIHandler = (function () {
           for (const project of projects) {
             try {
               const changed = await fetchProjectIncremental(token, project, cachedMap, forceFull, strictFull);
+              projectFailures = 0;
               for (const rec of changed) resultMap.set(rec.id, rec);
 
               // Project names can change even if conversation update_time does not.
@@ -492,6 +527,11 @@ const APIHandler = (function () {
               }
             } catch (e) {
               if (strictFull) throw e;
+              if (e.status === 401 || e.status === 403 || e.status === 429) throw e;
+              projectFailures++;
+              if (projectFailures >= CFG.MAX_PROJECT_FAILURES) {
+                throw new Error('项目目录连续失败已停止，请稍后手动重试');
+              }
               console.warn(`[ChatGPT Pro] project ${project.id} sync skipped:`, e.message);
             }
             await sleep(CFG.INTER_PAGE_MS);
@@ -500,15 +540,21 @@ const APIHandler = (function () {
           return writeDirectory([...resultMap.values()], accountId, strictFull);
         } catch (e) {
           if (e.message?.includes('登录账号已切换')) throw e;
+          if (e.status === 403 || e.status === 429) throw e;
           if (e.message === '401_UNAUTHORIZED' && attempt === 0) {
             token = await getToken();
             continue;
           }
+          if (e.status === 401 || /连续失败已停止/.test(e.message)) throw e;
           if (attempt >= CFG.MAX_RETRIES) throw e;
           await sleep(CFG.RETRY_BASE_MS * Math.pow(2, attempt));
         }
       }
       return writeDirectory([...resultMap.values()], accountId);
+    } catch (error) {
+      await localDataMessage({ action: 'directorySyncFailed', accountId,
+        code: error.status ? `http-${error.status}` : 'directory-failure' }).catch(() => {});
+      throw error;
     } finally {
       if (lockOwner) await releaseFetchLock(lockOwner, accountId);
     }
@@ -595,7 +641,7 @@ const APIHandler = (function () {
       if (cached.hit) return { data: cached.raw, source: 'cache' };
 
       const accessToken = await getToken();
-      const raw = await fetchAuthedJson(accessToken, `${baseUrl()}/conversation/${encodeURIComponent(conversationId)}`);
+      const raw = await fetchAuthedJson(accessToken, `${baseUrl()}/conversation/${encodeURIComponent(conversationId)}`, { detail: true });
       if (await getAccountId() !== accountId) throw new Error('登录账号已切换，已取消详情缓存写入');
       status = 200;
       try {

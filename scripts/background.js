@@ -299,6 +299,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       message.accountId, message.owner, message.token, message.status, message.retryAfterMs
     ),
     detailStatus: () => ChatGPTProLocalData.getDetailSlotStatus(message.accountId),
+    directoryRateLimited: () => ChatGPTProLocalData.noteDirectoryRateLimit(message.accountId, message.retryAfterMs),
+    directorySyncFailed: () => ChatGPTProLocalData.addLog(message.accountId, {
+      type: 'failure', code: String(message.code || 'directory-error').slice(0, 40),
+      message: '目录同步失败，请检查登录状态或冷却后重试'
+    }),
     logList: () => ChatGPTProLocalData.listLogs(message.accountId, message.limit)
   });
   if (Object.hasOwn(taskHandlers, message.action)) {
@@ -306,10 +311,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then(async result => {
         // Keep logs structured and independent of conversation content.
         let event = null;
-        if (message.action === 'detailRelease' && message.status === 429) {
-          event = { type: 'rate-limit', code: '429', message: '详情请求进入共享冷却', retryAt: result.cooldownUntil };
+        if ((message.action === 'detailRelease' && message.status === 429) || message.action === 'directoryRateLimited') {
+          event = { type: 'rate-limit', code: '429', message: '批量请求进入共享冷却', retryAt: result.cooldownUntil };
         } else if (message.action === 'taskCheckpoint' && message.outcome === 'failed') {
-          event = { type: 'failure', code: 'item-failed', taskId: message.id, message: '批量任务单条处理失败' };
+          event = result.task?.status === 'paused'
+            ? { type: 'failure', code: 'consecutive-failures-paused', taskId: message.id,
+              message: '连续失败达到阈值，索引任务已暂停' }
+            : { type: 'failure', code: 'item-failed', taskId: message.id, message: '批量任务单条处理失败' };
         } else if (message.action === 'taskControl' && ['pause', 'resume', 'cancel'].includes(message.operation)) {
           event = { type: 'task', code: message.operation, taskId: message.id, message: '任务状态已修改' };
         }

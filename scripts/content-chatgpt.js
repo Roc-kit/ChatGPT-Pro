@@ -1367,6 +1367,7 @@
     let volumeStartIndex = session?.task.nextIndex || 0;
     let startedVolumes = session?.task.volumeCount || 0;
     let successCount = session?.task.successCount || 0;
+    let consecutiveFailures = session?.task.consecutiveFailures || 0;
     const now = new Date(session?.task.createdAt || Date.now());
     const startedAt = now.toISOString();
     const pad = n => String(n).padStart(2, '0');
@@ -1460,9 +1461,11 @@
         failures.push(entry);
         volumeEntries.push(entry);
         manifestEntries.push(entry);
+        consecutiveFailures++;
         if (!fetched) usedNetwork = true;
       }
       if (prepared) {
+        consecutiveFailures = 0;
         if (volumeEntries.length && volumeBytes + prepared.bytes.byteLength > EXPORT_VOLUME_MAX_BYTES) {
           // Save errors must abort this task, never turn a successfully
           // converted conversation into an unrelated item failure.
@@ -1477,6 +1480,16 @@
         successCount++;
       }
       onProgress?.({ ...progress, phase: 'completed', done: index + 1, failures: failures.length });
+
+      if (session && consecutiveFailures >= 3 && index < records.length - 1) {
+        // Persist the partial volume/checkpoint before pausing. Otherwise a
+        // browser restart would lose its progress and saved failed entries.
+        await flushVolume(false, index + 1);
+        await runtimeMessage({ action: 'taskControl', accountId: session.accountId,
+          id: session.taskId, operation: 'pause' });
+        onProgress?.({ ...progress, phase: 'paused', reason: 'consecutive-failures' });
+        throw new Error('连续 3 条处理失败，导出任务已暂停；可检查日志后手动继续');
+      }
 
       const isLast = index === records.length - 1;
       const isGroupEnd = (index + 1) % EXPORT_GROUP_SIZE === 0;
@@ -1661,6 +1674,10 @@
         });
         latest = checkpoint.task;
         onProgress?.({ ...progress, phase: 'completed', done: index + 1, failures: latest.failureCount });
+        if (latest.status === 'paused' && latest.consecutiveFailures >= 3) {
+          onProgress?.({ ...progress, phase: 'paused', reason: 'consecutive-failures' });
+          return { paused: true, indexedCount: latest.successCount, failures: latest.errors };
+        }
         const isLast = index === total - 1;
         const groupEnd = (index + 1) % EXPORT_GROUP_SIZE === 0;
         if (!isLast && usedNetwork) {

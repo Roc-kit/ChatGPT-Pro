@@ -29,6 +29,7 @@ const fetched = [];
 const downloaded = [];
 let crashBeforeFirstDownload = true;
 let rejectWithAuth = false;
+let forceItemError = false;
 let largeBody = false;
 let chunkCalls = 0;
 
@@ -129,6 +130,7 @@ function buildContext() {
       setInterval: () => 1, clearInterval() {}
     },
     async fetchConversationForExport(record) {
+      if (forceItemError) throw new Error('temporary mocked item failure');
       if (rejectWithAuth) {
         const error = new Error('Unauthorized');
         error.status = 401;
@@ -141,7 +143,10 @@ function buildContext() {
     buildConversationJson: (_data, record) => JSON.stringify({ id: record.id,
       text: largeBody ? 'X'.repeat(650000) : 'cached full JSON' }),
     buildConversationMarkdown: (_data, record) => `# ${record.id}\n`,
-    async waitForExport() { throw Error('cached ZIP export should never pace network'); },
+    async waitForExport() {
+      if (forceItemError) return;
+      throw Error('cached ZIP export should never pace network');
+    },
     downloadBlobFile(filename, blob) {
       if (crashBeforeFirstDownload) {
         crashBeforeFirstDownload = false;
@@ -213,6 +218,40 @@ async function main() {
   assert(chunkCalls - beforeChunkCount >= 3, 'large ZIP crosses the JSON-safe upload chunk boundary');
   assert.equal(staging.size, 0, 'committed upload staging chunks are fully consumed');
   assert(getEntries(saved.get(1).bytes).get('duplicate.json').length > 650000);
+
+  // B: stop after three consecutive item failures, but persist the partial
+  // ZIP manifest and cursor so an explicitly resumed job starts at item 4.
+  job.items = ['fail-1', 'fail-2', 'fail-3', 'recover-4'].map(id => ({ id, title: id }));
+  job.nextIndex = 0;
+  job.volumeCount = 0;
+  job.exportEntries = [];
+  job.status = 'pending';
+  job.lease = null;
+  job.successCount = 0;
+  job.failureCount = 0;
+  job.consecutiveFailures = 0;
+  forceItemError = true;
+  largeBody = false;
+  saved.clear();
+  const failedTab = buildContext();
+  await assert.rejects(() => failedTab.exportTest.runExportTask('account-A', taskId, null, true),
+    /连续 3 条处理失败/);
+  assert.equal(job.status, 'paused');
+  assert.equal(job.nextIndex, 3, 'failed items persisted before pausing');
+  assert.equal(job.volumeCount, 1);
+  const failedManifest = JSON.parse(getEntries(saved.get(1).bytes).get('manifest.json').toString());
+  assert.equal(failedManifest.conversations.length, 3, 'failure volume retained for export on demand');
+  assert(failedManifest.conversations.every(entry => entry.status === 'failed'));
+  forceItemError = false;
+  job.status = 'pending'; // Explicit user resume.
+  job.lease = null;
+  job.consecutiveFailures = 0;
+  const resumedTab = buildContext();
+  const recovered = await resumedTab.exportTest.runExportTask('account-A', taskId, null, true);
+  assert.equal(recovered.successCount, 1);
+  assert.equal(job.status, 'completed');
+  assert.equal(job.nextIndex, 4);
+  assert.equal(saved.size, 2, 'partial failed ZIP and resumed successful ZIP remain separate');
   console.log('S3_EXPORT_PASS: atomic durable ZIP, page restart, 55 files, JSON-safe chunks, manual redownload');
 }
 
