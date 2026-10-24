@@ -255,8 +255,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     taskVolumeSave: () => ChatGPTProLocalData.saveExportVolume(
       message.accountId, message.id, message.owner, message.token, message.payload
     ),
-    taskVolumeGet: () => ChatGPTProLocalData.getExportVolume(
-      message.accountId, message.id, message.volume
+    taskVolumeGet: async () => {
+      const saved = await ChatGPTProLocalData.getExportVolume(message.accountId, message.id, message.volume);
+      return saved && { volume: saved.volume, filename: saved.filename,
+        size: saved.blob.size, createdAt: saved.createdAt };
+    },
+    taskVolumeRead: () => ChatGPTProLocalData.readExportVolumeChunk(
+      message.accountId, message.id, message.volume, message.offset, message.size
+    ),
+    taskVolumeChunk: () => ChatGPTProLocalData.uploadExportChunk(
+      message.accountId, message.id, message.owner, message.token,
+      message.volume, message.index, message.base64
+    ),
+    taskVolumeFinish: () => ChatGPTProLocalData.finalizeExportChunks(
+      message.accountId, message.id, message.owner, message.token, message.payload
     )
   };
   Object.assign(taskHandlers, {

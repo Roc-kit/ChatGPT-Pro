@@ -3,7 +3,7 @@ globalThis.ChatGPTProLocalData = (() => {
   'use strict';
 
   const DB_NAME = 'ChatGPTProSearch';
-  const DB_VERSION = 3;
+  const DB_VERSION = 4;
   // Version 1 stored full-text results here without an account identifier.
   // Keep it intact; never infer the owner of these records from the current login.
   const LEGACY_SEARCH = 'conversations';
@@ -15,6 +15,7 @@ globalThis.ChatGPTProLocalData = (() => {
     search: 'searchIndex',
     tasks: 'tasks',
     taskVolumes: 'taskVolumes',
+    taskVolumeChunks: 'taskVolumeChunks',
     logs: 'logs'
   });
 
@@ -54,6 +55,9 @@ globalThis.ChatGPTProLocalData = (() => {
           ? tx.objectStore(STORES.taskVolumes)
           : db.createObjectStore(STORES.taskVolumes, { keyPath: ['taskId', 'volume'] });
         ensureIndex(volumes, 'byAccount', 'accountId');
+        if (!db.objectStoreNames.contains(STORES.taskVolumeChunks)) {
+          db.createObjectStore(STORES.taskVolumeChunks, { keyPath: ['taskId', 'volume', 'index'] });
+        }
         const logs = db.objectStoreNames.contains(STORES.logs)
           ? tx.objectStore(STORES.logs)
           : db.createObjectStore(STORES.logs, { keyPath: 'id', autoIncrement: true });
@@ -531,6 +535,83 @@ globalThis.ChatGPTProLocalData = (() => {
     return record?.accountId === accountId ? record : null;
   }
 
+  async function readExportVolumeChunk(accountId, taskId, volume, offset, size = 256 * 1024) {
+    if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(size) || size < 1 || size > 512 * 1024) {
+      throw new Error('ZIP 下载区间无效');
+    }
+    const record = await getExportVolume(accountId, taskId, volume);
+    if (!record) throw new Error('找不到已保存的分卷');
+    const bytes = new Uint8Array(await record.blob.slice(offset, offset + size).arrayBuffer());
+    let binary = '';
+    for (let at = 0; at < bytes.length; at += 32768) {
+      binary += String.fromCharCode(...bytes.subarray(at, at + 32768));
+    }
+    return { base64: btoa(binary), size: record.blob.size, offset, read: bytes.length,
+      filename: record.filename };
+  }
+
+  async function uploadExportChunk(accountId, id, owner, token, volume, index, base64) {
+    validateAccount(accountId);
+    if (!Number.isInteger(volume) || volume < 1 || !Number.isInteger(index) || index < 0) {
+      throw new Error('分卷上传索引无效');
+    }
+    if (typeof base64 !== 'string' || base64.length > 1024 * 1024 ||
+        !/^[A-Za-z0-9+/]*={0,2}$/.test(base64) || !base64.length) {
+      throw new Error('ZIP 分块编码无效');
+    }
+    return transaction([STORES.tasks, STORES.taskVolumeChunks], 'readwrite', async stores => {
+      const task = await requested(stores[STORES.tasks].get(id));
+      if (!task || task.accountId !== accountId || !task.type.startsWith('export-')) throw new Error('无权上传分卷');
+      ensureLease(task, owner, token, Date.now());
+      if (volume !== (task.volumeCount || 0) + 1) throw new Error('分卷上传序号错误');
+      await requested(stores[STORES.taskVolumeChunks].put({ taskId: id, volume, index, token, base64 }));
+      return { uploaded: true };
+    });
+  }
+
+  async function finalizeExportChunks(accountId, id, owner, token, payload) {
+    validateAccount(accountId);
+    if (!Number.isInteger(payload?.chunkCount) || payload.chunkCount < 1 || payload.chunkCount > 8192) {
+      throw new Error('ZIP 分块数无效');
+    }
+    // Read all staged chunks in order. Each chunk has been serialized as a
+    // bounded JSON string; finalizing does not depend on the MV3 worker
+    // remaining alive between upload messages.
+    const bytes = await transaction([STORES.tasks, STORES.taskVolumeChunks], 'readonly', async stores => {
+      const task = await requested(stores[STORES.tasks].get(id));
+      if (!task || task.accountId !== accountId) throw new Error('无法读取导出任务');
+      ensureLease(task, owner, token, Date.now());
+      const parts = [];
+      for (let index = 0; index < payload.chunkCount; index++) {
+        const chunk = await requested(stores[STORES.taskVolumeChunks].get([id, payload.volume, index]));
+        if (!chunk || chunk.token !== token) throw new Error('ZIP 分块未完整上传');
+        const decoded = atob(chunk.base64);
+        const bytes = new Uint8Array(decoded.length);
+        for (let at = 0; at < decoded.length; at++) bytes[at] = decoded.charCodeAt(at);
+        parts.push(bytes);
+      }
+      return parts;
+    });
+    const result = await saveExportVolume(accountId, id, owner, token, {
+      ...payload, blob: new Blob(bytes, { type: 'application/zip' })
+    });
+    // Staging is not authoritative after the ZIP/cursor transaction committed.
+    // A cleanup failure can leave harmless partial chunks but cannot roll back
+    // a successfully persisted ZIP.
+    await transaction([STORES.taskVolumeChunks], 'readwrite', stores => new Promise((resolve, reject) => {
+      const range = IDBKeyRange.bound([id, payload.volume, 0], [id, payload.volume, Number.MAX_SAFE_INTEGER]);
+      const request = stores[STORES.taskVolumeChunks].openCursor(range);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return resolve();
+        cursor.delete();
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error || new Error('ZIP 上传暂存清理失败'));
+    })).catch(() => {});
+    return result;
+  }
+
   const DETAIL_LEASE_MS = 45000;
 
   async function changeRequestState(accountId, handler) {
@@ -641,6 +722,7 @@ globalThis.ChatGPTProLocalData = (() => {
     putConversation, getConversation, getStats, getLegacyMetadata,
     createTask, getTask, listTasks, claimTask, heartbeatTask, checkpointTask, controlTask,
     saveExportVolume, getExportVolume,
+    readExportVolumeChunk, uploadExportChunk, finalizeExportChunks,
     acquireDetailSlot, heartbeatDetailSlot, releaseDetailSlot, getDetailSlotStatus,
     addLog, listLogs,
     DB_NAME, DB_VERSION, LEGACY_SEARCH, UNASSIGNED_ACCOUNT, STORES

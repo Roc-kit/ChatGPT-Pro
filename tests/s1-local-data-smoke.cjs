@@ -43,9 +43,10 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     const oldStats = await storage.getLegacyMetadata();
     check(oldStats.legacyCount === 1 && oldStats.unassignedCount === 1, 'lossless v1 migration');
     const upgradeDb = await storage.openDb();
-    check(upgradeDb.version === 3 && upgradeDb.objectStoreNames.contains('tasks')
-      && upgradeDb.objectStoreNames.contains('logs') && upgradeDb.objectStoreNames.contains('taskVolumes'),
-      'v1 -> v3 upgrade retains legacy and creates persistent ZIP volume store');
+    check(upgradeDb.version === 4 && upgradeDb.objectStoreNames.contains('tasks')
+      && upgradeDb.objectStoreNames.contains('logs') && upgradeDb.objectStoreNames.contains('taskVolumes')
+      && upgradeDb.objectStoreNames.contains('taskVolumeChunks'),
+      'v1 -> v4 upgrade retains legacy and creates ZIP and staging stores');
     const legacyRecord = await req(upgradeDb.transaction('conversations').objectStore('conversations').get('old-chat'));
     check(legacyRecord.messages[0].text === 'legacy text remains searchable', 'v1 preserved as-is');
     upgradeDb.close();
@@ -492,7 +493,7 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check((await send({ action: 'taskVolumeGet', accountId: 'acct-b', id: exportId, volume: 1 })).result === null,
       'saved ZIP hidden from other accounts');
     const restoredOne = await send({ action: 'taskVolumeGet', accountId: 'acct-a', id: exportId, volume: 1 });
-    check(restoredOne.success && restoredOne.result.blob.size === partOne.size,
+    check(restoredOne.success && restoredOne.result.size === partOne.size,
       'first complete ZIP is retrievable after it leaves the page memory');
     await send({ action: 'taskControl', accountId: 'acct-a', id: exportId, operation: 'pause' });
     check(!(await send({ action: 'taskVolumeSave', accountId: 'acct-a', id: exportId,
@@ -513,6 +514,35 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check(completedExport.volumeCount === 2 && completedExport.successCount === 2 &&
       completedExport.failureCount === 1 && completedExport.exportEntries.length === 3,
       'recovery cursor, manifest and counts survived resume');
+    const chunkJob = await send({ action: 'taskCreate', accountId: 'acct-a', type: 'export-json',
+      items: [{ id: 'upload-one' }, { id: 'upload-two' }] });
+    const chunkClaim = await send({ action: 'taskClaim', accountId: 'acct-a',
+      id: chunkJob.result.id, owner: 'upload-tab' });
+    const chunkBase = { accountId: 'acct-a', id: chunkJob.result.id,
+      owner: 'upload-tab', token: chunkClaim.result.token, volume: 1 };
+    const chunkText = 'PK staged ZIP contents survive JSON-only messaging';
+    const chunks = [chunkText.slice(0, 19), chunkText.slice(19)];
+    for (let index = 0; index < chunks.length; index++) {
+      check((await send({ action: 'taskVolumeChunk', ...chunkBase, index,
+        base64: btoa(chunks[index]) })).success, 'upload ZIP chunk with JSON-safe encoding');
+    }
+    const chunkPayload = { volume: 1, filename: 'staged_part001.zip', toIndex: 2,
+      chunkCount: chunks.length, entries: [
+        { id: 'upload-one', status: 'success', filename: 'one.json', bytes: 42 },
+        { id: 'upload-two', status: 'success', filename: 'two.json', bytes: 42 }
+      ] };
+    check((await send({ action: 'taskVolumeFinish', ...chunkBase, payload: chunkPayload })).success,
+      'finalize chunks into atomic persisted ZIP with task cursor');
+    const stagedMeta = await send({ action: 'taskVolumeGet', accountId: 'acct-a',
+      id: chunkJob.result.id, volume: 1 });
+    check(stagedMeta.result.size === chunkText.length && !('blob' in stagedMeta.result),
+      'ZIP metadata is JSON-safe and hides raw Blob');
+    const stagedBytes = await send({ action: 'taskVolumeRead', accountId: 'acct-a',
+      id: chunkJob.result.id, volume: 1, offset: 0, size: 128 });
+    check(atob(stagedBytes.result.base64) === chunkText, 'download chunk restores original bytes');
+    check(!(await send({ action: 'taskVolumeRead', accountId: 'acct-b',
+      id: chunkJob.result.id, volume: 1, offset: 0, size: 128 })).success,
+      'download stream is account isolated');
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }
