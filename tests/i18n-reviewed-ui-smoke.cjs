@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 283, 'reviewed interface, directory synchronization, initial indexing and account safety include 283 strings');
+assert.equal(keys.length, 315, 'reviewed interface, directory synchronization, ZIP export tasks and account safety include 315 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -85,6 +85,11 @@ const samples = [
   ['id', 'ui.indexPausedAfterRepeatedFailures',
     'Batas kegagalan berturut-turut tercapai; tugas pengindeksan dijeda'],
   ['zh-TW', 'ui.completeInitialIndexingFirst', '請先完成首次全文索引'],
+  ['es', 'ui.bulkExportFailed', 'Error en la exportación por lotes'],
+  ['fr', 'ui.cancelOrFinishTheTaskBeforeClearingSaved',
+    'Annulez ou terminez la tâche avant de supprimer les parties ZIP enregistrées'],
+  ['ja', 'ui.failedItemsVariable', '失敗した項目：\n{items}'],
+  ['pt-BR', 'ui.noSavedZIPPartsForThisTask', 'Não há partes ZIP salvas para esta tarefa'],
   ['es', 'ui.completeJSONNotStoredLocallyOnlyASearch',
     'El JSON original completo no está guardado localmente; solo hay fragmentos de búsqueda y no se puede mostrar la vista previa completa.'],
   ['fr', 'ui.unableToReadCompleteLocalContent', 'Impossible de lire le contenu local complet'],
@@ -149,7 +154,9 @@ const zipStatuses = [
     '已持久化 4 卷 · 成功 2 个、失败 1 个（浏览器下载需单独确认）',
     { 1: '4', 2: '2', 3: '1' }],
   ['status.downloadingSavedZIPPart',
-    '已发起下载 2 / 4 卷（最近一次导出任务）', { 1: '2', 2: '4' }]
+    '已发起下载 2 / 4 卷（最近一次导出任务）', { 1: '2', 2: '4' }],
+  ['status.zipParts', '导出任务 2 · ZIP 4 卷', { 1: '导出任务 2', 2: '4' }],
+  ['status.exporting', '正在导出 report.csv', { 1: 'report.csv' }]
 ];
 for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(locale))) {
   i18n.setLanguage(locale);
@@ -245,4 +252,4 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
       `${locale}/${key}: image download status does not use reviewed translation`);
   }
 }
-console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including directory synchronization and initial indexing prompts`);
+console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including ZIP export tasks, saved-part recovery and live export statuses`);
