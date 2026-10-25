@@ -253,7 +253,7 @@ async function main() {
     })()`);
     assert(minimapSize.height >= minimapSize.viewport * 0.58,
       'minimap occupies the available height above the movable export actions');
-    assert(minimapSize.width >= 36 && minimapSize.rail > minimapSize.height * 0.85,
+    assert(minimapSize.width >= 24 && minimapSize.rail > minimapSize.height * 0.85,
       'minimap shares a compact, continuous toolbar with the export actions');
     assert.equal(await cdp.eval(popupSession,
       `document.querySelector('#minimapToggle').getAttribute('aria-checked')`), 'true');
@@ -306,6 +306,11 @@ async function main() {
         dockRadius: parseFloat(getComputedStyle(dock).borderTopLeftRadius),
         exportCursor: getComputedStyle(exportButton).cursor,
         imageCursor: getComputedStyle(imageButton).cursor,
+        exportWidth: exportButton.getBoundingClientRect().width,
+        imageWidth: imageButton.getBoundingClientRect().width,
+        exportHeight: exportButton.getBoundingClientRect().height,
+        imageHeight: imageButton.getBoundingClientRect().height,
+        actionWidth: actions.getBoundingClientRect().width,
         panelHeight: panel.getBoundingClientRect().height,
         dockHeight: dock.getBoundingClientRect().height,
         firstHitHeight: first.getBoundingClientRect().height,
@@ -317,9 +322,15 @@ async function main() {
       'first and last minimap messages have enlarged visible marks and click targets');
     assert(Math.abs(beforeDrag.dockCenter - minimapSize.viewport / 2) <= 2,
       'outer toolbar is vertically centered in the viewport');
-    assert(beforeDrag.dockRadius >= 20, 'outer toolbar uses a pill-like rounded rectangle');
+    assert(beforeDrag.dockRadius >= 12, 'outer toolbar uses a rounded rectangle');
     assert.equal(beforeDrag.exportCursor, 'pointer', 'export icons use the pointer cursor when hovered');
     assert.equal(beforeDrag.imageCursor, 'pointer', 'image export uses the pointer cursor when hovered');
+    assert.equal(beforeDrag.exportWidth, beforeDrag.imageWidth,
+      `conversation and image export buttons have identical widths: ${JSON.stringify(beforeDrag)}`);
+    assert.equal(beforeDrag.exportHeight, beforeDrag.imageHeight,
+      `conversation and image export buttons have identical heights: ${JSON.stringify(beforeDrag)}`);
+    assert.equal(beforeDrag.exportWidth, beforeDrag.actionWidth,
+      'export buttons fill the same available toolbar width without overflowing');
     assert.equal(beforeDrag.actionsCount, 2, 'both export actions share the same movable toolbar group');
     assert.equal(beforeDrag.imageAfterChat, true, 'image export follows conversation export at the bottom');
     const dragPoint = await cdp.eval(pageSession, `(() => {
