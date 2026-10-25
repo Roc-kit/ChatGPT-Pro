@@ -493,4 +493,24 @@ for (const locale of localeNames) {
   assert.equal(nestedUnauthorized, expectedNestedUnauthorized,
     `${locale}: nested authorization errors must be translated without dropping the code`);
 }
+const tabNotReady = 'Could not establish connection. Receiving end does not exist.';
+const channelClosed = 'The message port closed before a response was received.';
+const asyncChannelClosed = 'A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received';
+for (const locale of localeNames) {
+  i18n.setLanguage(locale);
+  const notReadyTranslation = packs[locale]['ui.chatgptTabNotReadyReloadAndTryAgain'];
+  const interruptedTranslation = packs[locale]['ui.chatgptTabConnectionInterruptedReloadAndTryAgain'];
+  assert.equal(i18n.translateText(tabNotReady), notReadyTranslation,
+    `${locale}: Chrome missing-receiver errors should become actionable UI copy`);
+  assert.equal(i18n.translateText(channelClosed), interruptedTranslation,
+    `${locale}: closed message ports should be translated`);
+  assert.equal(i18n.translateText(asyncChannelClosed), interruptedTranslation,
+    `${locale}: asynchronous message-channel errors should be translated`);
+  const wrapped = i18n.translateText(`任务不可用：${tabNotReady}`);
+  const expectedWrapped = locale === 'zh-CN'
+    ? `任务不可用：${notReadyTranslation}`
+    : packs[locale]['status.taskUnavailable'].replace('{1}', notReadyTranslation);
+  assert.equal(wrapped, expectedWrapped,
+    `${locale}: wrapped Popup connection errors should also be translated`);
+}
 console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed UI keys × 10 locales; runtime references covered`);

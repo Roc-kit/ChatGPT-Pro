@@ -210,6 +210,8 @@ window.ChatGPTProLocalePacks["ar"] = {
   "ui.httpRequestFailed": "فشل طلب HTTP ({status}): {url}",
   "ui.sessionRequestFailed": "فشل طلب الجلسة: HTTP {status}",
   "ui.requestUnauthorized": "الطلب غير مُصرّح به",
+  "ui.chatgptTabNotReadyReloadAndTryAgain": "علامة تبويب ChatGPT غير جاهزة بعد. أعد تحميلها ثم حاول مرة أخرى.",
+  "ui.chatgptTabConnectionInterruptedReloadAndTryAgain": "انقطع الاتصال بعلامة تبويب ChatGPT. أعد تحميلها ثم حاول مرة أخرى.",
   "ui.waitingForAccountRateLimitCooldown": ":: الانتظار لتبريد الحد الأقصى لمعدلات الحسابات",
   "ui.resumingAfterWait": "مستأنفة بعد الانتظار",
   "ui.fullTextSearchIndex": "مؤشر البحث الكامل",

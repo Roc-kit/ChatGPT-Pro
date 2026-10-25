@@ -210,6 +210,8 @@ window.ChatGPTProLocalePacks["zh-TW"] = {
   "ui.httpRequestFailed": "HTTP 請求失敗（{status}）：{url}",
   "ui.sessionRequestFailed": "工作階段請求失敗：HTTP {status}",
   "ui.requestUnauthorized": "請求未獲授權",
+  "ui.chatgptTabNotReadyReloadAndTryAgain": "ChatGPT 分頁尚未就緒，請重新整理分頁後再試",
+  "ui.chatgptTabConnectionInterruptedReloadAndTryAgain": "與 ChatGPT 分頁的連線已中斷，請重新整理分頁後再試",
   "ui.waitingForAccountRateLimitCooldown": "等待帳號利率限制冷卻;",
   "ui.resumingAfterWait": "· 在等后休止",
   "ui.fullTextSearchIndex": "全文搜索索引",

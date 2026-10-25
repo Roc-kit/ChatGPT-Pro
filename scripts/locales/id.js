@@ -210,6 +210,8 @@ window.ChatGPTProLocalePacks["id"] = {
   "ui.httpRequestFailed": "Permintaan HTTP gagal ({status}): {url}",
   "ui.sessionRequestFailed": "Permintaan sesi gagal: HTTP {status}",
   "ui.requestUnauthorized": "Permintaan tidak diizinkan",
+  "ui.chatgptTabNotReadyReloadAndTryAgain": "Tab ChatGPT belum siap. Muat ulang tab lalu coba lagi.",
+  "ui.chatgptTabConnectionInterruptedReloadAndTryAgain": "Koneksi ke tab ChatGPT terputus. Muat ulang tab lalu coba lagi.",
   "ui.waitingForAccountRateLimitCooldown": "Menunggu batas batas rekening pendingin",
   "ui.resumingAfterWait": "Melanjutkan setelah menunggu",
   "ui.fullTextSearchIndex": "Indeks pencarian teks penuh",

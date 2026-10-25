@@ -210,6 +210,8 @@ window.ChatGPTProLocalePacks["fr"] = {
   "ui.httpRequestFailed": "Échec de la requête HTTP ({status}) : {url}",
   "ui.sessionRequestFailed": "Échec de la requête de session : HTTP {status}",
   "ui.requestUnauthorized": "Requête non autorisée",
+  "ui.chatgptTabNotReadyReloadAndTryAgain": "L’onglet ChatGPT n’est pas encore prêt. Rechargez-le puis réessayez.",
+  "ui.chatgptTabConnectionInterruptedReloadAndTryAgain": "La connexion à l’onglet ChatGPT a été interrompue. Rechargez-le puis réessayez.",
   "ui.waitingForAccountRateLimitCooldown": "· En attente d'un taux limite de remboursement des frais de compte",
   "ui.resumingAfterWait": "· Reprise après l'attente",
   "ui.fullTextSearchIndex": "Index de la recherche en texte intégral",

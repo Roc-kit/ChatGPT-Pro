@@ -164,6 +164,12 @@
     return `${t(hintKey)} (${value})`;
   }
   function translateTechnicalError(value) {
+    if (/^Could not establish connection\. Receiving end does not exist\.?$/.test(value)) {
+      return t('ui.chatgptTabNotReadyReloadAndTryAgain');
+    }
+    if (/^(?:The message port closed before a response was received|The message channel closed before a response was received|A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received)\.?$/.test(value)) {
+      return t('ui.chatgptTabConnectionInterruptedReloadAndTryAgain');
+    }
     let match = value.match(/^HTTP (\d{3}): (https?:\/\/\S+)$/);
     if (match) return format('ui.httpRequestFailed', { status: match[1], url: match[2] });
     match = value.match(/^Session (\d{3})$/);
@@ -172,7 +178,7 @@
     return null;
   }
   function translateTechnicalErrorSuffix(value) {
-    const match = value.match(/^(.*(?:导出失败|图片下载失败|清理失败|仅本地导出失败|索引更新失败|索引状态读取失败|批量导出失败|全文搜索失败|同步失败|下载已保存分卷失败|打开 ChatGPT 失败|自动更新设置失败|索引启动失败|清除失败|任务不可用)(?:：|:\s*))(HTTP \d{3}: https?:\/\/\S+|Session \d{3}|401_UNAUTHORIZED)$/);
+    const match = value.match(/^(.*(?:失败|中止|不可用)(?:：|:\s*))(HTTP \d{3}: https?:\/\/\S+|Session \d{3}|401_UNAUTHORIZED|Could not establish connection\. Receiving end does not exist\.?|The message port closed before a response was received\.?|The message channel closed before a response was received\.?|A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received\.?)$/);
     if (!match) return null;
     const translated = translateTechnicalError(match[2]);
     return translated ? `${match[1]}${translated}` : null;

@@ -209,6 +209,8 @@
   "ui.httpRequestFailed": "HTTP 请求失败（{status}）：{url}",
   "ui.sessionRequestFailed": "会话请求失败：HTTP {status}",
   "ui.requestUnauthorized": "请求未获授权",
+  "ui.chatgptTabNotReadyReloadAndTryAgain": "ChatGPT 标签页尚未就绪，请刷新标签页后重试",
+  "ui.chatgptTabConnectionInterruptedReloadAndTryAgain": "与 ChatGPT 标签页的连接已中断，请刷新标签页后重试",
   "ui.waitingForAccountRateLimitCooldown": " · 等待账号限流冷却",
   "ui.resumingAfterWait": " · 等待结束，正在恢复",
   "ui.fullTextSearchIndex": "全文搜索索引",

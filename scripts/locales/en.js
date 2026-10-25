@@ -210,6 +210,8 @@ window.ChatGPTProLocalePacks["en"] = {
   "ui.httpRequestFailed": "HTTP request failed ({status}): {url}",
   "ui.sessionRequestFailed": "Session request failed: HTTP {status}",
   "ui.requestUnauthorized": "Request is not authorized",
+  "ui.chatgptTabNotReadyReloadAndTryAgain": "The ChatGPT tab is not ready. Reload the tab and try again.",
+  "ui.chatgptTabConnectionInterruptedReloadAndTryAgain": "The connection to the ChatGPT tab was interrupted. Reload the tab and try again.",
   "ui.waitingForAccountRateLimitCooldown": " · Waiting for account rate limit cooldown",
   "ui.resumingAfterWait": " · Resuming after wait",
   "ui.fullTextSearchIndex": "Full-text search index",

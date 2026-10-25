@@ -210,6 +210,8 @@ window.ChatGPTProLocalePacks["pt-BR"] = {
   "ui.httpRequestFailed": "Falha na solicitação HTTP ({status}): {url}",
   "ui.sessionRequestFailed": "Falha na solicitação de sessão: HTTP {status}",
   "ui.requestUnauthorized": "Solicitação não autorizada",
+  "ui.chatgptTabNotReadyReloadAndTryAgain": "A guia do ChatGPT ainda não está pronta. Recarregue-a e tente novamente.",
+  "ui.chatgptTabConnectionInterruptedReloadAndTryAgain": "A conexão com a guia do ChatGPT foi interrompida. Recarregue-a e tente novamente.",
   "ui.waitingForAccountRateLimitCooldown": "· Esperando para a taxa de contagem limite de arrefecimento",
   "ui.resumingAfterWait": "· Retomar após a espera",
   "ui.fullTextSearchIndex": "Índice de pesquisa de texto completo",

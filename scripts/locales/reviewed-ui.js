@@ -4830,6 +4830,52 @@ ui.requestUnauthorized`.split('\n'),
           'リクエストが認証されていません'
         ]
       }
+    },
+    {
+      keys: `ui.chatgptTabNotReadyReloadAndTryAgain
+ui.chatgptTabConnectionInterruptedReloadAndTryAgain`.split('\n'),
+      translations: {
+        en: [
+          'The ChatGPT tab is not ready. Reload the tab and try again.',
+          'The connection to the ChatGPT tab was interrupted. Reload the tab and try again.'
+        ],
+        es: [
+          'La pestaña de ChatGPT aún no está lista. Recárgala e inténtalo de nuevo.',
+          'Se interrumpió la conexión con la pestaña de ChatGPT. Recárgala e inténtalo de nuevo.'
+        ],
+        hi: [
+          'ChatGPT टैब अभी तैयार नहीं है। टैब को रीफ़्रेश करके फिर कोशिश करें।',
+          'ChatGPT टैब से कनेक्शन टूट गया। टैब को रीफ़्रेश करके फिर कोशिश करें।'
+        ],
+        ar: [
+          'علامة تبويب ChatGPT غير جاهزة بعد. أعد تحميلها ثم حاول مرة أخرى.',
+          'انقطع الاتصال بعلامة تبويب ChatGPT. أعد تحميلها ثم حاول مرة أخرى.'
+        ],
+        'pt-BR': [
+          'A guia do ChatGPT ainda não está pronta. Recarregue-a e tente novamente.',
+          'A conexão com a guia do ChatGPT foi interrompida. Recarregue-a e tente novamente.'
+        ],
+        bn: [
+          'ChatGPT ট্যাবটি এখনও প্রস্তুত নয়। ট্যাবটি রিফ্রেশ করে আবার চেষ্টা করুন।',
+          'ChatGPT ট্যাবের সঙ্গে সংযোগ বিচ্ছিন্ন হয়েছে। ট্যাবটি রিফ্রেশ করে আবার চেষ্টা করুন।'
+        ],
+        id: [
+          'Tab ChatGPT belum siap. Muat ulang tab lalu coba lagi.',
+          'Koneksi ke tab ChatGPT terputus. Muat ulang tab lalu coba lagi.'
+        ],
+        fr: [
+          'L’onglet ChatGPT n’est pas encore prêt. Rechargez-le puis réessayez.',
+          'La connexion à l’onglet ChatGPT a été interrompue. Rechargez-le puis réessayez.'
+        ],
+        ru: [
+          'Вкладка ChatGPT ещё не готова. Обновите её и повторите попытку.',
+          'Соединение с вкладкой ChatGPT прервано. Обновите её и повторите попытку.'
+        ],
+        ja: [
+          'ChatGPT のタブがまだ準備できていません。タブを再読み込みして、もう一度お試しください。',
+          'ChatGPT タブとの接続が中断されました。タブを再読み込みして、もう一度お試しください。'
+        ]
+      }
     }
   ];
   for (const block of blocks) {

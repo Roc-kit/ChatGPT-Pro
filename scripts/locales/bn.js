@@ -210,6 +210,8 @@ window.ChatGPTProLocalePacks["bn"] = {
   "ui.httpRequestFailed": "HTTP অনুরোধ ব্যর্থ ({status}): {url}",
   "ui.sessionRequestFailed": "সেশন অনুরোধ ব্যর্থ: HTTP {status}",
   "ui.requestUnauthorized": "অনুরোধটি অনুমোদিত নয়",
+  "ui.chatgptTabNotReadyReloadAndTryAgain": "ChatGPT ট্যাবটি এখনও প্রস্তুত নয়। ট্যাবটি রিফ্রেশ করে আবার চেষ্টা করুন।",
+  "ui.chatgptTabConnectionInterruptedReloadAndTryAgain": "ChatGPT ট্যাবের সঙ্গে সংযোগ বিচ্ছিন্ন হয়েছে। ট্যাবটি রিফ্রেশ করে আবার চেষ্টা করুন।",
   "ui.waitingForAccountRateLimitCooldown": "অ্যাকাউন্টের নির্ধারিত সীমা হ্রাসের জন্য অপেক্ষা করা হবে",
   "ui.resumingAfterWait": "পুনরায় বুট করা",
   "ui.fullTextSearchIndex": "সম্পূর্ণ টেক্সট ইন্ডেক্স অনুসন্ধান",

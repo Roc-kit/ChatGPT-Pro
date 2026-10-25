@@ -210,6 +210,8 @@ window.ChatGPTProLocalePacks["ru"] = {
   "ui.httpRequestFailed": "Ошибка HTTP-запроса ({status}): {url}",
   "ui.sessionRequestFailed": "Ошибка запроса сеанса: HTTP {status}",
   "ui.requestUnauthorized": "Запрос не авторизован",
+  "ui.chatgptTabNotReadyReloadAndTryAgain": "Вкладка ChatGPT ещё не готова. Обновите её и повторите попытку.",
+  "ui.chatgptTabConnectionInterruptedReloadAndTryAgain": "Соединение с вкладкой ChatGPT прервано. Обновите её и повторите попытку.",
   "ui.waitingForAccountRateLimitCooldown": "• Ожидание охлаждения учетной ставки",
   "ui.resumingAfterWait": "· Возобновление после ожидания",
   "ui.fullTextSearchIndex": "Полнотекстовый поисковый индекс",

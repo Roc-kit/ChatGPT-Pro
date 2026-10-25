@@ -210,6 +210,8 @@ window.ChatGPTProLocalePacks["ja"] = {
   "ui.httpRequestFailed": "HTTP リクエストに失敗しました（{status}）：{url}",
   "ui.sessionRequestFailed": "セッションのリクエストに失敗しました：HTTP {status}",
   "ui.requestUnauthorized": "リクエストが認証されていません",
+  "ui.chatgptTabNotReadyReloadAndTryAgain": "ChatGPT のタブがまだ準備できていません。タブを再読み込みして、もう一度お試しください。",
+  "ui.chatgptTabConnectionInterruptedReloadAndTryAgain": "ChatGPT タブとの接続が中断されました。タブを再読み込みして、もう一度お試しください。",
   "ui.waitingForAccountRateLimitCooldown": "・アカウント率制限クールダウン待ち",
   "ui.resumingAfterWait": "・待ち時間後の再開",
   "ui.fullTextSearchIndex": "フルテキスト検索インデックス",

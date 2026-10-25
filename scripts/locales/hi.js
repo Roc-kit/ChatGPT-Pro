@@ -210,6 +210,8 @@ window.ChatGPTProLocalePacks["hi"] = {
   "ui.httpRequestFailed": "HTTP अनुरोध विफल ({status}): {url}",
   "ui.sessionRequestFailed": "सत्र अनुरोध विफल: HTTP {status}",
   "ui.requestUnauthorized": "अनुरोध अधिकृत नहीं है",
+  "ui.chatgptTabNotReadyReloadAndTryAgain": "ChatGPT टैब अभी तैयार नहीं है। टैब को रीफ़्रेश करके फिर कोशिश करें।",
+  "ui.chatgptTabConnectionInterruptedReloadAndTryAgain": "ChatGPT टैब से कनेक्शन टूट गया। टैब को रीफ़्रेश करके फिर कोशिश करें।",
   "ui.waitingForAccountRateLimitCooldown": "· खाते की दर सीमा के लिए प्रतीक्षा करना cooldown",
   "ui.resumingAfterWait": "· प्रतीक्षा करने के बाद पुनरुत्थान",
   "ui.fullTextSearchIndex": "फुल-टेक्स्ट सर्च इंडेक्स",
