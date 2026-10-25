@@ -457,4 +457,40 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
     .map(match => Number(match[1])), [1],
   `${locale}/status.notAllowedToWrite: status template placeholder changed`);
 }
+// Low-level request failures must retain diagnostic status, endpoint and code.
+const diagnosticURL = 'https://chatgpt.com/backend-api/conversations?offset=0&limit=100';
+for (const locale of localeNames) {
+  i18n.setLanguage(locale);
+  assert.equal(i18n.translateText(`HTTP 429: ${diagnosticURL}`),
+    packs[locale]['ui.httpRequestFailed'].replace('{status}', '429').replace('{url}', diagnosticURL),
+    `${locale}: HTTP failures must be translated without losing the endpoint`);
+  assert.equal(i18n.translateText('Session 403'),
+    packs[locale]['ui.sessionRequestFailed'].replace('{status}', '403'),
+    `${locale}: session HTTP status must be translated`);
+  assert.equal(i18n.translateText('401_UNAUTHORIZED'),
+    `${packs[locale]['ui.requestUnauthorized']} (401_UNAUTHORIZED)`,
+    `${locale}: authorization diagnostic code must be retained`);
+  const translatedHttp = packs[locale]['ui.httpRequestFailed']
+    .replace('{status}', '429').replace('{url}', diagnosticURL);
+  const nestedHttp = i18n.translateText(`索引启动失败：HTTP 429: ${diagnosticURL}`);
+  const expectedNestedHttp = locale === 'zh-CN'
+    ? `索引启动失败：${translatedHttp}`
+    : packs[locale]['status.indexStartFailed'].replace('{1}', translatedHttp);
+  assert.equal(nestedHttp, expectedNestedHttp,
+    `${locale}: nested HTTP errors must translate while preserving endpoint details`);
+  const translatedSession = packs[locale]['ui.sessionRequestFailed'].replace('{status}', '403');
+  const nestedSession = i18n.translateText('打开 ChatGPT 失败：Session 403');
+  const expectedNestedSession = locale === 'zh-CN'
+    ? `打开 ChatGPT 失败：${translatedSession}`
+    : packs[locale]['status.failedToOpenChatGPT'].replace('{1}', translatedSession);
+  assert.equal(nestedSession, expectedNestedSession,
+    `${locale}: nested session errors must be translated`);
+  const translatedUnauthorized = `${packs[locale]['ui.requestUnauthorized']} (401_UNAUTHORIZED)`;
+  const nestedUnauthorized = i18n.translateText('索引启动失败：401_UNAUTHORIZED');
+  const expectedNestedUnauthorized = locale === 'zh-CN'
+    ? `索引启动失败：${translatedUnauthorized}`
+    : packs[locale]['status.indexStartFailed'].replace('{1}', translatedUnauthorized);
+  assert.equal(nestedUnauthorized, expectedNestedUnauthorized,
+    `${locale}: nested authorization errors must be translated without dropping the code`);
+}
 console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed UI keys × 10 locales; runtime references covered`);

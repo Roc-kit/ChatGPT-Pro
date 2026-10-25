@@ -4773,6 +4773,63 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           '{1} · 差分同期が完了しました'
         ]
       }
+    },
+    {
+      keys: `ui.httpRequestFailed
+ui.sessionRequestFailed
+ui.requestUnauthorized`.split('\n'),
+      translations: {
+        en: [
+          'HTTP request failed ({status}): {url}',
+          'Session request failed: HTTP {status}',
+          'Request is not authorized'
+        ],
+        es: [
+          'Error en la solicitud HTTP ({status}): {url}',
+          'Error en la solicitud de sesión: HTTP {status}',
+          'Solicitud no autorizada'
+        ],
+        hi: [
+          'HTTP अनुरोध विफल ({status}): {url}',
+          'सत्र अनुरोध विफल: HTTP {status}',
+          'अनुरोध अधिकृत नहीं है'
+        ],
+        ar: [
+          'فشل طلب HTTP ({status}): {url}',
+          'فشل طلب الجلسة: HTTP {status}',
+          'الطلب غير مُصرّح به'
+        ],
+        'pt-BR': [
+          'Falha na solicitação HTTP ({status}): {url}',
+          'Falha na solicitação de sessão: HTTP {status}',
+          'Solicitação não autorizada'
+        ],
+        bn: [
+          'HTTP অনুরোধ ব্যর্থ ({status}): {url}',
+          'সেশন অনুরোধ ব্যর্থ: HTTP {status}',
+          'অনুরোধটি অনুমোদিত নয়'
+        ],
+        id: [
+          'Permintaan HTTP gagal ({status}): {url}',
+          'Permintaan sesi gagal: HTTP {status}',
+          'Permintaan tidak diizinkan'
+        ],
+        fr: [
+          'Échec de la requête HTTP ({status}) : {url}',
+          'Échec de la requête de session : HTTP {status}',
+          'Requête non autorisée'
+        ],
+        ru: [
+          'Ошибка HTTP-запроса ({status}): {url}',
+          'Ошибка запроса сеанса: HTTP {status}',
+          'Запрос не авторизован'
+        ],
+        ja: [
+          'HTTP リクエストに失敗しました（{status}）：{url}',
+          'セッションのリクエストに失敗しました：HTTP {status}',
+          'リクエストが認証されていません'
+        ]
+      }
     }
   ];
   for (const block of blocks) {

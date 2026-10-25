@@ -145,7 +145,8 @@
       if (SOURCE_TO_KEY.has(value)) return t(value);
       // A nested export/index progress message may itself be a recognized
       // extension status. Never apply this to arbitrary user-authored text.
-      return DYNAMIC.some(([pattern]) => pattern.test(value)) ? translateText(value) : value;
+      return (translateTechnicalError(value) || DYNAMIC.some(([pattern]) => pattern.test(value)))
+        ? translateText(value) : value;
     });
   }
   // Internal storage/ZIP/scheduler failures carry stable English diagnostics.
@@ -162,9 +163,27 @@
     }[family];
     return `${t(hintKey)} (${value})`;
   }
+  function translateTechnicalError(value) {
+    let match = value.match(/^HTTP (\d{3}): (https?:\/\/\S+)$/);
+    if (match) return format('ui.httpRequestFailed', { status: match[1], url: match[2] });
+    match = value.match(/^Session (\d{3})$/);
+    if (match) return format('ui.sessionRequestFailed', { status: match[1] });
+    if (value === '401_UNAUTHORIZED') return `${t('ui.requestUnauthorized')} (401_UNAUTHORIZED)`;
+    return null;
+  }
+  function translateTechnicalErrorSuffix(value) {
+    const match = value.match(/^(.*(?:导出失败|图片下载失败|清理失败|仅本地导出失败|索引更新失败|索引状态读取失败|批量导出失败|全文搜索失败|同步失败|下载已保存分卷失败|打开 ChatGPT 失败|自动更新设置失败|索引启动失败|清除失败|任务不可用)(?:：|:\s*))(HTTP \d{3}: https?:\/\/\S+|Session \d{3}|401_UNAUTHORIZED)$/);
+    if (!match) return null;
+    const translated = translateTechnicalError(match[2]);
+    return translated ? `${match[1]}${translated}` : null;
+  }
   function translateText(source) {
     const value = source.trim();
     if (!value) return source;
+    const technicalError = translateTechnicalError(value);
+    if (technicalError) return source.replace(value, technicalError);
+    const translatedSuffix = current === 'zh-CN' ? translateTechnicalErrorSuffix(value) : null;
+    if (translatedSuffix) return source.replace(value, translatedSuffix);
     const explanation = diagnosticMessage(value);
     if (explanation) return source.replace(value, explanation);
     let result = t(value);
