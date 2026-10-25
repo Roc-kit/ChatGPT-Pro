@@ -4323,6 +4323,143 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           '同期に失敗しました。ローカルデータは保持されています：{1}'
         ]
       }
+    },
+    {
+      // Bulk archive and permanent-delete progress, completion and failure states.
+      keys: [
+        'status.archivingSucceededFailed',
+        'status.deletingSucceededFailed',
+        'status.archivingSucceededFailed_65',
+        'status.deletingSucceededFailed_65',
+        'status.archiveCompletedSucceededFailed',
+        'status.archiveCompletedSucceededFailedClickForFailures',
+        'status.deletePermanentlyCompletedSucceededFailed',
+        'status.deletePermanentlyCompletedSucceededFailedClickFor',
+        'status.stopped',
+        'status.status_68'
+      ],
+      translations: {
+        'zh-TW': [
+          '正在封存 {1}/{2} · 成功 {3}，失敗 {4}',
+          '正在永久刪除 {1}/{2} · 成功 {3}，失敗 {4}',
+          '正在封存 {2}/{3} · 成功 {4}，失敗 {5}',
+          '正在永久刪除 {2}/{3} · 成功 {4}，失敗 {5}',
+          '封存完成：成功 {2}，失敗 {3}',
+          '封存完成：成功 {2}，失敗 {3}（點擊查看失敗項目）',
+          '永久刪除完成：成功 {2}，失敗 {3}',
+          '永久刪除完成：成功 {2}，失敗 {3}（點擊查看失敗項目）',
+          '{1} 已中止：{2}',
+          '{1}/{2} · {3}：{4}'
+        ],
+        es: [
+          'Archivando {1}/{2} · {3} correctos, {4} fallidos',
+          'Eliminando permanentemente {1}/{2} · {3} correctos, {4} fallidos',
+          'Archivando {2}/{3} · {4} correctos, {5} fallidos',
+          'Eliminando permanentemente {2}/{3} · {4} correctos, {5} fallidos',
+          'Archivado completado: {2} correctos, {3} fallidos',
+          'Archivado completado: {2} correctos, {3} fallidos (haz clic para ver los errores)',
+          'Eliminación permanente completada: {2} correctos, {3} fallidos',
+          'Eliminación permanente completada: {2} correctos, {3} fallidos (haz clic para ver los errores)',
+          '{1} se detuvo: {2}',
+          '{1}/{2} · {3}: {4}'
+        ],
+        hi: [
+          'आर्काइव हो रहा है {1}/{2} · {3} सफल, {4} विफल',
+          'स्थायी रूप से मिटाया जा रहा है {1}/{2} · {3} सफल, {4} विफल',
+          'आर्काइव हो रहा है {2}/{3} · {4} सफल, {5} विफल',
+          'स्थायी रूप से मिटाया जा रहा है {2}/{3} · {4} सफल, {5} विफल',
+          'आर्काइव पूरा हुआ: {2} सफल, {3} विफल',
+          'आर्काइव पूरा हुआ: {2} सफल, {3} विफल (विफल आइटम देखने के लिए क्लिक करें)',
+          'स्थायी रूप से मिटाना पूरा हुआ: {2} सफल, {3} विफल',
+          'स्थायी रूप से मिटाना पूरा हुआ: {2} सफल, {3} विफल (विफल आइटम देखने के लिए क्लिक करें)',
+          '{1} रोक दिया गया: {2}',
+          '{1}/{2} · {3}: {4}'
+        ],
+        ar: [
+          'جارٍ الأرشفة {1}/{2} · نجح {3}، وفشل {4}',
+          'جارٍ الحذف النهائي {1}/{2} · نجح {3}، وفشل {4}',
+          'جارٍ الأرشفة {2}/{3} · نجح {4}، وفشل {5}',
+          'جارٍ الحذف النهائي {2}/{3} · نجح {4}، وفشل {5}',
+          'اكتملت الأرشفة: نجح {2}، وفشل {3}',
+          'اكتملت الأرشفة: نجح {2}، وفشل {3} (انقر لعرض العناصر الفاشلة)',
+          'اكتمل الحذف النهائي: نجح {2}، وفشل {3}',
+          'اكتمل الحذف النهائي: نجح {2}، وفشل {3} (انقر لعرض العناصر الفاشلة)',
+          'تم إيقاف {1}: {2}',
+          '{1}/{2} · {3}: {4}'
+        ],
+        'pt-BR': [
+          'Arquivando {1}/{2} · {3} concluídos, {4} com falha',
+          'Excluindo permanentemente {1}/{2} · {3} concluídos, {4} com falha',
+          'Arquivando {2}/{3} · {4} concluídos, {5} com falha',
+          'Excluindo permanentemente {2}/{3} · {4} concluídos, {5} com falha',
+          'Arquivamento concluído: {2} concluídos, {3} com falha',
+          'Arquivamento concluído: {2} concluídos, {3} com falha (clique para ver os itens com falha)',
+          'Exclusão permanente concluída: {2} concluídos, {3} com falha',
+          'Exclusão permanente concluída: {2} concluídos, {3} com falha (clique para ver os itens com falha)',
+          '{1} interrompido: {2}',
+          '{1}/{2} · {3}: {4}'
+        ],
+        bn: [
+          'আর্কাইভ করা হচ্ছে {1}/{2} · সফল {3}, ব্যর্থ {4}',
+          'স্থায়ীভাবে মুছে ফেলা হচ্ছে {1}/{2} · সফল {3}, ব্যর্থ {4}',
+          'আর্কাইভ করা হচ্ছে {2}/{3} · সফল {4}, ব্যর্থ {5}',
+          'স্থায়ীভাবে মুছে ফেলা হচ্ছে {2}/{3} · সফল {4}, ব্যর্থ {5}',
+          'আর্কাইভ সম্পন্ন: সফল {2}, ব্যর্থ {3}',
+          'আর্কাইভ সম্পন্ন: সফল {2}, ব্যর্থ {3} (ব্যর্থ আইটেম দেখতে ক্লিক করুন)',
+          'স্থায়ীভাবে মুছে ফেলা সম্পন্ন: সফল {2}, ব্যর্থ {3}',
+          'স্থায়ীভাবে মুছে ফেলা সম্পন্ন: সফল {2}, ব্যর্থ {3} (ব্যর্থ আইটেম দেখতে ক্লিক করুন)',
+          '{1} থামানো হয়েছে: {2}',
+          '{1}/{2} · {3}: {4}'
+        ],
+        id: [
+          'Mengarsipkan {1}/{2} · {3} berhasil, {4} gagal',
+          'Menghapus permanen {1}/{2} · {3} berhasil, {4} gagal',
+          'Mengarsipkan {2}/{3} · {4} berhasil, {5} gagal',
+          'Menghapus permanen {2}/{3} · {4} berhasil, {5} gagal',
+          'Pengarsipan selesai: {2} berhasil, {3} gagal',
+          'Pengarsipan selesai: {2} berhasil, {3} gagal (klik untuk melihat item yang gagal)',
+          'Penghapusan permanen selesai: {2} berhasil, {3} gagal',
+          'Penghapusan permanen selesai: {2} berhasil, {3} gagal (klik untuk melihat item yang gagal)',
+          '{1} dihentikan: {2}',
+          '{1}/{2} · {3}: {4}'
+        ],
+        fr: [
+          'Archivage {1}/{2} · {3} réussis, {4} échecs',
+          'Suppression définitive {1}/{2} · {3} réussis, {4} échecs',
+          'Archivage {2}/{3} · {4} réussis, {5} échecs',
+          'Suppression définitive {2}/{3} · {4} réussis, {5} échecs',
+          'Archivage terminé : {2} réussis, {3} échecs',
+          'Archivage terminé : {2} réussis, {3} échecs (cliquez pour afficher les échecs)',
+          'Suppression définitive terminée : {2} réussis, {3} échecs',
+          'Suppression définitive terminée : {2} réussis, {3} échecs (cliquez pour afficher les échecs)',
+          '{1} interrompu : {2}',
+          '{1}/{2} · {3} : {4}'
+        ],
+        ru: [
+          'Архивация {1}/{2} · успешно: {3}, ошибок: {4}',
+          'Безвозвратное удаление {1}/{2} · успешно: {3}, ошибок: {4}',
+          'Архивация {2}/{3} · успешно: {4}, ошибок: {5}',
+          'Безвозвратное удаление {2}/{3} · успешно: {4}, ошибок: {5}',
+          'Архивация завершена: успешно {2}, ошибок {3}',
+          'Архивация завершена: успешно {2}, ошибок {3} (нажмите, чтобы посмотреть ошибки)',
+          'Безвозвратное удаление завершено: успешно {2}, ошибок {3}',
+          'Безвозвратное удаление завершено: успешно {2}, ошибок {3} (нажмите, чтобы посмотреть ошибки)',
+          '{1} остановлено: {2}',
+          '{1}/{2} · {3}: {4}'
+        ],
+        ja: [
+          'アーカイブ中 {1}/{2} · 成功 {3} 件、失敗 {4} 件',
+          '完全削除中 {1}/{2} · 成功 {3} 件、失敗 {4} 件',
+          'アーカイブ中 {2}/{3} · 成功 {4} 件、失敗 {5} 件',
+          '完全削除中 {2}/{3} · 成功 {4} 件、失敗 {5} 件',
+          'アーカイブ完了：成功 {2} 件、失敗 {3} 件',
+          'アーカイブ完了：成功 {2} 件、失敗 {3} 件（クリックして失敗項目を表示）',
+          '完全削除完了：成功 {2} 件、失敗 {3} 件',
+          '完全削除完了：成功 {2} 件、失敗 {3} 件（クリックして失敗項目を表示）',
+          '{1} を中止しました：{2}',
+          '{1}/{2} · {3}：{4}'
+        ]
+      }
     }
   ];
   for (const block of blocks) {

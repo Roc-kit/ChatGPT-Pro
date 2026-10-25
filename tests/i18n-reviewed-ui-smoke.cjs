@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 357, 'reviewed interface, cache integrity, dynamic task statuses and ZIP export tasks include 357 strings');
+assert.equal(keys.length, 367, 'reviewed interface, cache integrity, dynamic task statuses and bulk archive/delete statuses include 367 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -107,6 +107,10 @@ const samples = [
   ['es', 'status.completedChats', 'Completado · {1} conversaciones'],
   ['fr', 'status.syncFailedLocalDataRetained',
     'Échec de la synchronisation ; les données locales sont conservées : {1}'],
+  ['es', 'status.archiveCompletedSucceededFailedClickForFailures',
+    'Archivado completado: {2} correctos, {3} fallidos (haz clic para ver los errores)'],
+  ['ja', 'status.deletePermanentlyCompletedSucceededFailed',
+    '完全削除完了：成功 {2} 件、失敗 {3} 件'],
   ['es', 'ui.completeJSONNotStoredLocallyOnlyASearch',
     'El JSON original completo no está guardado localmente; solo hay fragmentos de búsqueda y no se puede mostrar la vista previa completa.'],
   ['fr', 'ui.unableToReadCompleteLocalContent', 'Impossible de lire le contenu local complet'],
@@ -115,6 +119,56 @@ const samples = [
   ['ja', 'ui.indexingIsRunningInAnotherTab', '別のタブでインデックス作成が実行中です。'],
   ['es', 'ui.indexPausedResumeItInTaskManager', 'La indexación está en pausa. Reanúdala desde el gestor de tareas.']
 ];
+
+// Bulk archive/delete templates have both progress and completion variants.
+// Check all placeholder slots, including legacy variants with capture group 1
+// reserved for the operation name.
+const archiveDeleteTemplates = [
+  ['status.archivingSucceededFailed', [1, 2, 3, 4]],
+  ['status.deletingSucceededFailed', [1, 2, 3, 4]],
+  ['status.archivingSucceededFailed_65', [2, 3, 4, 5]],
+  ['status.deletingSucceededFailed_65', [2, 3, 4, 5]],
+  ['status.archiveCompletedSucceededFailed', [2, 3]],
+  ['status.archiveCompletedSucceededFailedClickForFailures', [2, 3]],
+  ['status.deletePermanentlyCompletedSucceededFailed', [2, 3]],
+  ['status.deletePermanentlyCompletedSucceededFailedClickFor', [2, 3]],
+  ['status.stopped', [1, 2]],
+  ['status.status_68', [1, 2, 3, 4]]
+];
+for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(locale))) {
+  i18n.setLanguage(locale);
+  for (const [key, expectedSlots] of archiveDeleteTemplates) {
+    const slots = [...packs[locale][key].matchAll(/\{(\d+)\}/g)]
+      .map(match => Number(match[1])).sort((a, b) => a - b);
+    assert.deepEqual(slots, expectedSlots,
+      `${locale}/${key}: archive/delete placeholders changed`);
+  }
+}
+const archiveDeleteStatuses = [
+  ['status.archivingSucceededFailed', '正在归档 3 / 10 · 成功 2、失败 1',
+    { 1: '3', 2: '10', 3: '2', 4: '1' }],
+  ['status.deletingSucceededFailed', '正在永久删除 3 / 10 · 成功 2、失败 1',
+    { 1: '3', 2: '10', 3: '2', 4: '1' }],
+  ['status.archiveCompletedSucceededFailed', '归档完成：成功 2、失败 1', { 2: '2', 3: '1' }],
+  ['status.archiveCompletedSucceededFailedClickForFailures',
+    '归档完成：成功 2、失败 1（点击查看失败清单）', { 2: '2', 3: '1' }],
+  ['status.deletePermanentlyCompletedSucceededFailed',
+    '永久删除完成：成功 2、失败 1', { 2: '2', 3: '1' }],
+  ['status.deletePermanentlyCompletedSucceededFailedClickFor',
+    '永久删除完成：成功 2、失败 1（点击查看失败清单）', { 2: '2', 3: '1' }],
+  ['status.stopped', '归档中止：reason-42', { 1: '归档', 2: 'reason-42' }],
+  ['status.status_68', '2/5 · 用户：reason-42',
+    { 1: '2', 2: '5', 3: '用户', 4: 'reason-42' }]
+];
+for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(locale))) {
+  i18n.setLanguage(locale);
+  for (const [key, source, values] of archiveDeleteStatuses) {
+    const template = packs[locale][key];
+    const expected = template.replace(/\{(\d+)\}/g, (_, index) => i18n.t(values[index]));
+    assert.equal(i18n.translateText(source), expected,
+      `${locale}/${key}: archive/delete status did not use its reviewed translation`);
+  }
+}
 
 // Dynamic directory/index/task statuses are matched against Chinese source
 // text at runtime. Verify their translated templates and capture placeholders.
