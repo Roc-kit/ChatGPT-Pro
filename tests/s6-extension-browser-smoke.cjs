@@ -278,6 +278,23 @@ async function main() {
     })()`);
     await cdp.eval(pageSession, `(() => {
       const main = document.querySelector('main');
+      const question = document.querySelector('[data-message-id="question"]');
+      const next = question.nextSibling;
+      document.querySelector('[data-message-id="answer"]').style.minHeight = '1500px';
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
+      question.remove();
+      document.querySelector('.chatgpt-pro-minimap-first').click();
+      window.setTimeout(() => main.insertBefore(question, next), 600);
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `Math.abs(document.querySelector('[data-message-id="question"]').getBoundingClientRect().top) <= 3`),
+    'clicking an unloaded first message waits for lazy rendering and jumps to its start automatically');
+    await cdp.eval(pageSession, `(() => {
+      document.querySelector('[data-message-id="answer"]').style.minHeight = '';
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    })()`);
+    await cdp.eval(pageSession, `(() => {
+      const main = document.querySelector('main');
       main.querySelectorAll('[data-message-id]').forEach(node => node.remove());
       const fragment = document.createDocumentFragment();
       for (let turn = 1; turn <= 6; turn++) {

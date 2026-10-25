@@ -344,6 +344,9 @@
       }
       grouped.push({
         ...entry,
+        // A grouped assistant reply navigates to its first message part even
+        // when the preview/metadata comes from the final part.
+        startId: entry.startId || entry.id,
         targets: entry.target ? [entry.target] : [...(entry.targets || [])]
       });
     }
@@ -432,24 +435,59 @@
   }
 
   async function jumpMinimapEntry(entry, total) {
-    if (entry.target?.isConnected) {
+    const resolveTarget = () => {
+      if (entry.target?.isConnected) return entry.target;
+      const id = entry.startId || entry.id;
+      return (id && window.ChatGPTDomAdapter.findMessage(id))
+        || (!id ? findSearchResultFallback(entry.preview) : null);
+    };
+    let target = resolveTarget();
+    if (target) {
       // Align to the start of the message. Centering a long assistant turn
       // puts its middle on screen and hides the actual beginning of the reply.
-      entry.target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      return;
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return true;
     }
-    const scroller = conversationScrollContainer();
-    // Lazy-rendered ends are reachable without requiring a DOM element yet.
+    // ChatGPT lazily renders the ends of long conversations. Move to the
+    // relevant boundary, wait for rendering, and retry without asking the
+    // user to click the same marker repeatedly.
     if (entry.index === 0 || entry.index === total - 1) {
-      if (scroller) {
+      const scroller = conversationScrollContainer();
+      if (!scroller) return false;
+      let previousHeight = -1;
+      let stableRounds = 0;
+      for (let round = 0; round < 24; round++) {
+        target = resolveTarget();
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return true;
+        }
         const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
         const reversed = getComputedStyle(scroller).flexDirection === 'column-reverse';
         const top = entry.index === 0 ? (reversed ? -max : 0) : (reversed ? 0 : max);
-        scroller.scrollTo?.({ top, behavior: 'smooth' });
+        const height = scroller.scrollHeight;
+        scroller.scrollTo?.({ top, behavior: round === 0 ? 'smooth' : 'auto' });
+        await sleep(350);
+        target = resolveTarget();
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          return true;
+        }
+        const nextHeight = scroller.scrollHeight;
+        if (nextHeight === height && nextHeight === previousHeight && Math.abs(scroller.scrollTop - top) < 2) {
+          stableRounds++;
+        } else {
+          stableRounds = 0;
+        }
+        if (stableRounds >= 4) break;
+        previousHeight = nextHeight;
       }
-      return;
+      return false;
     }
-    if (entry.id) await jumpToSearchMessage(entry.id, entry.preview, 'start');
+    if (entry.startId || entry.id) {
+      return jumpToSearchMessage(entry.startId || entry.id, entry.preview, 'start');
+    }
+    return false;
   }
 
   function syncConversationMinimap() {
