@@ -270,9 +270,11 @@ async function main() {
       answer.style.minHeight = '1500px';
       document.querySelector('.chatgpt-pro-minimap-assistant').click();
     })()`);
-    await eventually(async () => cdp.eval(pageSession,
-      `Math.abs(document.querySelector('[data-message-id="answer"]').getBoundingClientRect().top) <= 3`),
-    'minimap navigation aligns the start of a long assistant reply with the viewport top');
+    await eventually(async () => cdp.eval(pageSession, `(() => {
+      const top = document.querySelector('[data-message-id="answer"]').getBoundingClientRect().top;
+      const preferred = Math.max(64, Math.min(150, innerHeight * 0.22));
+      return Math.abs(top - preferred) <= 12;
+    })()`), 'minimap navigation places the start of a long assistant reply in the upper viewport');
     await cdp.eval(pageSession, `(() => {
       document.querySelector('[data-message-id="answer"]').style.minHeight = '';
       window.scrollTo({ top: 0, behavior: 'auto' });
@@ -295,7 +297,8 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `(() => { const target = document.querySelector('[data-message-id="answer"]');
         const anchor = target?.closest('[data-chatgpt-search-unit-key], [data-content-search-unit-key], [data-turn-key], section[data-turn-id]') || target;
-        return Boolean(anchor && Math.abs(anchor.getBoundingClientRect().top) <= 8); })()`),
+        const preferred = Math.max(64, Math.min(150, innerHeight * 0.22));
+        return Boolean(anchor && Math.abs(anchor.getBoundingClientRect().top - preferred) <= 12); })()`),
     'clicking an unloaded last message keeps retrying through a 5-second delay and aligns it automatically', 15000);
     await cdp.eval(pageSession, `(() => {
       document.querySelector('[data-message-id="question"]').style.minHeight = '';
@@ -323,7 +326,8 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `(() => { const target = document.querySelector('[data-chatgpt-search-message-ids="question"]');
         const anchor = target?.closest('[data-chatgpt-search-unit-key], [data-content-search-unit-key], [data-turn-key], section[data-turn-id]') || target;
-        return Boolean(anchor && Math.abs(anchor.getBoundingClientRect().top) <= 8); })()`),
+        const preferred = Math.max(64, Math.min(150, innerHeight * 0.22));
+        return Boolean(anchor && Math.abs(anchor.getBoundingClientRect().top - preferred) <= 12); })()`),
     'clicking an unloaded first message stops retrying as soon as its modern search-ID target loads', 15000);
     await cdp.eval(pageSession, `(() => {
       const question = document.querySelector('[data-chatgpt-search-message-ids="question"]');
@@ -375,9 +379,11 @@ async function main() {
       document.querySelector('[data-message-id="logical-assistant-1-1"]').style.minHeight = '1500px';
       document.querySelectorAll('.chatgpt-pro-minimap-marker')[1].click();
     })()`);
-    await eventually(async () => cdp.eval(pageSession,
-      `Math.abs(document.querySelector('[data-message-id="logical-assistant-1-1"]').getBoundingClientRect().top) <= 3`),
-    'grouped assistant navigation aligns to the first part of a long reply');
+    await eventually(async () => cdp.eval(pageSession, `(() => {
+      const top = document.querySelector('[data-message-id="logical-assistant-1-1"]').getBoundingClientRect().top;
+      const preferred = Math.max(64, Math.min(150, innerHeight * 0.22));
+      return Math.abs(top - preferred) <= 12;
+    })()`), 'grouped assistant navigation aligns the first part of a long reply in the upper viewport');
     await cdp.eval(pageSession,
       `document.querySelector('[data-message-id="logical-assistant-1-1"]').style.minHeight = '';`);
     await cdp.eval(pageSession,
@@ -420,6 +426,48 @@ async function main() {
     })()`);
     assert(minimapAnchors.count <= 49 && minimapAnchors.first.startsWith('1/122') &&
       minimapAnchors.last.startsWith('122/122'), 'first and last chat messages remain pinned on a long rail');
+    const beforeMiddleJump = await cdp.eval(pageSession, `(() => {
+      const nodes = [...document.querySelectorAll('[data-minimap-test]')];
+      nodes[0].textContent = Array.from({ length: nodes.length }, (_, index) => 'Message number ' + index).join(' ');
+      const markers = [...document.querySelectorAll('.chatgpt-pro-minimap-marker')];
+      const marker = markers[Math.floor(markers.length / 2)];
+      const expectedId = marker.dataset.chatgptProMinimapMessageId;
+      const targetIndex = nodes.findIndex(node => node.getAttribute('data-message-id') === expectedId);
+      if (targetIndex < 0) throw Error('middle marker must identify its exact message ID');
+      const scroller = (() => {
+        for (let element = nodes[0].parentElement; element && element !== document.body; element = element.parentElement) {
+          const style = getComputedStyle(element);
+          if (/(auto|scroll)/.test(style.overflowY) && element.scrollHeight > element.clientHeight) return element;
+        }
+        return document.scrollingElement;
+      })();
+      const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      if (max < 100) throw Error('fixture must have a scrollable conversation');
+      scroller.scrollTo({ top: max * 0.4, behavior: 'auto' });
+      const before = scroller === document.scrollingElement ? window.scrollY : scroller.scrollTop;
+      nodes[targetIndex].setAttribute('data-message-id', 'minimap-missing-target');
+      marker.click();
+      return { before, targetIndex, expectedId, isDocument: scroller === document.scrollingElement };
+    })()`);
+    await sleep(250);
+    const afterMiddleJump = await cdp.eval(pageSession, `(() => {
+      const nodes = [...document.querySelectorAll('[data-minimap-test]')];
+      const element = nodes[0];
+      for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+        const style = getComputedStyle(parent);
+        if (/(auto|scroll)/.test(style.overflowY) && parent.scrollHeight > parent.clientHeight) return parent.scrollTop;
+      }
+      return window.scrollY;
+    })()`);
+    assert(Math.abs(afterMiddleJump - beforeMiddleJump.before) < 12,
+      'middle-message navigation never falls back to a first message with matching preview text');
+    await cdp.eval(pageSession, `(() => {
+      const nodes = [...document.querySelectorAll('[data-minimap-test]')];
+      nodes[${beforeMiddleJump.targetIndex}].setAttribute('data-message-id', ${JSON.stringify(beforeMiddleJump.expectedId)});
+      nodes.forEach((node, index) => { if (index > 0) node.textContent = 'Message number ' + index; });
+      nodes[0].textContent = 'Message number 0';
+    })()`);
+    await sleep(250);
     await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-minimap-first').dispatchEvent(new Event('pointerenter'))`);
     assert.equal(await cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-minimap-preview').hidden`), false,
