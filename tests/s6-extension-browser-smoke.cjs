@@ -545,6 +545,11 @@ async function main() {
       action: 'localDataMarkOfficialGone', accountId: 's6-isolated-account', id: '${CHAT_ID}'
     })`);
     assert(markLocal?.success && markLocal?.result?.marked, 'fixture is explicitly marked local-only in IDB');
+    await cdp.eval(popupSession, `new Promise(resolve =>
+      chrome.storage.local.set({ uiLanguage: 'es' }, resolve))`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('[data-panel-view="search"]')?.textContent.includes('texto')`),
+    'search panel reacts to the saved Spanish interface language');
     await cdp.eval(pageSession, `(() => {
       const input = document.querySelector('.chatgpt-pro-fulltext-input');
       input.value = 's6 acceptance unique phrase';
@@ -552,15 +557,29 @@ async function main() {
         new Event('submit', { bubbles: true, cancelable: true }));
     })()`);
     await eventually(async () => cdp.eval(pageSession,
-      `document.querySelector('.chatgpt-pro-search-result-meta')?.textContent.includes('仅本地')`),
-    'directory local-only transition invalidates cached search results');
+      `document.querySelector('.chatgpt-pro-search-result-meta')?.textContent.includes('Solo local') &&
+       document.querySelector('.chatgpt-pro-search-result-meta')?.textContent.includes('Usuario')`),
+    'search result provenance and user role are localized without changing the indexed snippet');
     await cdp.eval(pageSession, `Array.from(document.querySelectorAll('.chatgpt-pro-search-result button'))
-      .find(button => button.textContent.includes('本地完整预览')).click()`);
+      .find(button => button.textContent.includes('Vista previa local completa')).click()`);
     await eventually(async () => cdp.eval(pageSession,
       `!document.querySelector('.chatgpt-pro-local-preview')?.hidden &&
        document.querySelector('.chatgpt-pro-local-preview')?.textContent.includes('s6 acceptance unique phrase')`),
     'confirmed local-only item offers complete raw JSON preview');
+    await eventually(async () => cdp.eval(pageSession,
+      `Array.from(document.querySelectorAll('.chatgpt-pro-search-result button'))
+        .some(button => button.textContent.includes('Ocultar vista previa local'))`),
+    'local preview toggle label is translated in the active locale');
+    assert(await cdp.eval(pageSession,
+      `Array.from(document.querySelectorAll('.chatgpt-pro-search-result button'))
+        .some(button => button.textContent.includes('Eliminar copia local'))`),
+    'local-only cleanup action uses the active locale');
     assert.equal(requests.details, 1, 'local-only preview did not reach official conversation endpoint');
+    await cdp.eval(popupSession, `new Promise(resolve =>
+      chrome.storage.local.set({ uiLanguage: 'zh-CN' }, resolve))`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-search-result-meta')?.textContent.includes('仅本地')`),
+    'existing search result labels update when the interface language changes again');
 
     await cdp.eval(pageSession, `document.querySelector('[data-panel-view="directory"]').click()`);
     await eventually(async () => cdp.eval(pageSession,

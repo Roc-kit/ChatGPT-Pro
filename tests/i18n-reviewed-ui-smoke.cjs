@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 215, 'reviewed interface, popup controls, local-only search results, export safety, retry and diagnostic hints include 215 strings');
+assert.equal(keys.length, 218, 'reviewed interface, popup controls, local-only search results, preview actions, export safety and retry diagnostics include 218 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -51,6 +51,13 @@ const samples = [
   ['zh-TW', 'ui.remoteStatusNotVerified', '遠端狀態待核實'],
   ['id', 'ui.failedToDownloadSavedZIPParts', 'Gagal mengunduh bagian ZIP yang tersimpan'],
   ['ja', 'ui.accountSwitchedSearchAgain', 'アカウントが切り替わりました。もう一度検索してください'],
+  ['es', 'ui.fullLocalPreview', 'Vista previa local completa'],
+  ['fr', 'ui.hideLocalPreview', 'Masquer l’aperçu local'],
+  ['ja', 'ui.deleteLocalCopy', 'ローカルコピーを削除'],
+  ['hi', 'ui.noMatchingResults', 'कोई परिणाम नहीं मिला'],
+  ['es', 'ui.completeJSONNotStoredLocallyOnlyASearch',
+    'El JSON original completo no está guardado localmente; solo hay fragmentos de búsqueda y no se puede mostrar la vista previa completa.'],
+  ['fr', 'ui.unableToReadCompleteLocalContent', 'Impossible de lire le contenu local complet'],
   ['ja', 'ui.completeJSONNotSavedLocallyRemoteDeletionCanceled',
     '完全な JSON がローカルに保存されていないため、クラウド上のチャットは削除していません。'],
   ['ja', 'ui.indexingIsRunningInAnotherTab', '別のタブでインデックス作成が実行中です。'],
@@ -186,4 +193,4 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
       `${locale}/${key}: appended cooldown fragment did not use the reviewed translation`);
   }
 }
-console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including popup controls, local-only search states, export safety, retry/cooldown and live wait fragments`);
+console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including popup controls, local-only search states, preview actions, export safety and retry/cooldown`);

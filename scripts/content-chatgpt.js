@@ -2417,6 +2417,7 @@
     for (const result of results) {
       const legacy = result.origin === 'legacy-unassigned';
       const localOnly = result.remoteState === 'local-only';
+      const i18n = window.ChatGPTProI18n;
       const button = document.createElement(legacy || localOnly ? 'div' : 'button');
       button.type = 'button';
       button.className = 'chatgpt-pro-search-result';
@@ -2424,9 +2425,22 @@
       title.textContent = result.title;
       const meta = document.createElement('span');
       meta.className = 'chatgpt-pro-search-result-meta';
-      meta.textContent = [legacy ? '未归属历史索引 · 不可确认在线链接或完整导出'
-        : localOnly ? '仅本地 · 已确认官方删除' : result.remoteState === 'unverified' ? '远端状态待核实' : '',
-        result.role === 'user' ? '用户' : (result.role === 'assistant' ? 'ChatGPT' : ''), searchResultTime(result)].filter(Boolean).join(' · ');
+      const stateLabel = legacy ? '未归属历史索引 · 不可确认在线链接或完整导出'
+        : localOnly ? '仅本地 · 已确认官方删除'
+          : result.remoteState === 'unverified' ? '远端状态待核实' : '';
+      const roleLabel = result.role === 'user' ? '用户' : (result.role === 'assistant' ? 'ChatGPT' : '');
+      const metaParts = [
+        { value: stateLabel, translate: Boolean(stateLabel) },
+        { value: roleLabel, translate: result.role === 'user' },
+        { value: searchResultTime(result), translate: false }
+      ].filter(part => part.value);
+      for (const [index, part] of metaParts.entries()) {
+        if (index) meta.appendChild(document.createTextNode(' · '));
+        const item = document.createElement('span');
+        item.textContent = part.value;
+        if (part.translate) item.setAttribute('data-chatgpt-pro-i18n', '');
+        meta.appendChild(item);
+      }
       const snippet = document.createElement('span');
       snippet.className = 'chatgpt-pro-search-result-snippet';
       snippet.textContent = result.snippet;
@@ -2435,6 +2449,7 @@
         const previewButton = document.createElement('button');
         previewButton.type = 'button';
         previewButton.className = 'chatgpt-pro-export-button';
+        previewButton.setAttribute('data-chatgpt-pro-i18n', '');
         previewButton.textContent = '本地完整预览';
         const preview = document.createElement('pre');
         preview.hidden = true;
@@ -2442,7 +2457,11 @@
         preview.style.cssText = 'max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;text-align:left;'
           + 'padding:9px;background:rgba(128,128,128,.08);border-radius:6px;font-size:11px;';
         previewButton.addEventListener('click', async () => {
-          if (!preview.hidden) { preview.hidden = true; previewButton.textContent = '本地完整预览'; return; }
+          if (!preview.hidden) {
+            preview.hidden = true;
+            previewButton.textContent = '本地完整预览';
+            return;
+          }
           previewButton.disabled = true;
           try {
             // A confirmed deleted conversation MUST NOT fall back to any
@@ -2451,15 +2470,15 @@
             const reply = await runtimeMessage({ action: 'localDataGetConversation',
               accountId, id: result.conversationId });
             if (await window.APIHandler.getAccountId(true) !== accountId) {
-              throw new Error('登录账号已切换，无法预览旧账号内容');
+              throw new Error(i18n.t('ui.accountSwitchedCannotPreviewPreviousAccountData'));
             }
             preview.textContent = reply.hit && reply.raw
               ? JSON.stringify(reply.raw, null, 2)
-              : '完整原始 JSON 未保存在本机；仅有搜索片段，无法提供完整预览。';
+              : i18n.t('ui.completeJSONNotStoredLocallyOnlyASearch');
             preview.hidden = false;
             previewButton.textContent = '收起本地预览';
           } catch (error) {
-            preview.textContent = `无法读取本地完整内容：${error.message}`;
+            preview.textContent = `${i18n.t('ui.unableToReadCompleteLocalContent')}: ${error.message}`;
             preview.hidden = false;
           } finally { previewButton.disabled = false; }
         });
@@ -2477,7 +2496,7 @@
               await action({ id: result.conversationId, title: result.title, href: result.href,
                 updateTime: result.updateTime });
             } catch (error) {
-              exportButton.title = `仅本地导出失败：${error.message}`;
+              exportButton.title = `${i18n.t('ui.localExportFailed')}: ${error.message}`;
             } finally { exportButton.disabled = false; }
           });
           exports.appendChild(exportButton);
@@ -2486,12 +2505,13 @@
         const clear = document.createElement('button');
         clear.type = 'button';
         clear.className = 'chatgpt-pro-export-button';
+        clear.setAttribute('data-chatgpt-pro-i18n', '');
         clear.textContent = '清理本地';
         clear.title = '只清理此对话的扩展本地原始 JSON、全文索引和目录';
         clear.addEventListener('click', async () => {
           clear.disabled = true;
           try { await clearLocalOnlyRecord(result.conversationId); }
-          catch (error) { clear.title = `清理失败：${error.message}`; }
+          catch (error) { clear.title = `${i18n.t('ui.cleanupFailed')}: ${error.message}`; }
           finally { clear.disabled = false; }
         });
         button.append(clear);

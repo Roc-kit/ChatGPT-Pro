@@ -2539,6 +2539,66 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           "クラウド上ではチャットが削除されましたが、ローカル状態を更新できませんでした。キャッシュを確認してください"
         ]
       }
+    },
+    {
+      // Labels and messages used by the live full-text search result renderer.
+      keys: [
+        'ui.cleanupFailed',
+        'ui.localExportFailed',
+        'ui.unableToReadCompleteLocalContent'
+      ],
+      translations: {
+        'zh-TW': [
+          "清理失敗",
+          "僅本機匯出失敗",
+          "無法讀取本機完整內容"
+        ],
+        es: [
+          "Error al limpiar",
+          "Error al exportar datos solo locales",
+          "No se pudo leer el contenido local completo"
+        ],
+        hi: [
+          "साफ़ करने में विफल",
+          "केवल स्थानीय एक्सपोर्ट विफल",
+          "पूरा स्थानीय कंटेंट पढ़ने में असमर्थ"
+        ],
+        ar: [
+          "فشل التنظيف",
+          "فشل التصدير المحلي",
+          "تعذرت قراءة المحتوى المحلي الكامل"
+        ],
+        'pt-BR': [
+          "Falha ao limpar",
+          "Falha na exportação somente local",
+          "Não foi possível ler o conteúdo local completo"
+        ],
+        bn: [
+          "পরিষ্কার করতে ব্যর্থ",
+          "শুধু-স্থানীয় এক্সপোর্ট ব্যর্থ",
+          "সম্পূর্ণ স্থানীয় বিষয়বস্তু পড়া যায়নি"
+        ],
+        id: [
+          "Gagal membersihkan",
+          "Ekspor lokal gagal",
+          "Konten lokal lengkap tidak dapat dibaca"
+        ],
+        fr: [
+          "Échec du nettoyage",
+          "Échec de l’export local",
+          "Impossible de lire le contenu local complet"
+        ],
+        ru: [
+          "Не удалось очистить",
+          "Ошибка локального экспорта",
+          "Не удалось прочитать полное локальное содержимое"
+        ],
+        ja: [
+          "消去に失敗しました",
+          "ローカルのみのエクスポートに失敗しました",
+          "ローカルの完全な内容を読み取れません"
+        ]
+      }
     }
   ];
   for (const block of blocks) {
