@@ -433,7 +433,9 @@
 
   async function jumpMinimapEntry(entry, total) {
     if (entry.target?.isConnected) {
-      entry.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Align to the start of the message. Centering a long assistant turn
+      // puts its middle on screen and hides the actual beginning of the reply.
+      entry.target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
     const scroller = conversationScrollContainer();
@@ -447,7 +449,7 @@
       }
       return;
     }
-    if (entry.id) await jumpToSearchMessage(entry.id, entry.preview);
+    if (entry.id) await jumpToSearchMessage(entry.id, entry.preview, 'start');
   }
 
   function syncConversationMinimap() {
@@ -2482,13 +2484,13 @@
     return document.scrollingElement;
   }
 
-  async function jumpToSearchMessage(messageId, excerpt = '') {
+  async function jumpToSearchMessage(messageId, excerpt = '', block = 'center') {
     if (!messageId && !excerpt) return false;
     let previousHeight = -1;
     for (let round = 0; round < 24; round++) {
       const target = window.ChatGPTDomAdapter.findMessage(messageId) || findSearchResultFallback(excerpt);
       if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.scrollIntoView({ behavior: 'smooth', block });
         target.classList.add('chatgpt-pro-search-target');
         window.setTimeout(() => target.classList.remove('chatgpt-pro-search-target'), 2600);
         return true;

@@ -265,6 +265,18 @@ async function main() {
       `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
     'minimap switch immediately restores navigation');
     await cdp.eval(pageSession, `(() => {
+      const answer = document.querySelector('[data-message-id="answer"]');
+      answer.style.minHeight = '1500px';
+      document.querySelector('.chatgpt-pro-minimap-assistant').click();
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `Math.abs(document.querySelector('[data-message-id="answer"]').getBoundingClientRect().top) <= 3`),
+    'minimap navigation aligns the start of a long assistant reply with the viewport top');
+    await cdp.eval(pageSession, `(() => {
+      document.querySelector('[data-message-id="answer"]').style.minHeight = '';
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    })()`);
+    await cdp.eval(pageSession, `(() => {
       const main = document.querySelector('main');
       main.querySelectorAll('[data-message-id]').forEach(node => node.remove());
       const fragment = document.createDocumentFragment();
@@ -303,6 +315,15 @@ async function main() {
     assert.deepEqual(logicalCounts, {
       total: 12, users: 6, assistants: 6, assistantTitle: '2/12 · ChatGPT'
     }, 'minimap counts one assistant reply even when its DOM is split into multiple parts');
+    await cdp.eval(pageSession, `(() => {
+      document.querySelector('[data-message-id="logical-assistant-1-1"]').style.minHeight = '1500px';
+      document.querySelectorAll('.chatgpt-pro-minimap-marker')[1].click();
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `Math.abs(document.querySelector('[data-message-id="logical-assistant-1-1"]').getBoundingClientRect().top) <= 3`),
+    'grouped assistant navigation aligns to the first part of a long reply');
+    await cdp.eval(pageSession,
+      `document.querySelector('[data-message-id="logical-assistant-1-1"]').style.minHeight = '';`);
     await cdp.eval(pageSession,
       `document.querySelectorAll('.chatgpt-pro-minimap-marker')[1].dispatchEvent(new Event('pointerenter'))`);
     assert.equal(await cdp.eval(pageSession,
