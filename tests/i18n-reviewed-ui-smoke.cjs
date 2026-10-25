@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 341, 'reviewed interface, cache integrity, directory synchronization and ZIP export tasks include 341 strings');
+assert.equal(keys.length, 357, 'reviewed interface, cache integrity, dynamic task statuses and ZIP export tasks include 357 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -103,6 +103,10 @@ const samples = [
   ['pt-BR', 'ui.automaticIndexingNotEnabledForThisAccount',
     'A indexação automática de texto completo não está ativada para esta conta'],
   ['zh-TW', 'ui.fullTextSearchFailed', '全文搜尋失敗'],
+  ['ja', 'status.chatgptOperationFailedHTTP', 'ChatGPT の操作に失敗しました：HTTP {1}'],
+  ['es', 'status.completedChats', 'Completado · {1} conversaciones'],
+  ['fr', 'status.syncFailedLocalDataRetained',
+    'Échec de la synchronisation ; les données locales sont conservées : {1}'],
   ['es', 'ui.completeJSONNotStoredLocallyOnlyASearch',
     'El JSON original completo no está guardado localmente; solo hay fragmentos de búsqueda y no se puede mostrar la vista previa completa.'],
   ['fr', 'ui.unableToReadCompleteLocalContent', 'Impossible de lire le contenu local complet'],
@@ -111,6 +115,42 @@ const samples = [
   ['ja', 'ui.indexingIsRunningInAnotherTab', '別のタブでインデックス作成が実行中です。'],
   ['es', 'ui.indexPausedResumeItInTaskManager', 'La indexación está en pausa. Reanúdala desde el gestor de tareas.']
 ];
+
+// Dynamic directory/index/task statuses are matched against Chinese source
+// text at runtime. Verify their translated templates and capture placeholders.
+const dynamicIndexTaskStatuses = [
+  ['status.repeatedPaginationCursorForProject', '项目 Project-A 分页游标重复', { 1: 'Project-A' }],
+  ['status.emptyPageButMoreCursorResultsFor', '项目 Project-B 分页为空但仍有后续游标', { 1: 'Project-B' }],
+  ['status.chatgptOperationFailedHTTP', 'ChatGPT 操作失败：HTTP 429', { 1: '429' }],
+  ['status.unableToReadCompleteLocalContent', '无法读取本地完整内容：local file unavailable', { 1: 'local file unavailable' }],
+  ['status.failedToPrepareInitialIndex', '首次索引准备失败：network timeout', { 1: 'network timeout' }],
+  ['status.group', '3 / 10 · 第 1 / 2 组', { 1: '3', 2: '10', 3: '1', 4: '2' }],
+  ['status.chats', 'Label-X · 4 条', { 1: 'Label-X', 2: '4' }],
+  ['status.accountChatsUnassignedLegacyEntries', '当前账号 119 条 · 未归属旧索引 104 条', { 1: '119', 2: '104' }],
+  ['status.accountChats', '当前账号 119 条', { 1: '119' }],
+  ['status.requestSubmitted', 'Action-X操作已提交', { 1: 'Action-X' }],
+  ['status.taskUnavailable', '任务不可用：network unavailable', { 1: 'network unavailable' }],
+  ['status.removedEntriesFromThisAccountOtherData', '已从当前账号清除 3 条record；其他数据保持不变', { 1: '3', 2: 'record' }],
+  ['status.indexingRequestedKeepChatGPTOpenAndCheck', '已请求开始索引；请保持 ChatGPT 标签页打开，稍后刷新进度', {}],
+  ['status.completedChats', '完成 · 4 条聊天记录', { 1: '4' }],
+  ['status.backgroundSyncComplete', 'Label-X · 已完成后台增量同步', { 1: 'Label-X' }],
+  ['status.syncFailedLocalDataRetained', '同步失败，已保留本地数据：network timeout', { 1: 'network timeout' }]
+];
+for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(locale))) {
+  i18n.setLanguage(locale);
+  for (const [key, source, values] of dynamicIndexTaskStatuses) {
+    const template = packs[locale][key];
+    const slots = [...template.matchAll(/\{(\d+)\}/g)].map(match => Number(match[1]));
+    assert.deepEqual(slots.sort((a, b) => a - b),
+      Object.keys(values).map(Number).sort((a, b) => a - b),
+      `${locale}/${key}: dynamic status placeholders changed`);
+    const expected = template.replace(/\{(\d+)\}/g, (_, index) => values[index]);
+    const actual = key === 'status.indexingRequestedKeepChatGPTOpenAndCheck'
+      ? i18n.t(key) : i18n.translateText(source);
+    assert.equal(actual, expected,
+      `${locale}/${key}: dynamic task status does not use its reviewed translation`);
+  }
+}
 for (const [locale, key, expected] of samples) {
   i18n.setLanguage(locale);
   assert.equal(i18n.t(key), expected, `${locale}/${key} lost its reviewed UI translation`);
