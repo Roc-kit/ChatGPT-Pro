@@ -703,6 +703,10 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelector('[data-panel-view="directory"]').textContent.toLocaleLowerCase('es').includes('conversaciones')`),
     'Spanish conversation panel translated without remounting');
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-project-filter option[value="g-p-r8-project"]')?.textContent`),
+    'Proyecto · R8 独立项目',
+    'Spanish project filter translates its generated prefix without translating the project name');
     assert.equal(await cdp.eval(pageSession, `(() => {
       const titles = Array.from(document.querySelectorAll('.chatgpt-pro-row-title'));
       const local = titles.find(el => el.textContent.includes('Offline acceptance test'));
@@ -721,6 +725,10 @@ async function main() {
       `document.querySelector('.chatgpt-pro-panel')?.dir === 'rtl' &&
        document.querySelector('[data-panel-view="search"]').textContent.includes('البحث')`),
     'Arabic RTL panel and UI labels applied');
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-project-filter option[value="g-p-r8-project"]')?.textContent`),
+    'مشروع · R8 独立项目',
+    'Arabic project filter translates its generated prefix without translating the project name');
     assert.equal(await cdp.eval(pageSession, `document.documentElement.getAttribute('dir')`), null,
       'localization does not alter ChatGPT document direction');
     assert.equal(await cdp.eval(pageSession, `(() => {

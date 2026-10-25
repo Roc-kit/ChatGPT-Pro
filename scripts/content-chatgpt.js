@@ -1066,6 +1066,13 @@
     return type === 'gpt' ? 'GPT' : '未命名项目';
   }
 
+  function projectFilterOptionLabel(type, name, nameKey = '') {
+    const i18n = window.ChatGPTProI18n;
+    const displayName = nameKey ? i18n?.t(nameKey) || name : name;
+    const prefix = type === 'gpt' ? 'GPT' : i18n?.t('ui.project') || '项目';
+    return `${prefix} · ${displayName}`;
+  }
+
   function populateProjectFilter(select, records) {
     const selected = select.value || '__all__';
     const projects = new Map();
@@ -1077,6 +1084,7 @@
         projects.set(rec.projectId, {
           type,
           name,
+          nameKey: !rec.projectName && type !== 'gpt' ? 'ui.unnamedProject' : '',
           label: type === 'gpt' ? `GPT · ${name}` : `项目 · ${name}`
         });
       }
@@ -1098,7 +1106,10 @@
       .forEach(([id, source]) => {
         const option = document.createElement('option');
         option.value = id;
-        option.textContent = source.label;
+        option.dataset.projectType = source.type;
+        option.dataset.projectName = source.name;
+        if (source.nameKey) option.dataset.projectNameKey = source.nameKey;
+        option.textContent = projectFilterOptionLabel(source.type, source.name, source.nameKey);
         select.appendChild(option);
     });
     select.value = [...select.options].some(option => option.value === selected) ? selected : '__all__';
@@ -3281,6 +3292,10 @@
         window.ChatGPTProI18n?.setLanguage(changes.uiLanguage.newValue || 'auto');
         window.ChatGPTProI18n?.setDirection(S.timeline);
         window.ChatGPTProI18n?.apply(S.timeline);
+        S.timeline?.querySelectorAll('.chatgpt-pro-project-filter option[data-project-type]').forEach(option => {
+          option.textContent = projectFilterOptionLabel(
+            option.dataset.projectType, option.dataset.projectName, option.dataset.projectNameKey || '');
+        });
         window.ChatGPTProI18n?.apply(S.launcher);
         window.ChatGPTProI18n?.apply(document.querySelector('[data-chatgpt-pro-current-export]'));
         window.ChatGPTProI18n?.apply(document.querySelector('[data-chatgpt-pro-current-images]'));
