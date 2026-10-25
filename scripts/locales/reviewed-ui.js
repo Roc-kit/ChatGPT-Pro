@@ -24,7 +24,16 @@
     'ui.startingImageDownloads',
     'ui.noTasksForThisAccount',
     'ui.allProjects',
-    'ui.permanentlyRemoveThisLocalOnlyChatFromJSON'
+    'ui.permanentlyRemoveThisLocalOnlyChatFromJSON',
+    // Backend-only logs and obsolete maintenance paths; no current UI renders them.
+    'ui.initialIndexingPreparationInterrupted',
+    'ui.directorySyncFailedCheckSignInOrTry',
+    'ui.indexPausedAfterRepeatedFailures',
+    'ui.bulkRequestsEnteredSharedCooldown',
+    'ui.bulkTaskItemFailed',
+    'ui.taskStatusChanged',
+    'ui.cannotClearLegacyIndex',
+    'ui.cannotClearCurrentAccountIndex'
   ]);
   const blocks = [
     {

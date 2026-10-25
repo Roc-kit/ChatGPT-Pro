@@ -27,7 +27,15 @@ const inactiveLegacyKeys = [
   'ui.startingImageDownloads',
   'ui.noTasksForThisAccount',
   'ui.allProjects',
-  'ui.permanentlyRemoveThisLocalOnlyChatFromJSON'
+  'ui.permanentlyRemoveThisLocalOnlyChatFromJSON',
+  'ui.initialIndexingPreparationInterrupted',
+  'ui.directorySyncFailedCheckSignInOrTry',
+  'ui.indexPausedAfterRepeatedFailures',
+  'ui.bulkRequestsEnteredSharedCooldown',
+  'ui.bulkTaskItemFailed',
+  'ui.taskStatusChanged',
+  'ui.cannotClearLegacyIndex',
+  'ui.cannotClearCurrentAccountIndex'
 ];
 for (const key of inactiveLegacyKeys) {
   assert(!keys.includes(key), `${key} is not an active user-facing UI string`);
@@ -121,10 +129,6 @@ const samples = [
     'La primera indexación de texto completo requiere tu autorización expresa'],
   ['fr', 'ui.repeatedProjectCursorStoppedToPreventALoop',
     'Le curseur de pagination du projet se répète ; opération arrêtée pour éviter une boucle'],
-  ['pt-BR', 'ui.directorySyncFailedCheckSignInOrTry',
-    'Falha na sincronização do diretório; confira o login ou tente novamente após a pausa'],
-  ['id', 'ui.indexPausedAfterRepeatedFailures',
-    'Batas kegagalan berturut-turut tercapai; tugas pengindeksan dijeda'],
   ['zh-TW', 'ui.completeInitialIndexingFirst', '請先完成首次全文索引'],
   ['es', 'ui.bulkExportFailed', 'Error en la exportación por lotes'],
   ['fr', 'ui.cancelOrFinishTheTaskBeforeClearingSaved',

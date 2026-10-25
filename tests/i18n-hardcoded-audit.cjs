@@ -1,6 +1,7 @@
 /** Source audit: detect Chinese literals with a wildcard, not a runtime
  * wildcard replacement that would corrupt conversations and exported data.
- * Keep the English catalog complete for every static UI/error literal.
+ * Keep the English catalog complete for static UI literals, excluding known
+ * backend-only logs and obsolete maintenance errors that are not rendered.
  */
 'use strict';
 const assert = require('node:assert/strict');
@@ -17,6 +18,16 @@ const files = ['popup/popup.html', 'popup/popup.js', 'scripts/content-chatgpt.js
   'scripts/api-handler.js', 'scripts/background.js', 'scripts/local-data-store.js'];
 // Exported Markdown markers and deliberate demo fixture text aren't UI.
 const contentExceptions = new Set(['[图片]', '[音频]', 'NocoBase 官方 Demo 分析']);
+const nonUiExceptions = new Set([
+  '首次索引准备中断', // Fallback text stored only in the internal setup log.
+  '目录同步失败，请检查登录状态或冷却后重试', // Persisted in internal sync logs only.
+  '连续失败达到阈值，索引任务已暂停', // Task event log; the UI shows the task state instead.
+  '批量请求进入共享冷却', // Internal event log; cooldown status has separate UI copy.
+  '批量任务单条处理失败', // Internal task event log.
+  '任务状态已修改', // Internal task event log.
+  '无法清理旧索引', // Obsolete maintenance action has no current UI caller.
+  '无法清理当前账号索引' // Obsolete maintenance action has no current UI caller.
+]);
 const uncovered = [];
 let staticCount = 0;
 let dynamicCount = 0;
@@ -32,7 +43,7 @@ for (const file of files) {
       continue;
     }
     staticCount++;
-    if (contentExceptions.has(value)) continue;
+    if (contentExceptions.has(value) || nonUiExceptions.has(value)) continue;
     const translated = i18n.translateText(value);
     if (/[\u3400-\u9fff]/u.test(translated)) uncovered.push(`${file}:${line}: ${value}`);
   }
