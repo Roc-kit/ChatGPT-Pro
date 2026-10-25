@@ -3000,7 +3000,6 @@
           <span class="chatgpt-pro-panel-status">正在读取本地目录…</span>
         </div>
         <div class="chatgpt-pro-panel-actions">
-          <button type="button" class="chatgpt-pro-saved-volumes" title="重新下载最近一次已持久化的批量 ZIP 分卷">已保存分卷</button>
           <div class="chatgpt-pro-batch-actions" hidden>
             <span class="chatgpt-pro-batch-count">已选 0</span>
             <label title="导出前增量检查聊天目录；仅更新有变化的完整缓存" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:11px">
@@ -3093,8 +3092,6 @@
     const selectAll = panel.querySelector('.chatgpt-pro-select-all input');
     const batchActions = panel.querySelector('.chatgpt-pro-batch-actions');
     const panelActions = panel.querySelector('.chatgpt-pro-panel-actions');
-    const savedVolumesButton = panel.querySelector('.chatgpt-pro-saved-volumes');
-    let hasSavedVolumes = false;
     const exportCheckLatest = panel.querySelector('.chatgpt-pro-export-check-latest');
     const batchCount = panel.querySelector('.chatgpt-pro-batch-count');
     const batchButtons = Array.from(panel.querySelectorAll('[data-batch-format]'));
@@ -3147,19 +3144,7 @@
       selectAll.indeterminate = selectedVisible > 0 && selectedVisible < visible.length;
       panelActions.hidden = activeView !== 'directory';
       batchActions.hidden = activeView !== 'directory' || selectedIds.size === 0;
-      savedVolumesButton.hidden = !hasSavedVolumes || !batchActions.hidden || activeView !== 'directory';
       batchCount.textContent = `已选 ${selectedIds.size}`;
-    };
-
-    const refreshSavedVolumesAvailability = async () => {
-      try {
-        const accountId = await window.APIHandler.getAccountId();
-        const reply = await runtimeMessage({ action: 'taskList', accountId });
-        hasSavedVolumes = (reply.result || []).some(task => task.type?.startsWith('export-') && task.volumeCount > 0);
-      } catch {
-        hasSavedVolumes = false;
-      }
-      updateSelectionUi();
     };
 
     const selection = { ids: selectedIds, onChange: updateSelectionUi };
@@ -3208,7 +3193,6 @@
       if (activeView === 'search') {
         panelActions.hidden = true;
         batchActions.hidden = true;
-        savedVolumesButton.hidden = true;
         status.textContent = '';
         refreshSearchIndexStatus();
         window.setTimeout(() => fullTextInput.focus(), 0);
@@ -3416,7 +3400,6 @@
           else status.textContent = `已持久化 ${result.volumeCount} 卷 · 成功 ${result.successCount} 个、失败 ${result.failureCount} 个（浏览器下载需单独确认）`;
           selectedIds.clear();
           renderCurrent();
-          await refreshSavedVolumesAvailability();
         } catch (error) {
           status.textContent = `批量导出失败：${error.message}`;
         } finally {
@@ -3501,27 +3484,7 @@
         }
       });
     }
-    savedVolumesButton.addEventListener('click', async () => {
-      savedVolumesButton.disabled = true;
-      try {
-        const accountId = await window.APIHandler.getAccountId();
-        const reply = await runtimeMessage({ action: 'taskList', accountId });
-        const saved = (reply.result || []).find(task => task.type.startsWith('export-') && task.volumeCount > 0);
-        if (!saved) {
-          status.textContent = '当前账号没有已持久化的 ZIP 分卷';
-          return;
-        }
-        for (let volume = 1; volume <= saved.volumeCount; volume++) {
-          await downloadTaskZipVolume(accountId, saved.id, volume);
-          status.textContent = `已发起下载 ${volume} / ${saved.volumeCount} 卷（最近一次导出任务）`;
-        }
-      } catch (error) {
-        status.textContent = `下载已保存分卷失败：${error.message}`;
-      } finally { savedVolumesButton.disabled = false; }
-    });
-
     requestAnimationFrame(positionTimelinePanel);
-    void refreshSavedVolumesAvailability();
 
     try {
       const cached = await window.APIHandler.getCachedConversationList();
