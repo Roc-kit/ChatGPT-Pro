@@ -1,0 +1,5 @@
+{
+  "extensionName": { "message": "ChatGPT Pro: cronología, búsqueda y exportación" },
+  "extensionDescription": { "message": "Añade una cronología de chats, búsqueda de texto completo, marcas de tiempo y exportación masiva a Markdown/JSON en ChatGPT." },
+  "extensionActionTitle": { "message": "Herramientas de ChatGPT Pro" }
+}

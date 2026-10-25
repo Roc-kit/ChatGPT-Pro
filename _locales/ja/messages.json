@@ -1,0 +1,5 @@
+{
+  "extensionName": { "message": "ChatGPT Pro：タイムライン・検索・一括エクスポート" },
+  "extensionDescription": { "message": "ChatGPT に会話タイムライン、全文検索、サイドバーとメッセージの時刻表示、Markdown/JSON の一括エクスポートを追加します。" },
+  "extensionActionTitle": { "message": "ChatGPT Pro ツール" }
+}

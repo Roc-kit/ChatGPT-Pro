@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "ChatGPT Pro: The Ultimate AI Toolbox for ChatGPT",
+  "name": "__MSG_extensionName__",
   "version": "3.0.0",
-  "description": "ChatGPT Pro 工具箱：支持聊天时间线、消息时间戳、来源筛选、搜索和 Markdown/JSON 批量导出。",
+  "description": "__MSG_extensionDescription__",
+  "default_locale": "en",
 
   "permissions": ["storage", "unlimitedStorage"],
 
@@ -46,7 +47,7 @@
   ],
 
   "action": {
-    "default_title": "ChatGPT Pro",
+    "default_title": "__MSG_extensionActionTitle__",
     "default_popup": "popup/popup.html",
     "default_icon": {
       "16":  "icons/icon16.png",

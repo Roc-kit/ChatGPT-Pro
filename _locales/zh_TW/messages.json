@@ -1,0 +1,5 @@
+{
+  "extensionName": { "message": "ChatGPT Pro：時間軸、搜尋、時間戳記與批次匯出" },
+  "extensionDescription": { "message": "為 ChatGPT 加入對話時間軸、全文搜尋、側邊欄與訊息時間戳記，以及 Markdown/JSON 批次匯出。" },
+  "extensionActionTitle": { "message": "ChatGPT Pro 工具" }
+}

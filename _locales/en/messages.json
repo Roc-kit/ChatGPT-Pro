@@ -1,0 +1,5 @@
+{
+  "extensionName": { "message": "ChatGPT Pro: Timeline, Search, Timestamps & Bulk Export" },
+  "extensionDescription": { "message": "Add chat timelines, full-text search, sidebar and message timestamps, and bulk Markdown/JSON export to ChatGPT." },
+  "extensionActionTitle": { "message": "ChatGPT Pro tools" }
+}

@@ -1,0 +1,5 @@
+{
+  "extensionName": { "message": "ChatGPT Pro: linha do tempo, busca e exportação" },
+  "extensionDescription": { "message": "Adicione linha do tempo dos chats, busca completa, horários na barra lateral e nas mensagens e exportação em lote Markdown/JSON." },
+  "extensionActionTitle": { "message": "Ferramentas do ChatGPT Pro" }
+}

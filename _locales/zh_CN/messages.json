@@ -1,0 +1,5 @@
+{
+  "extensionName": { "message": "ChatGPT Pro：时间线、搜索、时间戳与批量导出" },
+  "extensionDescription": { "message": "为 ChatGPT 增加聊天时间线、全文搜索、侧边栏与消息时间戳，以及 Markdown/JSON 批量导出。" },
+  "extensionActionTitle": { "message": "ChatGPT Pro 工具" }
+}
