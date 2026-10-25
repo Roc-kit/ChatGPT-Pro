@@ -2992,22 +2992,26 @@
     panel.setAttribute('aria-label', '聊天目录');
     panel.innerHTML = `
       <div class="chatgpt-pro-panel-header">
-        <div class="chatgpt-pro-panel-tabs" role="tablist" aria-label="聊天工具">
-          <button type="button" class="chatgpt-pro-panel-tab chatgpt-pro-panel-tab-active" role="tab" aria-selected="true" data-panel-view="directory">聊天目录</button>
-          <button type="button" class="chatgpt-pro-panel-tab" role="tab" aria-selected="false" data-panel-view="search">全文搜索</button>
+        <div class="chatgpt-pro-panel-topline">
+          <div class="chatgpt-pro-panel-tabs" role="tablist" aria-label="聊天工具">
+            <button type="button" class="chatgpt-pro-panel-tab chatgpt-pro-panel-tab-active" role="tab" aria-selected="true" data-panel-view="directory">聊天目录</button>
+            <button type="button" class="chatgpt-pro-panel-tab" role="tab" aria-selected="false" data-panel-view="search">全文搜索</button>
+          </div>
+          <span class="chatgpt-pro-panel-status">正在读取本地目录…</span>
         </div>
-        <span class="chatgpt-pro-panel-status">正在读取本地目录…</span>
-        <button type="button" class="chatgpt-pro-saved-volumes" style="flex:0 0 auto;height:26px;padding:0 6px;border:1px solid #cbd5e1;border-radius:6px;background:transparent;color:inherit;font-size:10px;cursor:pointer;white-space:nowrap" title="重新下载最近一次已持久化的批量 ZIP 分卷">已保存分卷</button>
-        <div class="chatgpt-pro-batch-actions" hidden>
-          <span class="chatgpt-pro-batch-count">已选 0</span>
-          <label title="导出前增量检查聊天目录；仅更新有变化的完整缓存" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:11px">
-            <input class="chatgpt-pro-export-check-latest" type="checkbox" style="width:auto;margin:0">
-            检查更新
-          </label>
-          <button type="button" data-batch-format="md">导出 MD</button>
-          <button type="button" data-batch-format="json">导出 JSON</button>
-          <button type="button" data-batch-action="archive">归档</button>
-          <button type="button" data-batch-action="delete">删除</button>
+        <div class="chatgpt-pro-panel-actions">
+          <button type="button" class="chatgpt-pro-saved-volumes" title="重新下载最近一次已持久化的批量 ZIP 分卷">已保存分卷</button>
+          <div class="chatgpt-pro-batch-actions" hidden>
+            <span class="chatgpt-pro-batch-count">已选 0</span>
+            <label title="导出前增量检查聊天目录；仅更新有变化的完整缓存" style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:11px">
+              <input class="chatgpt-pro-export-check-latest" type="checkbox" style="width:auto;margin:0">
+              检查更新
+            </label>
+            <button type="button" data-batch-format="md">导出 MD</button>
+            <button type="button" data-batch-format="json">导出 JSON</button>
+            <button type="button" data-batch-action="archive">归档</button>
+            <button type="button" data-batch-action="delete">删除</button>
+          </div>
         </div>
       </div>
       <div class="chatgpt-pro-panel-list" data-panel-content="directory">
@@ -3043,7 +3047,7 @@
           <input class="chatgpt-pro-fulltext-input" type="search" autocomplete="off" placeholder="搜索所有聊天内容" aria-label="全文搜索关键词">
           <button type="submit">搜索</button>
         </form>
-        <label class="chatgpt-pro-legacy-search-option" style="display:block;font-size:12px;margin:8px 0">
+        <label class="chatgpt-pro-legacy-search-option">
           <input type="checkbox" class="chatgpt-pro-legacy-search-toggle">
           另查未归属的旧版全文索引（不归入当前账号）
         </label>
@@ -3088,6 +3092,7 @@
     const projectFilter = panel.querySelector('.chatgpt-pro-project-filter');
     const selectAll = panel.querySelector('.chatgpt-pro-select-all input');
     const batchActions = panel.querySelector('.chatgpt-pro-batch-actions');
+    const panelActions = panel.querySelector('.chatgpt-pro-panel-actions');
     const savedVolumesButton = panel.querySelector('.chatgpt-pro-saved-volumes');
     const exportCheckLatest = panel.querySelector('.chatgpt-pro-export-check-latest');
     const batchCount = panel.querySelector('.chatgpt-pro-batch-count');
@@ -3100,6 +3105,14 @@
     let searchRequestId = 0;
     let searchCacheRevision = '';
     const searchCache = new Map();
+    const initialSearchTitle = document.createElement('strong');
+    initialSearchTitle.textContent = window.ChatGPTProI18n?.t('ui.searchAllConversations') || '搜索所有聊天内容';
+    const initialSearchHint = document.createElement('span');
+    initialSearchHint.textContent = window.ChatGPTProI18n?.t('ui.enterKeywordsToSearchTheLocalIndex') || '输入关键词以搜索已有的本地索引';
+    const initialSearchState = document.createElement('div');
+    initialSearchState.className = 'chatgpt-pro-search-initial';
+    initialSearchState.append(initialSearchTitle, initialSearchHint);
+    searchResults.appendChild(initialSearchState);
     const clearRecentSearches = () => {
       searchCacheRevision = '';
       searchCache.clear();
@@ -3131,6 +3144,7 @@
       selectAll.disabled = visible.length === 0;
       selectAll.checked = visible.length > 0 && selectedVisible === visible.length;
       selectAll.indeterminate = selectedVisible > 0 && selectedVisible < visible.length;
+      panelActions.hidden = activeView !== 'directory';
       batchActions.hidden = activeView !== 'directory' || selectedIds.size === 0;
       savedVolumesButton.hidden = !batchActions.hidden || activeView !== 'directory';
       batchCount.textContent = `已选 ${selectedIds.size}`;
@@ -3180,9 +3194,10 @@
         tab.setAttribute('aria-selected', String(active));
       });
       if (activeView === 'search') {
+        panelActions.hidden = true;
         batchActions.hidden = true;
         savedVolumesButton.hidden = true;
-        status.textContent = '本地全文搜索';
+        status.textContent = '';
         refreshSearchIndexStatus();
         window.setTimeout(() => fullTextInput.focus(), 0);
       } else {
@@ -3196,8 +3211,8 @@
       const requestId = ++searchRequestId;
       const query = fullTextInput.value.trim();
       if (!query) {
-        searchResults.replaceChildren();
-        status.textContent = '输入关键词以搜索已有的本地索引';
+        searchResults.replaceChildren(initialSearchState);
+        status.textContent = '';
         return;
       }
       status.textContent = '正在搜索本地索引…';
