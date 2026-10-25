@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 218, 'reviewed interface, popup controls, local-only search results, preview actions, export safety and retry diagnostics include 218 strings');
+assert.equal(keys.length, 235, 'reviewed interface, directory navigation, popup controls, local-only search results and export safety include 235 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -55,6 +55,11 @@ const samples = [
   ['fr', 'ui.hideLocalPreview', 'Masquer l’aperçu local'],
   ['ja', 'ui.deleteLocalCopy', 'ローカルコピーを削除'],
   ['hi', 'ui.noMatchingResults', 'कोई परिणाम नहीं मिला'],
+  ['ja', 'ui.conversationMinimap_0e4e39b', '長いチャットをすばやく移動（Minimap）'],
+  ['es', 'ui.collapseConversationsDragToMove', 'Contraer lista de chats (arrastrable)'],
+  ['fr', 'ui.titleMatch', 'Correspondance dans le titre'],
+  ['ar', 'ui.unnamedProject', 'مشروع بلا اسم'],
+  ['id', 'ui.locallyStored', 'Sudah tersimpan secara lokal'],
   ['es', 'ui.completeJSONNotStoredLocallyOnlyASearch',
     'El JSON original completo no está guardado localmente; solo hay fragmentos de búsqueda y no se puede mostrar la vista previa completa.'],
   ['fr', 'ui.unableToReadCompleteLocalContent', 'Impossible de lire le contenu local complet'],
@@ -193,4 +198,4 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
       `${locale}/${key}: appended cooldown fragment did not use the reviewed translation`);
   }
 }
-console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including popup controls, local-only search states, preview actions, export safety and retry/cooldown`);
+console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including directory navigation, popup controls, search, export safety and retry/cooldown`);
