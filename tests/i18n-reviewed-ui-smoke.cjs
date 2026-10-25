@@ -28,6 +28,7 @@ const inactiveLegacyKeys = [
   'ui.noTasksForThisAccount',
   'ui.allProjects',
   'ui.permanentlyRemoveThisLocalOnlyChatFromJSON',
+  'ui.unverified',
   'ui.initialIndexingPreparationInterrupted',
   'ui.directorySyncFailedCheckSignInOrTry',
   'ui.indexPausedAfterRepeatedFailures',
@@ -54,8 +55,10 @@ const runtimeFiles = [
   'scripts/local-data-store.js'
 ];
 const runtimeKeyReferences = new Set();
+const runtimeSources = Object.create(null);
 for (const file of runtimeFiles) {
   const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  runtimeSources[file] = source;
   for (const key of Object.keys(sources)) {
     if (source.includes(key)) runtimeKeyReferences.add(key);
   }
@@ -65,6 +68,13 @@ for (const variants of environment.ChatGPTProDynamicMessageKeys) {
 }
 for (const key of runtimeKeyReferences) {
   assert(keys.includes(key), `runtime-referenced key is not reviewed: ${key}`);
+}
+const dynamicMapSource = fs.readFileSync(path.join(__dirname, '../scripts/locales/dynamic-map.js'), 'utf8');
+for (const [key, sourceValue] of Object.entries(sources)) {
+  const sourceLiteralReferenced = Object.entries(runtimeSources).some(([file, source]) =>
+    file !== 'scripts/i18n.js' && source.includes(sourceValue));
+  assert(runtimeKeyReferences.has(key) || sourceLiteralReferenced || dynamicMapSource.includes(key),
+    `locale key has no runtime reference; audit before keeping it: ${key}`);
 }
 const popupSource = fs.readFileSync(path.join(__dirname, '../popup/popup.js'), 'utf8');
 assert.match(popupSource, /title:\s*i18n\.t\('ui\.filenamePreviewSampleTitle'\)/,

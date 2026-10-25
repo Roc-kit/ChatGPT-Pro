@@ -172,7 +172,6 @@ window.ChatGPTProLocalePacks["fr"] = {
   "ui.unknownTime": "Heure inconnue",
   "ui.unnamedProject": "Projet sans nom",
   "ui.project": "Projet",
-  "ui.unverified": "Non vérifié ·",
   "ui.localOnly_efb7560": "Local seulement ·",
   "ui.unverifiedStatus": "Non vérifié",
   "ui.localOnlyStatus": "Local uniquement",

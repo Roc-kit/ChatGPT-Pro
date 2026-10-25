@@ -172,7 +172,6 @@ window.ChatGPTProLocalePacks["zh-TW"] = {
   "ui.unknownTime": "未知的時間",
   "ui.unnamedProject": "未命名的專案",
   "ui.project": "專案",
-  "ui.unverified": "有被證實的...?",
   "ui.localOnly_efb7560": "就地取出 -- --",
   "ui.unverifiedStatus": "待核實",
   "ui.localOnlyStatus": "僅本機",

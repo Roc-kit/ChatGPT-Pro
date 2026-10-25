@@ -172,7 +172,6 @@ window.ChatGPTProLocalePacks["ar"] = {
   "ui.unknownTime": "وقت غير معروف",
   "ui.unnamedProject": "مشروع غير مسما",
   "ui.project": "المشروع",
-  "ui.unverified": "غير مصدق عليه؛",
   "ui.localOnly_efb7560": "محلي فقط",
   "ui.unverifiedStatus": "غير متحقق منه",
   "ui.localOnlyStatus": "محلي فقط",

@@ -172,7 +172,6 @@ window.ChatGPTProLocalePacks["ja"] = {
   "ui.unknownTime": "未知の時間",
   "ui.unnamedProject": "未名称プロジェクト",
   "ui.project": "プロジェクト",
-  "ui.unverified": "ユニファイド・",
   "ui.localOnly_efb7560": "ローカルのみ・",
   "ui.unverifiedStatus": "未確認",
   "ui.localOnlyStatus": "ローカルのみ",

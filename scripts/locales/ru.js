@@ -172,7 +172,6 @@ window.ChatGPTProLocalePacks["ru"] = {
   "ui.unknownTime": "Неизвестное время",
   "ui.unnamedProject": "Безымянный проект",
   "ui.project": "Проект",
-  "ui.unverified": "Непроверенный;",
   "ui.localOnly_efb7560": "Локальный только",
   "ui.unverifiedStatus": "Не проверено",
   "ui.localOnlyStatus": "Только локально",

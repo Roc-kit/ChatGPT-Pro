@@ -25,6 +25,7 @@
     'ui.noTasksForThisAccount',
     'ui.allProjects',
     'ui.permanentlyRemoveThisLocalOnlyChatFromJSON',
+    'ui.unverified',
     // Backend-only logs and obsolete maintenance paths; no current UI renders them.
     'ui.initialIndexingPreparationInterrupted',
     'ui.directorySyncFailedCheckSignInOrTry',

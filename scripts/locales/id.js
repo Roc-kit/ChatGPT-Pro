@@ -172,7 +172,6 @@ window.ChatGPTProLocalePacks["id"] = {
   "ui.unknownTime": "Waktu tak dikenal",
   "ui.unnamedProject": "Proyek tidak bernama",
   "ui.project": "Projek",
-  "ui.unverified": "Belum diverifikasi",
   "ui.localOnly_efb7560": "Hanya lokal",
   "ui.unverifiedStatus": "Belum diverifikasi",
   "ui.localOnlyStatus": "Hanya lokal",

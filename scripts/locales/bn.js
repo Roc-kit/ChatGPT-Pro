@@ -172,7 +172,6 @@ window.ChatGPTProLocalePacks["bn"] = {
   "ui.unknownTime": "অজানা সময়",
   "ui.unnamedProject": "নামবিহীন প্রজেক্ট",
   "ui.project": "প্রজেক্ট",
-  "ui.unverified": "অপরিক্ষীত",
   "ui.localOnly_efb7560": "শুধুমাত্র স্থানীয়",
   "ui.unverifiedStatus": "যাচাই করা হয়নি",
   "ui.localOnlyStatus": "শুধু স্থানীয়",
