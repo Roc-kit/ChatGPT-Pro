@@ -294,10 +294,18 @@ async function main() {
     'minimap has no redundant in-page collapse control');
     const beforeDrag = await cdp.eval(pageSession, `(() => {
       const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      const dockRect = dock.getBoundingClientRect();
       const panel = dock.querySelector('.chatgpt-pro-minimap');
       const actions = dock.querySelector('[data-chatgpt-pro-tool-actions]');
+      const exportButton = actions.querySelector('[data-chatgpt-pro-current-export]');
+      const imageButton = actions.querySelector('[data-chatgpt-pro-current-images]');
       const first = panel.querySelector('.chatgpt-pro-minimap-first');
       return { actionTop: actions.getBoundingClientRect().top,
+        dockTop: dockRect.top, dockBottom: dockRect.bottom,
+        dockCenter: (dockRect.top + dockRect.bottom) / 2,
+        dockRadius: parseFloat(getComputedStyle(dock).borderTopLeftRadius),
+        exportCursor: getComputedStyle(exportButton).cursor,
+        imageCursor: getComputedStyle(imageButton).cursor,
         panelHeight: panel.getBoundingClientRect().height,
         dockHeight: dock.getBoundingClientRect().height,
         firstHitHeight: first.getBoundingClientRect().height,
@@ -307,6 +315,11 @@ async function main() {
     })()`);
     assert(beforeDrag.firstHitHeight >= 9 && beforeDrag.firstMarkHeight >= 9,
       'first and last minimap messages have enlarged visible marks and click targets');
+    assert(Math.abs(beforeDrag.dockCenter - minimapSize.viewport / 2) <= 2,
+      'outer toolbar is vertically centered in the viewport');
+    assert(beforeDrag.dockRadius >= 20, 'outer toolbar uses a pill-like rounded rectangle');
+    assert.equal(beforeDrag.exportCursor, 'pointer', 'export icons use the pointer cursor when hovered');
+    assert.equal(beforeDrag.imageCursor, 'pointer', 'image export uses the pointer cursor when hovered');
     assert.equal(beforeDrag.actionsCount, 2, 'both export actions share the same movable toolbar group');
     assert.equal(beforeDrag.imageAfterChat, true, 'image export follows conversation export at the bottom');
     const dragPoint = await cdp.eval(pageSession, `(() => {
@@ -328,18 +341,25 @@ async function main() {
     'export actions can be moved upward to avoid covering page content');
     const afterDrag = await cdp.eval(pageSession, `(() => {
       const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      const rect = dock.getBoundingClientRect();
       return { actionTop: dock.querySelector('[data-chatgpt-pro-tool-actions]').getBoundingClientRect().top,
+        dockTop: rect.top, dockBottom: rect.bottom, dockCenter: (rect.top + rect.bottom) / 2,
         panelHeight: dock.querySelector('.chatgpt-pro-minimap').getBoundingClientRect().height,
         dockHeight: dock.getBoundingClientRect().height };
     })()`);
     assert(afterDrag.panelHeight < beforeDrag.panelHeight - 100 &&
       afterDrag.dockHeight < beforeDrag.dockHeight - 100,
     `moving export actions upward automatically shortens minimap and dock: before=${JSON.stringify(beforeDrag)}, after=${JSON.stringify(afterDrag)}`);
+    assert(Math.abs(afterDrag.dockCenter - minimapSize.viewport / 2) <= 2,
+      'outer toolbar stays vertically centered as its height shrinks');
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: 640, height: 600, deviceScaleFactor: 1, mobile: false
     }, pageSession);
     await eventually(async () => cdp.eval(pageSession,
-      'innerWidth === 640 && innerHeight === 600'), 'narrow viewport applied');
+      `innerWidth === 640 && innerHeight === 600 && (() => {
+        const rect = document.querySelector('[data-chatgpt-pro-tool-dock]').getBoundingClientRect();
+        return Math.abs((rect.top + rect.bottom) / 2 - innerHeight / 2) <= 2;
+      })()`), 'narrow viewport applied and toolbar recentered');
     const narrowLayout = await cdp.eval(pageSession, `(() => {
       const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
       const panel = dock.querySelector('.chatgpt-pro-minimap').getBoundingClientRect();
@@ -347,12 +367,13 @@ async function main() {
       const outer = dock.getBoundingClientRect();
       return { width: innerWidth, height: innerHeight, left: outer.left, right: outer.right,
         dockHeight: outer.height, panelBottom: panel.bottom, actionsTop: actions.top,
-        actionsBottom: actions.bottom };
+        actionsBottom: actions.bottom, dockCenter: (outer.top + outer.bottom) / 2 };
     })()`);
     assert(narrowLayout.left >= 0 && narrowLayout.right <= narrowLayout.width &&
       narrowLayout.actionsBottom <= narrowLayout.height &&
       narrowLayout.panelBottom <= narrowLayout.actionsTop + 1 &&
-      narrowLayout.dockHeight < narrowLayout.height,
+      narrowLayout.dockHeight < narrowLayout.height &&
+      Math.abs(narrowLayout.dockCenter - narrowLayout.height / 2) <= 2,
     `narrow viewport keeps the movable dock inside the viewport without overlap: ${JSON.stringify(narrowLayout)}`);
     await cdp.send('Emulation.clearDeviceMetricsOverride', {}, pageSession);
     await eventually(async () => cdp.eval(pageSession,

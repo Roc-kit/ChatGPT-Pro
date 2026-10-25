@@ -8,7 +8,6 @@
   const BACKGROUND_SYNC_MS = 5 * 60 * 1000;
   const PANEL_OVERLAP = 8;
   const VIEWPORT_MARGIN = 10;
-  const TOOL_DOCK_TOP = 8;
   const PANEL_MIN_WIDTH = 390;
   const PANEL_MIN_HEIGHT = 280;
   const PANEL_COMPACT_WIDTH = 500;
@@ -831,18 +830,30 @@
   }
 
   function toolActionPositionBounds(actions) {
-    const minTop = Math.min(TOOL_DOCK_TOP + 44, Math.max(VIEWPORT_MARGIN, window.innerHeight - actions.offsetHeight - VIEWPORT_MARGIN));
-    const maxTop = Math.max(minTop, window.innerHeight - actions.offsetHeight - VIEWPORT_MARGIN);
+    const maxTop = Math.max(VIEWPORT_MARGIN, window.innerHeight - actions.offsetHeight - VIEWPORT_MARGIN);
+    // Keep the dock's bottom at or below the viewport midpoint so its frame
+    // can shrink around the content while remaining vertically centered.
+    const minTop = Math.min(maxTop, Math.max(VIEWPORT_MARGIN,
+      Math.ceil((window.innerHeight - actions.offsetHeight - 4) / 2)));
     return { minTop, maxTop };
   }
 
-  function updateMinimapDockLayout() {
+  function updateMinimapDockLayout(requestedActionTop = null) {
     const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
     const actions = dock?.querySelector('[data-chatgpt-pro-tool-actions]');
     const panel = dock?.querySelector('[data-chatgpt-pro-minimap]');
     if (!dock || !actions) return;
-    const panelHeight = Math.max(0, actions.offsetTop - 6);
-    dock.style.setProperty('height', `${Math.max(0, actions.offsetTop + actions.offsetHeight + 4)}px`, 'important');
+    const { minTop, maxTop } = toolActionPositionBounds(actions);
+    const currentTop = Number.isFinite(requestedActionTop)
+      ? requestedActionTop
+      : actions.getBoundingClientRect().top;
+    const actionTop = Math.max(minTop, Math.min(maxTop, currentTop));
+    const dockTop = window.innerHeight - actionTop - actions.offsetHeight - 4;
+    const actionsOffsetTop = actionTop - dockTop;
+    dock.style.setProperty('top', `${dockTop}px`, 'important');
+    dock.style.setProperty('height', `${Math.max(0, actionsOffsetTop + actions.offsetHeight + 4)}px`, 'important');
+    actions.style.setProperty('top', `${actionsOffsetTop}px`, 'important');
+    const panelHeight = Math.max(0, actionsOffsetTop - 6);
     if (panel) panel.style.setProperty('height', `${panelHeight}px`, 'important');
   }
 
@@ -853,8 +864,7 @@
     const { minTop, maxTop } = toolActionPositionBounds(actions);
     const y = Math.max(0, Math.min(1, Number(S.settings.currentExportPositionY) || 0));
     const top = Math.round(minTop + (maxTop - minTop) * y);
-    actions.style.setProperty('top', `${top - TOOL_DOCK_TOP}px`, 'important');
-    updateMinimapDockLayout();
+    updateMinimapDockLayout(top);
   }
 
   function saveCurrentChatExportPosition(top, actions) {
@@ -888,8 +898,7 @@
       if (Math.abs(dy) > 5) S.currentExportMoved = true;
       const { minTop, maxTop } = toolActionPositionBounds(actions);
       const top = Math.max(minTop, Math.min(maxTop, startTop + dy));
-      actions.style.setProperty('top', `${top - TOOL_DOCK_TOP}px`, 'important');
-      updateMinimapDockLayout();
+      updateMinimapDockLayout(top);
       const slots = minimapSlotCount();
       if (S.minimap.layoutSlots !== slots) syncConversationMinimap();
     });
