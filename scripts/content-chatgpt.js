@@ -3094,6 +3094,7 @@
     const batchActions = panel.querySelector('.chatgpt-pro-batch-actions');
     const panelActions = panel.querySelector('.chatgpt-pro-panel-actions');
     const savedVolumesButton = panel.querySelector('.chatgpt-pro-saved-volumes');
+    let hasSavedVolumes = false;
     const exportCheckLatest = panel.querySelector('.chatgpt-pro-export-check-latest');
     const batchCount = panel.querySelector('.chatgpt-pro-batch-count');
     const batchButtons = Array.from(panel.querySelectorAll('[data-batch-format]'));
@@ -3146,8 +3147,19 @@
       selectAll.indeterminate = selectedVisible > 0 && selectedVisible < visible.length;
       panelActions.hidden = activeView !== 'directory';
       batchActions.hidden = activeView !== 'directory' || selectedIds.size === 0;
-      savedVolumesButton.hidden = !batchActions.hidden || activeView !== 'directory';
+      savedVolumesButton.hidden = !hasSavedVolumes || !batchActions.hidden || activeView !== 'directory';
       batchCount.textContent = `已选 ${selectedIds.size}`;
+    };
+
+    const refreshSavedVolumesAvailability = async () => {
+      try {
+        const accountId = await window.APIHandler.getAccountId();
+        const reply = await runtimeMessage({ action: 'taskList', accountId });
+        hasSavedVolumes = (reply.result || []).some(task => task.type?.startsWith('export-') && task.volumeCount > 0);
+      } catch {
+        hasSavedVolumes = false;
+      }
+      updateSelectionUi();
     };
 
     const selection = { ids: selectedIds, onChange: updateSelectionUi };
@@ -3404,6 +3416,7 @@
           else status.textContent = `已持久化 ${result.volumeCount} 卷 · 成功 ${result.successCount} 个、失败 ${result.failureCount} 个（浏览器下载需单独确认）`;
           selectedIds.clear();
           renderCurrent();
+          await refreshSavedVolumesAvailability();
         } catch (error) {
           status.textContent = `批量导出失败：${error.message}`;
         } finally {
@@ -3508,6 +3521,7 @@
     });
 
     requestAnimationFrame(positionTimelinePanel);
+    void refreshSavedVolumesAvailability();
 
     try {
       const cached = await window.APIHandler.getCachedConversationList();
