@@ -309,6 +309,8 @@ async function main() {
       const main = document.querySelector('main');
       const question = document.querySelector('[data-message-id="question"]');
       const next = question.nextSibling;
+      question.removeAttribute('data-message-id');
+      question.setAttribute('data-chatgpt-search-message-ids', 'question');
       const firstMarker = document.querySelector('.chatgpt-pro-minimap-marker');
       document.querySelector('[data-message-id="answer"]').style.minHeight = '1500px';
       window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
@@ -319,11 +321,14 @@ async function main() {
       }, 5000);
     })()`);
     await eventually(async () => cdp.eval(pageSession,
-      `(() => { const target = document.querySelector('[data-message-id="question"]');
+      `(() => { const target = document.querySelector('[data-chatgpt-search-message-ids="question"]');
         const anchor = target?.closest('[data-chatgpt-search-unit-key], [data-content-search-unit-key], [data-turn-key], section[data-turn-id]') || target;
         return Boolean(anchor && Math.abs(anchor.getBoundingClientRect().top) <= 8); })()`),
-    'clicking an unloaded first message keeps retrying through a 5-second delay and aligns it automatically', 15000);
+    'clicking an unloaded first message stops retrying as soon as its modern search-ID target loads', 15000);
     await cdp.eval(pageSession, `(() => {
+      const question = document.querySelector('[data-chatgpt-search-message-ids="question"]');
+      question.removeAttribute('data-chatgpt-search-message-ids');
+      question.setAttribute('data-message-id', 'question');
       document.querySelector('[data-message-id="answer"]').style.minHeight = '';
       window.scrollTo({ top: 0, behavior: 'auto' });
     })()`);

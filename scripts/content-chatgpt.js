@@ -441,15 +441,10 @@
       && conversationId === currentConversationId();
     const expectedId = entry.startId || entry.id;
     const resolveTarget = () => {
-      const targetMatchesId = target => target?.isConnected && (!expectedId || [
-        target, ...target.querySelectorAll(
-          '[data-chatgpt-selection-message-id], [data-message-id], [data-turn-id]'
-        )
-      ].some(element => [
-        element.getAttribute('data-chatgpt-selection-message-id'),
-        element.getAttribute('data-message-id'),
-        element.getAttribute('data-turn-id')
-      ].includes(expectedId)));
+      // Reuse the DOM adapter's complete ID lookup. Modern ChatGPT layouts
+      // can expose message IDs only through data-chatgpt-search-message-ids.
+      const targetMatchesId = target => target?.isConnected
+        && (!expectedId || window.ChatGPTDomAdapter.messageIds(target).includes(expectedId));
       if (targetMatchesId(entry.target)) return entry.target;
       return (expectedId && findMinimapTargetById(expectedId))
         || findSearchResultFallback(entry.preview);
@@ -2537,23 +2532,11 @@
 
   function findMinimapTargetById(messageId) {
     if (!messageId) return null;
-    // A wrapper may retain an index of descendant IDs after a child is
-    // unmounted. Only accept a target when the actual message-ID attribute is
-    // still present on the element or one of its descendants.
-    const selectors = '[data-chatgpt-selection-message-id], [data-message-id], [data-turn-id]';
-    const hasExactId = element => [
-      element.getAttribute('data-chatgpt-selection-message-id'),
-      element.getAttribute('data-message-id'),
-      element.getAttribute('data-turn-id')
-    ].includes(messageId);
-    for (const element of document.querySelectorAll(selectors)) {
-      if (!hasExactId(element)) continue;
-      return element.closest('[data-chatgpt-search-unit-key], [data-content-search-unit-key], [data-turn-key], section[data-turn-id]')
-        || element;
-    }
-    const adapted = window.ChatGPTDomAdapter.findMessage(messageId);
-    if (adapted && [adapted, ...adapted.querySelectorAll(selectors)].some(hasExactId)) return adapted;
-    return null;
+    // messageElements() filters to currently rendered message units, while
+    // messageIds() understands both legacy attributes and modern search IDs.
+    return window.ChatGPTDomAdapter.messageElements().find(element =>
+      element.isConnected && window.ChatGPTDomAdapter.messageIds(element).includes(messageId)
+    ) || null;
   }
 
   function conversationScrollContainer() {
