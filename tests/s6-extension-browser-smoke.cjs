@@ -315,6 +315,13 @@ async function main() {
       question.removeAttribute('data-message-id');
       question.setAttribute('data-chatgpt-search-message-ids', 'question');
       const firstMarker = document.querySelector('.chatgpt-pro-minimap-marker');
+      window.__minimapEdgePreloadScrollEvents = 0;
+      window.__minimapEdgePreloadScrollListener = () => {
+        if (!document.querySelector('[data-chatgpt-search-message-ids="question"]')) {
+          window.__minimapEdgePreloadScrollEvents++;
+        }
+      };
+      window.addEventListener('scroll', window.__minimapEdgePreloadScrollListener, true);
       document.querySelector('[data-message-id="answer"]').style.minHeight = '1500px';
       window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
       question.remove();
@@ -329,6 +336,15 @@ async function main() {
         const preferred = Math.max(64, Math.min(150, innerHeight * 0.22));
         return Boolean(anchor && Math.abs(anchor.getBoundingClientRect().top - preferred) <= 12); })()`),
     'clicking an unloaded first message stops retrying as soon as its modern search-ID target loads', 15000);
+    const delayedFirstScrollCalls = await cdp.eval(pageSession, `(() => {
+      const count = window.__minimapEdgePreloadScrollEvents;
+      window.removeEventListener('scroll', window.__minimapEdgePreloadScrollListener, true);
+      delete window.__minimapEdgePreloadScrollListener;
+      delete window.__minimapEdgePreloadScrollEvents;
+      return count;
+    })()`);
+    assert(delayedFirstScrollCalls <= 2,
+      'first-message navigation waits for delayed DOM growth instead of repeatedly nudging the scroll boundary');
     await cdp.eval(pageSession, `(() => {
       const question = document.querySelector('[data-chatgpt-search-message-ids="question"]');
       question.removeAttribute('data-chatgpt-search-message-ids');
@@ -426,6 +442,48 @@ async function main() {
     })()`);
     assert(minimapAnchors.count <= 49 && minimapAnchors.first.startsWith('1/122') &&
       minimapAnchors.last.startsWith('122/122'), 'first and last chat messages remain pinned on a long rail');
+    const delayedMiddleTarget = await cdp.eval(pageSession, `(() => {
+      const main = document.querySelector('main');
+      const nodes = [...document.querySelectorAll('[data-minimap-test]')];
+      const markers = [...document.querySelectorAll('.chatgpt-pro-minimap-marker')];
+      const marker = markers[Math.floor(markers.length / 2)];
+      const expectedId = marker.dataset.chatgptProMinimapMessageId;
+      const targetIndex = nodes.findIndex(node => node.getAttribute('data-message-id') === expectedId);
+      if (targetIndex < 0) throw Error('middle marker must identify its exact message ID');
+      const from = Math.max(0, targetIndex - 5);
+      const removed = nodes.slice(from, Math.min(nodes.length, targetIndex + 6));
+      const anchor = removed.at(-1).nextSibling;
+      const parent = removed[0].parentNode;
+      window.__middleJumpPreloadScrollEvents = 0;
+      window.__middleJumpPreloadScrollListener = () => {
+        if (!document.querySelector('[data-message-id="' + expectedId + '"]')) {
+          window.__middleJumpPreloadScrollEvents++;
+        }
+      };
+      window.addEventListener('scroll', window.__middleJumpPreloadScrollListener, true);
+      removed.forEach(node => node.remove());
+      marker.click();
+      window.setTimeout(() => {
+        const fragment = document.createDocumentFragment();
+        removed.forEach(node => fragment.append(node));
+        parent.insertBefore(fragment, anchor);
+      }, 5000);
+      return { expectedId, targetIndex };
+    })()`);
+    await eventually(async () => cdp.eval(pageSession, `(() => {
+      const target = document.querySelector('[data-message-id="${delayedMiddleTarget.expectedId}"]');
+      const preferred = Math.max(64, Math.min(150, innerHeight * 0.22));
+      return Boolean(target && Math.abs(target.getBoundingClientRect().top - preferred) <= 12);
+    })()`), 'middle-message navigation waits for delayed content instead of repeatedly scrolling', 15000);
+    const middleFallbackScrolls = await cdp.eval(pageSession, `(() => {
+      const count = window.__middleJumpPreloadScrollEvents;
+      window.removeEventListener('scroll', window.__middleJumpPreloadScrollListener, true);
+      delete window.__middleJumpPreloadScrollListener;
+      delete window.__middleJumpPreloadScrollEvents;
+      return count;
+    })()`);
+    assert(middleFallbackScrolls <= 4,
+      'middle-message navigation uses the scroll fallback only when content does not load');
     const beforeMiddleJump = await cdp.eval(pageSession, `(() => {
       const nodes = [...document.querySelectorAll('[data-minimap-test]')];
       nodes[0].textContent = Array.from({ length: nodes.length }, (_, index) => 'Message number ' + index).join(' ');
@@ -450,16 +508,13 @@ async function main() {
       return { before, targetIndex, expectedId, isDocument: scroller === document.scrollingElement };
     })()`);
     await sleep(250);
-    const afterMiddleJump = await cdp.eval(pageSession, `(() => {
+    const firstMessageTopAfterMiddleJump = await cdp.eval(pageSession, `(() => {
       const nodes = [...document.querySelectorAll('[data-minimap-test]')];
-      const element = nodes[0];
-      for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
-        const style = getComputedStyle(parent);
-        if (/(auto|scroll)/.test(style.overflowY) && parent.scrollHeight > parent.clientHeight) return parent.scrollTop;
-      }
-      return window.scrollY;
+      return nodes[0].getBoundingClientRect().top;
     })()`);
-    assert(Math.abs(afterMiddleJump - beforeMiddleJump.before) < 12,
+    const firstMessagePreferredTop = await cdp.eval(pageSession,
+      'Math.max(64, Math.min(150, innerHeight * 0.22))');
+    assert(Math.abs(firstMessageTopAfterMiddleJump - firstMessagePreferredTop) > 100,
       'middle-message navigation never falls back to a first message with matching preview text');
     await cdp.eval(pageSession, `(() => {
       const nodes = [...document.querySelectorAll('[data-minimap-test]')];
@@ -467,7 +522,12 @@ async function main() {
       nodes.forEach((node, index) => { if (index > 0) node.textContent = 'Message number ' + index; });
       nodes[0].textContent = 'Message number 0';
     })()`);
-    await sleep(250);
+    await eventually(async () => cdp.eval(pageSession, `(() => {
+      const target = document.querySelector('[data-message-id="${beforeMiddleJump.expectedId}"]');
+      const preferred = Math.max(64, Math.min(150, innerHeight * 0.22));
+      return Boolean(target && Math.abs(target.getBoundingClientRect().top - preferred) <= 12);
+    })()`), 'middle-message navigation resolves when its exact ID returns to the DOM', 5000);
+    await cdp.eval(pageSession, 'window.scrollTo({ top: 0, behavior: "auto" })');
     await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-minimap-first').dispatchEvent(new Event('pointerenter'))`);
     assert.equal(await cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-minimap-preview').hidden`), false,
@@ -817,6 +877,56 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-search-results').textContent.includes('s6 acceptance unique phrase')`),
     'full-text query searched the actual worker index');
+    await cdp.eval(popupSession, `new Promise(resolve =>
+      chrome.storage.local.set({ showMinimap: false }, resolve))`);
+    await eventually(async () => cdp.eval(pageSession,
+      `!document.querySelector('[data-chatgpt-pro-minimap]')`),
+    'minimap can be hidden while full-text search remains available');
+    await cdp.eval(pageSession, `(() => {
+      const main = document.querySelector('main');
+      const question = document.querySelector('[data-message-id="question"]');
+      const anchor = question.nextSibling;
+      const placeholder = question.cloneNode(false);
+      placeholder.setAttribute('data-message-id', 'loading-search-question');
+      placeholder.textContent = 'Loading placeholder';
+      const result = [...document.querySelectorAll('.chatgpt-pro-search-result')]
+        .find(button => button.textContent.includes('s6 acceptance unique phrase'));
+      window.__searchPreloadScrollEvents = 0;
+      window.__searchPreloadScrollListener = () => {
+        if (!document.querySelector('[data-message-id="question"]')) window.__searchPreloadScrollEvents++;
+      };
+      window.addEventListener('scroll', window.__searchPreloadScrollListener, true);
+      document.querySelector('[data-message-id="answer"]').style.minHeight = '1500px';
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
+      question.remove();
+      main.insertBefore(placeholder, anchor);
+      result.click();
+      window.setTimeout(() => {
+        placeholder.remove();
+        main.insertBefore(question, anchor);
+      }, 5000);
+    })()`);
+    await eventually(async () => cdp.eval(pageSession, `(() => {
+      const target = document.querySelector('[data-message-id="question"]');
+      return Boolean(target?.classList.contains('chatgpt-pro-search-target') &&
+        target.getBoundingClientRect().top >= 0 && target.getBoundingClientRect().top < innerHeight);
+    })()`), 'full-text search waits for delayed target content before using scroll fallback', 15000);
+    const searchJumpScrollCalls = await cdp.eval(pageSession, `(() => {
+      const count = window.__searchPreloadScrollEvents;
+      window.removeEventListener('scroll', window.__searchPreloadScrollListener, true);
+      delete window.__searchPreloadScrollListener;
+      delete window.__searchPreloadScrollEvents;
+      document.querySelector('[data-message-id="answer"]').style.minHeight = '';
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      return count;
+    })()`);
+    assert(searchJumpScrollCalls <= 1,
+      'full-text search navigation does not repeatedly scroll while the target is loading');
+    await cdp.eval(popupSession, `new Promise(resolve =>
+      chrome.storage.local.set({ showMinimap: true }, resolve))`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
+    'minimap restores after a delayed full-text target is restored');
     assert.equal(requests.details, 1, 'searching the persisted index did not refetch JSON');
 
     // Input searches are debounced and still work while indexing is only

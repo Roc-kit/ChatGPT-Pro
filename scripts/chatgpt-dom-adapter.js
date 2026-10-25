@@ -24,7 +24,12 @@
   ].join(',');
 
   function conversationRoot() {
-    return document.querySelector('main') || document;
+    const mains = Array.from(document.querySelectorAll('main'));
+    const rendered = mains
+      .map(element => ({ element, rect: element.getBoundingClientRect() }))
+      .filter(item => item.rect.width > 0 && item.rect.height > 0)
+      .sort((a, b) => (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height));
+    return rendered[0]?.element || mains[mains.length - 1] || document;
   }
 
   function conversationIdFromHref(href) {
@@ -117,14 +122,18 @@
 
   function messageElements() {
     const root = conversationRoot();
-    const searchUnits = root.querySelectorAll(SEARCH_UNIT_SELECTOR);
-    const contentUnits = searchUnits.length ? [] : root.querySelectorAll(CONTENT_UNIT_SELECTOR);
+    const isRendered = element => element.getClientRects().length > 0;
+    const searchUnits = Array.from(root.querySelectorAll(SEARCH_UNIT_SELECTOR)).filter(isRendered);
+    const contentUnits = searchUnits.length
+      ? []
+      : Array.from(root.querySelectorAll(CONTENT_UNIT_SELECTOR)).filter(isRendered);
     let candidates = searchUnits.length
       ? searchUnits
       : (contentUnits.length
           ? contentUnits
           : root.querySelectorAll('[data-chatgpt-selection-message-id], [data-message-author-role][data-message-id], [data-turn-key], section[data-turn-id]'));
-    // ChatGPT can omit legacy message IDs while keeping turn containers.
+    // Newer ChatGPT layouts can omit legacy message IDs while retaining
+    // whole conversation-turn containers.
     if (!candidates.length) {
       candidates = root.querySelectorAll('[data-testid^="conversation-turn-"], [data-testid="conversation-turn"], article');
     }
@@ -133,7 +142,7 @@
     const result = [];
     candidates.forEach(candidate => {
       const element = canonicalMessageElement(candidate);
-      if (!element || seenNodes.has(element)) return;
+      if (!element || !isRendered(element) || seenNodes.has(element)) return;
       const ids = messageIds(element);
       if (ids.length && ids.some(id => seenIds.has(id))) return;
       seenNodes.add(element);

@@ -41,7 +41,7 @@
     observedMessageSignature: '',
     messageRouteRetryTimers: [],
     minimap: { id: null, signature: '', entries: [], allEntries: [], active: null, frame: 0, layoutSlots: 0,
-      cachedId: null, cachedMessages: null, lastCacheCheck: 0, checking: false, jumpToken: 0 },
+      cachedId: null, cachedMessages: null, lastCacheCheck: 0, checking: false, cachePromise: null, jumpToken: 0 },
     settings: {
       enabled: true,
       showSidebarTime: false,
@@ -332,6 +332,8 @@
         const targets = previous.targets || (previous.target ? [previous.target] : []);
         if (entry.target && !targets.includes(entry.target)) targets.push(entry.target);
         previous.targets = targets;
+        previous.messageIds ||= previous.id ? [previous.id] : [];
+        if (entry.id && !previous.messageIds.includes(entry.id)) previous.messageIds.push(entry.id);
         if (!previous.target && entry.target) previous.target = entry.target;
         // Keep the first rendered node as the scroll target, but show the
         // final/last message in the assistant turn as the preview and ID.
@@ -344,6 +346,7 @@
       }
       grouped.push({
         ...entry,
+        messageIds: entry.id ? [entry.id] : [],
         // A grouped assistant reply navigates to its first message part even
         // when the preview/metadata comes from the final part.
         startId: entry.startId || entry.id,
@@ -415,31 +418,136 @@
   }
 
   async function checkMinimapCache(id) {
-    if (S.minimap.checking || (S.minimap.cachedId === id &&
-        (S.minimap.cachedMessages || Date.now() - S.minimap.lastCacheCheck < 20000))) return;
+    if (S.minimap.checking) {
+      const pending = S.minimap.cachePromise;
+      if (S.minimap.cachedId === id) return pending;
+      if (pending) await pending;
+      if (currentConversationId() === id) return checkMinimapCache(id);
+      return;
+    }
+    if (S.minimap.cachedId === id &&
+        (S.minimap.cachedMessages || Date.now() - S.minimap.lastCacheCheck < 20000)) return;
     if (S.minimap.cachedId !== id) S.minimap.cachedMessages = null;
     S.minimap.cachedId = id;
     S.minimap.lastCacheCheck = Date.now();
     S.minimap.checking = true;
-    try {
-      const accountId = await window.APIHandler.getAccountId();
-      const result = await runtimeMessage({ action: 'localDataGetConversation', accountId, id });
-      if (currentConversationId() === id && result.hit && result.raw?.mapping) {
-        S.minimap.cachedMessages = result.raw;
-        S.minimap.signature = '';
-        syncConversationMinimap();
+    const pending = (async () => {
+      try {
+        const accountId = await window.APIHandler.getAccountId();
+        const result = await runtimeMessage({ action: 'localDataGetConversation', accountId, id });
+        if (currentConversationId() === id && result.hit && result.raw?.mapping) {
+          S.minimap.cachedMessages = result.raw;
+          S.minimap.signature = '';
+          if (S.settings.enabled && S.settings.showMinimap) syncConversationMinimap();
+        }
+      } catch (error) {
+        log('Minimap local cache unavailable:', error.message);
+      } finally {
+        S.minimap.checking = false;
+        if (S.minimap.cachePromise === pending) S.minimap.cachePromise = null;
       }
-    } catch (error) {
-      log('Minimap local cache unavailable:', error.message);
-    } finally { S.minimap.checking = false; }
+    })();
+    S.minimap.cachePromise = pending;
+    return pending;
   }
 
-  async function jumpMinimapEntry(entry, total) {
+  function conversationProgressSnapshot(scroller) {
+    const messages = window.ChatGPTDomAdapter.messageElements();
+    // Include every rendered ID: virtualized conversations can replace a
+    // middle segment without changing message count or the sampled endpoints.
+    const ids = messages.map((message, index) =>
+      window.ChatGPTDomAdapter.messageIds(message).join(',') || `position-${index}`
+    ).join('|');
+    const main = document.querySelector('main');
+    return `${messages.length}#${ids}#${scroller?.scrollHeight || 0}#${main?.scrollHeight || 0}`;
+  }
+
+  // Wait for actual conversation growth before trying another scroll. A
+  // timeout is only a fallback signal; message/DOM progress takes priority.
+  function waitForConversationProgress(scroller, isCurrentJump, resolveTarget, {
+    initialWaitMs = 6000, quietMs = 1400, maxWaitMs = 12000
+  } = {}) {
+    return new Promise(resolve => {
+      let finished = false;
+      let changed = false;
+      let lastChangeAt = 0;
+      let signature = conversationProgressSnapshot(scroller);
+      const startedAt = Date.now();
+      let pollTimer = null;
+      let mutationTimer = null;
+      let observer = null;
+      const root = document.querySelector('main') ||
+        (scroller && scroller !== document.scrollingElement ? scroller : null) || document.body;
+      const finish = result => {
+        if (finished) return;
+        finished = true;
+        observer?.disconnect();
+        if (pollTimer !== null) clearTimeout(pollTimer);
+        if (mutationTimer !== null) clearTimeout(mutationTimer);
+        resolve(result);
+      };
+      const check = () => {
+        if (finished) return;
+        if (!isCurrentJump()) return finish({ status: 'cancelled', target: null });
+        const target = resolveTarget();
+        if (target?.isConnected) return finish({ status: 'target', target });
+        const nextSignature = conversationProgressSnapshot(scroller);
+        if (nextSignature !== signature) {
+          signature = nextSignature;
+          changed = true;
+          lastChangeAt = Date.now();
+        }
+        const now = Date.now();
+        if (changed && (now - lastChangeAt >= quietMs || now - startedAt >= maxWaitMs)) {
+          return finish({ status: 'progress', target: null });
+        }
+        if (!changed && now - startedAt >= initialWaitMs) {
+          return finish({ status: 'idle', target: null });
+        }
+      };
+      try {
+        observer = new MutationObserver(() => {
+          // ChatGPT can emit many tiny DOM mutations while rendering a turn.
+          // Coalesce them; the periodic poll remains the reliable fallback.
+          if (mutationTimer !== null) return;
+          mutationTimer = window.setTimeout(() => {
+            mutationTimer = null;
+            check();
+          }, 140);
+        });
+        observer.observe(root, {
+          subtree: true,
+          childList: true,
+          attributes: true,
+          attributeFilter: [
+            'data-message-id', 'data-chatgpt-selection-message-id',
+            'data-chatgpt-search-message-ids', 'data-turn-id',
+            'data-chatgpt-search-unit-key', 'data-content-search-unit-key'
+          ]
+        });
+      } catch {
+        observer?.disconnect();
+        observer = null;
+      }
+      const poll = () => {
+        check();
+        if (!finished) pollTimer = window.setTimeout(poll, 300);
+      };
+      check();
+      if (!finished) pollTimer = window.setTimeout(poll, 300);
+    });
+  }
+
+  let activeSearchJumpToken = 0;
+
+  async function jumpMinimapEntry(entry, total, preferredMessageId = '', alignmentBlock = 'start',
+    navigationEntries = S.minimap.allEntries) {
+    activeSearchJumpToken++;
     const jumpToken = ++S.minimap.jumpToken;
     const conversationId = currentConversationId();
     const isCurrentJump = () => jumpToken === S.minimap.jumpToken
       && conversationId === currentConversationId();
-    const expectedId = entry.startId || entry.id;
+    const expectedId = preferredMessageId || entry.startId || entry.id;
     const resolveTarget = () => {
       // Reuse the DOM adapter's complete ID lookup. Modern ChatGPT layouts
       // can expose message IDs only through data-chatgpt-search-message-ids.
@@ -450,6 +558,13 @@
     };
     const alignTarget = async target => {
       if (!target?.isConnected || !isCurrentJump()) return false;
+      if (preferredMessageId) {
+        target.scrollIntoView({ behavior: 'smooth', block: alignmentBlock });
+        target.classList.add('chatgpt-pro-search-target');
+        window.setTimeout(() => target.classList.remove('chatgpt-pro-search-target'), 2600);
+        await sleep(350);
+        return isCurrentJump() && target.isConnected;
+      }
       // Keep the start of the message visible in the upper part of the
       // viewport, leaving room to read the beginning of the conversation.
       const preferredTop = Math.max(64, Math.min(150, window.innerHeight * 0.22));
@@ -479,21 +594,16 @@
     if (target) return alignTarget(target);
     const isEdge = entry.index === 0 || entry.index === total - 1;
     if (!isEdge && expectedId) {
-      refreshMinimapEntryTargets();
-      const mappedCount = S.minimap.allEntries.filter(item => {
-        const id = item.startId || item.id;
-        return item.target?.isConnected && (!id || window.ChatGPTDomAdapter.messageIds(item.target).includes(id));
-      }).length;
-      // If almost the whole conversation is rendered but the exact ID is
-      // absent, do not guess from preview text: repeated phrases can point to
-      // the first message. A genuinely virtualized middle range is scanned
-      // from its nearest known message until the requested ID appears.
-      if (mappedCount >= total * 0.95) return false;
+      refreshMinimapEntryTargets(navigationEntries);
+      // Never guess from preview text when an exact ID is missing. Even if
+      // most turns are rendered, wait for DOM progress and use scrolling only
+      // as a fallback to make the requested ID appear.
       const deadline = Date.now() + 45000;
-      let round = 0;
+      let needsPosition = true;
+      let fallbackStep = false;
       while (Date.now() < deadline) {
         if (!isCurrentJump()) return false;
-        refreshMinimapEntryTargets();
+        refreshMinimapEntryTargets(navigationEntries);
         target = resolveTarget();
         if (target) return alignTarget(target);
         const scroller = conversationScrollContainer();
@@ -501,39 +611,52 @@
           await sleep(350);
           continue;
         }
-        const loaded = S.minimap.allEntries.filter(item => {
+        const loaded = navigationEntries.filter(item => {
           const id = item.startId || item.id;
           return item.target?.isConnected && (!id || window.ChatGPTDomAdapter.messageIds(item.target).includes(id));
         });
         const nearest = loaded.reduce((best, item) =>
           !best || Math.abs(item.index - entry.index) < Math.abs(best.index - entry.index) ? item : best, null);
         const reversed = getComputedStyle(scroller).flexDirection === 'column-reverse';
-        if (!nearest) {
+        if (needsPosition && nearest) {
+          nearest.target.scrollIntoView({ behavior: 'auto', block: 'center' });
+          needsPosition = false;
+        } else if (needsPosition) {
           const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
           const fraction = entry.index / Math.max(1, total - 1);
           const top = reversed ? -max * (1 - fraction) : max * fraction;
           scroller.scrollTo?.({ top, behavior: 'auto' });
-        } else if (round === 0) {
-          nearest.target.scrollIntoView({ behavior: 'auto', block: 'center' });
-        } else {
-          const towardEnd = entry.index > nearest.index ? 1 : -1;
-          const direction = towardEnd * (reversed ? -1 : 1);
+          needsPosition = false;
+        } else if (fallbackStep) {
+          const towardEnd = nearest ? (entry.index > nearest.index ? 1 : -1) : 0;
+          const max = Math.max(1, scroller.scrollHeight - scroller.clientHeight);
+          const targetFraction = entry.index / Math.max(1, total - 1);
+          const currentFraction = reversed
+            ? 1 - Math.min(1, Math.abs(scroller.scrollTop) / max)
+            : Math.min(1, Math.max(0, scroller.scrollTop / max));
+          const direction = (nearest ? towardEnd : (targetFraction >= currentFraction ? 1 : -1))
+            * (reversed ? -1 : 1);
           const distance = Math.max(180, scroller.clientHeight * 0.65);
           if (scroller === document.scrollingElement) window.scrollBy({ top: direction * distance, behavior: 'auto' });
           else scroller.scrollBy?.({ top: direction * distance, behavior: 'auto' });
+          fallbackStep = false;
         }
-        round++;
-        await sleep(350);
+        const progress = await waitForConversationProgress(scroller, isCurrentJump, resolveTarget);
+        if (progress.status === 'cancelled') return false;
+        if (progress.target) return alignTarget(progress.target);
+        target = resolveTarget();
+        if (target) return alignTarget(target);
+        if (progress.status === 'progress') needsPosition = true;
+        else fallbackStep = true;
       }
       return false;
     }
-    // ChatGPT lazily renders the ends of long conversations. Move to the
-    // relevant boundary, nudge the scroll position to keep producing scroll
-    // events, and keep checking for up to 45 seconds. A stable scrollHeight
-    // does not mean a slow network/render operation has finished.
+    // ChatGPT lazily renders the ends of long conversations. Wait for actual
+    // message/DOM growth at the boundary; nudging is only a fallback after an
+    // entire idle window with no new content.
     if (isEdge) {
       const deadline = Date.now() + 45000;
-      let round = 0;
+      let fallbackNudgeNext = false;
       while (Date.now() < deadline) {
         if (!isCurrentJump()) return false;
         target = resolveTarget();
@@ -549,23 +672,25 @@
         const edgeTop = first ? (reversed ? -max : 0) : (reversed ? 0 : max);
         const inset = Math.min(80, max);
         const nudgeTop = edgeTop + (first ? inset : -inset);
-        // Move slightly inward and back to the edge. Repeating scrollTo(0)
-        // while already at 0 emits no scroll event and may not trigger lazy load.
-        if (max > 1) {
+        // Only nudge after the observer reports a quiet period with no growth.
+        if (fallbackNudgeNext && max > 1) {
           scroller.scrollTo?.({ top: nudgeTop, behavior: 'auto' });
           await sleep(90);
           if (!isCurrentJump()) return false;
+          target = resolveTarget();
+          if (target) return alignTarget(target);
         }
-        scroller.scrollTo?.({ top: edgeTop, behavior: round === 0 ? 'smooth' : 'auto' });
-        await sleep(410);
-        round++;
-        if (!isCurrentJump()) return false;
+        scroller.scrollTo?.({ top: edgeTop, behavior: 'auto' });
+        fallbackNudgeNext = false;
+        const progress = await waitForConversationProgress(scroller, isCurrentJump, resolveTarget);
+        if (progress.status === 'cancelled') return false;
+        if (progress.target) return alignTarget(progress.target);
         target = resolveTarget();
         if (target) return alignTarget(target);
+        fallbackNudgeNext = progress.status === 'idle';
       }
       return false;
     }
-    if (expectedId) return jumpToSearchMessage(expectedId, entry.preview, 'start');
     return false;
   }
 
@@ -2605,8 +2730,7 @@
     ) || null;
   }
 
-  function refreshMinimapEntryTargets() {
-    const allEntries = S.minimap.allEntries;
+  function refreshMinimapEntryTargets(allEntries = S.minimap.allEntries) {
     if (!allEntries.length) return;
     const byId = new Map();
     for (const target of window.ChatGPTDomAdapter.messageElements()) {
@@ -2634,22 +2758,70 @@
 
   async function jumpToSearchMessage(messageId, excerpt = '', block = 'center') {
     if (!messageId && !excerpt) return false;
-    let previousHeight = -1;
-    for (let round = 0; round < 24; round++) {
-      const target = window.ChatGPTDomAdapter.findMessage(messageId) || findSearchResultFallback(excerpt);
+    const jumpToken = ++activeSearchJumpToken;
+    const minimapToken = ++S.minimap.jumpToken;
+    const conversationId = currentConversationId();
+    const isCurrentJump = () => jumpToken === activeSearchJumpToken
+      && minimapToken === S.minimap.jumpToken
+      && conversationId === currentConversationId();
+    const resolveTarget = () => messageId
+      ? window.ChatGPTDomAdapter.findMessage(messageId)
+      : findSearchResultFallback(excerpt);
+    const alignTarget = target => {
+      if (!target?.isConnected || !isCurrentJump()) return false;
+      target.scrollIntoView({ behavior: 'smooth', block });
+      target.classList.add('chatgpt-pro-search-target');
+      window.setTimeout(() => target.classList.remove('chatgpt-pro-search-target'), 2600);
+      return true;
+    };
+    let target = resolveTarget();
+    if (target) return alignTarget(target);
+
+    // A full-text result is backed by the local conversation JSON. Use its
+    // logical turn index to share the minimap's multi-load navigation path,
+    // including searches for a non-first part of a grouped assistant reply.
+    if (messageId && conversationId) {
+      await checkMinimapCache(conversationId);
+      if (!isCurrentJump()) return false;
+      const navigationEntries = S.minimap.cachedId === conversationId && S.minimap.cachedMessages?.mapping
+        ? minimapMessages(S.minimap.cachedMessages, window.ChatGPTDomAdapter.messageElements())
+        : (S.minimap.id === conversationId ? S.minimap.allEntries : []);
+      refreshMinimapEntryTargets(navigationEntries);
+      const entry = navigationEntries.find(item =>
+        item.messageIds?.includes(messageId) || item.startId === messageId || item.id === messageId
+      );
+      if (entry) return jumpMinimapEntry(entry, navigationEntries.length, messageId, block, navigationEntries);
+    }
+
+    const deadline = Date.now() + 45000;
+    let fallbackNudgeNext = false;
+    while (Date.now() < deadline) {
+      if (!isCurrentJump()) return false;
+      target = resolveTarget();
       if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block });
-        target.classList.add('chatgpt-pro-search-target');
-        window.setTimeout(() => target.classList.remove('chatgpt-pro-search-target'), 2600);
-        return true;
+        return alignTarget(target);
       }
       const scroller = conversationScrollContainer();
-      if (!scroller) break;
-      const height = scroller.scrollHeight;
+      if (!scroller) {
+        await sleep(300);
+        continue;
+      }
+      const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      if (fallbackNudgeNext && max > 1) {
+        scroller.scrollTo?.({ top: Math.min(80, max), behavior: 'auto' });
+        await sleep(90);
+        if (!isCurrentJump()) return false;
+        const loadedTarget = resolveTarget();
+        if (loadedTarget) return alignTarget(loadedTarget);
+      }
       scroller.scrollTo?.({ top: 0, behavior: 'auto' });
-      if (round > 2 && height === previousHeight && scroller.scrollTop === 0) break;
-      previousHeight = height;
-      await sleep(350);
+      fallbackNudgeNext = false;
+      const progress = await waitForConversationProgress(scroller, isCurrentJump, resolveTarget);
+      if (progress.status === 'cancelled') return false;
+      if (progress.target) return alignTarget(progress.target);
+      const loadedTarget = resolveTarget();
+      if (loadedTarget) return alignTarget(loadedTarget);
+      fallbackNudgeNext = progress.status === 'idle';
     }
     return false;
   }
