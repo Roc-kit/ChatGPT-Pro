@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 263, 'reviewed interface, account-switch safeguards, image downloads and export safety include 263 strings');
+assert.equal(keys.length, 283, 'reviewed interface, directory synchronization, initial indexing and account safety include 283 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -74,6 +74,17 @@ const samples = [
     'Impossible de vérifier le compte ChatGPT connecté ; la lecture de son cache a été arrêtée'],
   ['pt-BR', 'ui.authenticationErrorTaskPaused',
     'Problema de login ou permissão; tarefa pausada'],
+  ['ja', 'ui.initialDirectoryEndedEarlyCompletenessCannotBeVerified',
+    '初回のチャット一覧のページ取得が途中で終了したため、一覧の完全性を確認できません'],
+  ['es', 'ui.initialIndexingRequiresExplicitConsent',
+    'La primera indexación de texto completo requiere tu autorización expresa'],
+  ['fr', 'ui.repeatedProjectCursorStoppedToPreventALoop',
+    'Le curseur de pagination du projet se répète ; opération arrêtée pour éviter une boucle'],
+  ['pt-BR', 'ui.directorySyncFailedCheckSignInOrTry',
+    'Falha na sincronização do diretório; confira o login ou tente novamente após a pausa'],
+  ['id', 'ui.indexPausedAfterRepeatedFailures',
+    'Batas kegagalan berturut-turut tercapai; tugas pengindeksan dijeda'],
+  ['zh-TW', 'ui.completeInitialIndexingFirst', '請先完成首次全文索引'],
   ['es', 'ui.completeJSONNotStoredLocallyOnlyASearch',
     'El JSON original completo no está guardado localmente; solo hay fragmentos de búsqueda y no se puede mostrar la vista previa completa.'],
   ['fr', 'ui.unableToReadCompleteLocalContent', 'Impossible de lire le contenu local complet'],
@@ -234,4 +245,4 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
       `${locale}/${key}: image download status does not use reviewed translation`);
   }
 }
-console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including account-switch safety and four image progress templates`);
+console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including directory synchronization and initial indexing prompts`);
