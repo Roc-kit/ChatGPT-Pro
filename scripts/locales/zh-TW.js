@@ -22,6 +22,7 @@ window.ChatGPTProLocalePacks["zh-TW"] = {
   "ui.dateOnlySourceTitle": "僅日期 + 來源 + 標題",
   "ui.customTemplate": "自訂範本",
   "ui.filenamePreview": "檔名預覽：",
+  "ui.filenamePreviewSampleTitle": "NocoBase 官方 Demo 分析",
   "ui.indexDataManagement": "索引與資料管理",
   "ui.noActiveTasks": "目前沒有執行中的工作",
   "ui.fullTextIndexCache": "全文索引與快取",

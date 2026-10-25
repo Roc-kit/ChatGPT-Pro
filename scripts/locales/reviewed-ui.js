@@ -4876,6 +4876,22 @@ ui.chatgptTabConnectionInterruptedReloadAndTryAgain`.split('\n'),
           'ChatGPT タブとの接続が中断されました。タブを再読み込みして、もう一度お試しください。'
         ]
       }
+    },
+    {
+      keys: ['ui.filenamePreviewSampleTitle'],
+      translations: {
+        en: ['NocoBase Official Demo Analysis'],
+        'zh-TW': ['NocoBase 官方 Demo 分析'],
+        es: ['Análisis de la demo oficial de NocoBase'],
+        hi: ['NocoBase के आधिकारिक डेमो का विश्लेषण'],
+        ar: ['تحليل العرض التوضيحي الرسمي لـ NocoBase'],
+        'pt-BR': ['Análise da demonstração oficial do NocoBase'],
+        bn: ['NocoBase-এর অফিসিয়াল ডেমো বিশ্লেষণ'],
+        id: ['Analisis demo resmi NocoBase'],
+        fr: ['Analyse de la démo officielle de NocoBase'],
+        ru: ['Анализ официального демо NocoBase'],
+        ja: ['NocoBase 公式デモの分析']
+      }
     }
   ];
   for (const block of blocks) {

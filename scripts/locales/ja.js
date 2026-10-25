@@ -21,6 +21,7 @@ window.ChatGPTProLocalePacks["ja"] = {
   "ui.dateOnlySourceTitle": "日付 + ソース + タイトル",
   "ui.customTemplate": "カスタム形式",
   "ui.filenamePreview": "ファイル名の例：",
+  "ui.filenamePreviewSampleTitle": "NocoBase 公式デモの分析",
   "ui.indexDataManagement": "索引とデータ管理",
   "ui.noActiveTasks": "実行中のタスクなし",
   "ui.fullTextIndexCache": "全文索引とキャッシュ",

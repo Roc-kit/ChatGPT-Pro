@@ -21,6 +21,7 @@ window.ChatGPTProLocalePacks["id"] = {
   "ui.dateOnlySourceTitle": "Tanggal + sumber + judul",
   "ui.customTemplate": "Templat khusus",
   "ui.filenamePreview": "Pratinjau nama:",
+  "ui.filenamePreviewSampleTitle": "Analisis demo resmi NocoBase",
   "ui.indexDataManagement": "Indeks dan data",
   "ui.noActiveTasks": "Tidak ada tugas aktif",
   "ui.fullTextIndexCache": "Indeks dan cache",

@@ -21,6 +21,7 @@ window.ChatGPTProLocalePacks["ar"] = {
   "ui.dateOnlySourceTitle": "التاريخ + المصدر + العنوان",
   "ui.customTemplate": "قالب مخصص",
   "ui.filenamePreview": "معاينة الاسم:",
+  "ui.filenamePreviewSampleTitle": "تحليل العرض التوضيحي الرسمي لـ NocoBase",
   "ui.indexDataManagement": "الفهرس والبيانات",
   "ui.noActiveTasks": "لا توجد مهام نشطة",
   "ui.fullTextIndexCache": "الفهرس والذاكرة",

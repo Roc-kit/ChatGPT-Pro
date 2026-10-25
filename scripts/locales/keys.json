@@ -21,6 +21,7 @@
   "ui.dateOnlySourceTitle": "仅日期 + 来源 + 对话标题",
   "ui.customTemplate": "自定义模板",
   "ui.filenamePreview": "文件名预览：",
+  "ui.filenamePreviewSampleTitle": "NocoBase 官方 Demo 分析",
   "ui.indexDataManagement": "索引与数据管理",
   "ui.noActiveTasks": "当前没有运行中的任务",
   "ui.fullTextIndexCache": "全文索引与缓存",

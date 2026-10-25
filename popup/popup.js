@@ -8,6 +8,10 @@ document.addEventListener('DOMContentLoaded', () => {
     i18n.setLanguage(value);
     i18n.setDirection(document.documentElement);
     i18n.apply(document.body);
+    const currentTemplate = filenamePreset.value === 'custom'
+      ? filenameTemplate.value || '{created_datetime}_{title}'
+      : filenamePresets[filenamePreset.value] || '{created_datetime}_{title}';
+    updateFilenameUi(currentTemplate);
   });
   const toggle = document.getElementById('toggle');
   const sidebarTimeToggle = document.getElementById('sidebarTimeToggle');
@@ -342,7 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function previewFilename(template) {
     const sample = {
-      title: 'NocoBase 官方 Demo 分析',
+      title: i18n.t('ui.filenamePreviewSampleTitle'),
       created_date: '2026-10-24',
       updated_date: '2026-10-25',
       created_datetime: '2026-10-24_09-47-12',

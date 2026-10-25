@@ -22,6 +22,7 @@ window.ChatGPTProLocalePacks["es"] = {
   "ui.dateOnlySourceTitle": "Solo fecha + origen + título",
   "ui.customTemplate": "Plantilla propia",
   "ui.filenamePreview": "Vista previa:",
+  "ui.filenamePreviewSampleTitle": "Análisis de la demo oficial de NocoBase",
   "ui.indexDataManagement": "Índice y datos",
   "ui.noActiveTasks": "Sin tareas activas",
   "ui.fullTextIndexCache": "Índice y caché",

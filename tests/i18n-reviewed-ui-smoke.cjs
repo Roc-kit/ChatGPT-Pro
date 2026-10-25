@@ -66,6 +66,11 @@ for (const variants of environment.ChatGPTProDynamicMessageKeys) {
 for (const key of runtimeKeyReferences) {
   assert(keys.includes(key), `runtime-referenced key is not reviewed: ${key}`);
 }
+const popupSource = fs.readFileSync(path.join(__dirname, '../popup/popup.js'), 'utf8');
+assert.match(popupSource, /title:\s*i18n\.t\('ui\.filenamePreviewSampleTitle'\)/,
+  'filename preview must use a localized example title, not a hardcoded Chinese sample');
+assert.match(popupSource, /updateFilenameUi\(currentTemplate\)/,
+  'changing the interface language must refresh the filename preview');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
 for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(locale))) {

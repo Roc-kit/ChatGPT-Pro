@@ -21,6 +21,7 @@ window.ChatGPTProLocalePacks["bn"] = {
   "ui.dateOnlySourceTitle": "তারিখ + উৎস + শিরোনাম",
   "ui.customTemplate": "নিজস্ব টেমপ্লেট",
   "ui.filenamePreview": "নামের নমুনা:",
+  "ui.filenamePreviewSampleTitle": "NocoBase-এর অফিসিয়াল ডেমো বিশ্লেষণ",
   "ui.indexDataManagement": "ইনডেক্স ও ডেটা",
   "ui.noActiveTasks": "সক্রিয় কাজ নেই",
   "ui.fullTextIndexCache": "ইনডেক্স ও ক্যাশে",

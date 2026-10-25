@@ -17,7 +17,7 @@ const i18n = loadLocales(host);
 const files = ['popup/popup.html', 'popup/popup.js', 'scripts/content-chatgpt.js',
   'scripts/api-handler.js', 'scripts/background.js', 'scripts/local-data-store.js'];
 // Exported Markdown markers and deliberate demo fixture text aren't UI.
-const contentExceptions = new Set(['[图片]', '[音频]', 'NocoBase 官方 Demo 分析']);
+const contentExceptions = new Set(['[图片]', '[音频]']);
 const nonUiExceptions = new Set([
   '首次索引准备中断', // Fallback text stored only in the internal setup log.
   '目录同步失败，请检查登录状态或冷却后重试', // Persisted in internal sync logs only.

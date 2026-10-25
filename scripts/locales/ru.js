@@ -21,6 +21,7 @@ window.ChatGPTProLocalePacks["ru"] = {
   "ui.dateOnlySourceTitle": "Дата + источник + заголовок",
   "ui.customTemplate": "Свой шаблон",
   "ui.filenamePreview": "Пример имени:",
+  "ui.filenamePreviewSampleTitle": "Анализ официального демо NocoBase",
   "ui.indexDataManagement": "Индекс и данные",
   "ui.noActiveTasks": "Нет активных задач",
   "ui.fullTextIndexCache": "Индекс и кэш",
