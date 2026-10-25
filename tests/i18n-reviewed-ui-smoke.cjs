@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 367, 'reviewed interface, cache integrity, dynamic task statuses and bulk archive/delete statuses include 367 strings');
+assert.equal(keys.length, 388, 'all 388 stable interface and dynamic status keys have reviewed translations');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -117,7 +117,14 @@ const samples = [
   ['ja', 'ui.completeJSONNotSavedLocallyRemoteDeletionCanceled',
     '完全な JSON がローカルに保存されていないため、クラウド上のチャットは削除していません。'],
   ['ja', 'ui.indexingIsRunningInAnotherTab', '別のタブでインデックス作成が実行中です。'],
-  ['es', 'ui.indexPausedResumeItInTaskManager', 'La indexación está en pausa. Reanúdala desde el gestor de tareas.']
+  ['es', 'ui.indexPausedResumeItInTaskManager', 'La indexación está en pausa. Reanúdala desde el gestor de tareas.'],
+  ['ja', 'ui.timestampSize', 'タイムスタンプの文字サイズ'],
+  ['es', 'ui.small', 'Pequeño'],
+  ['fr', 'ui.medium', 'Moyen'],
+  ['pt-BR', 'ui.large', 'Grande'],
+  ['id', 'ui.succeeded', 'Berhasil'],
+  ['ru', 'ui.taskNotFoundForCurrentAccount_3826111', 'Задача для текущей учётной записи не найдена'],
+  ['ja', 'ui.invalidTaskOperation_d3e0539', '無効なタスク操作です']
 ];
 
 // Bulk archive/delete templates have both progress and completion variants.
@@ -359,4 +366,50 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
       `${locale}/${key}: image download status does not use reviewed translation`);
   }
 }
-console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including cache integrity, index validation and export tasks`);
+
+// Final dynamic status templates use the exact wildcard matches from i18n.js.
+const finalDynamicStatuses = [
+  ['status.authorizeToBuildAFullTextIndex',
+    '首次建立全文索引需点击授权；不会自动抓取正文。已有索引可搜索 · 当前 119 条', { 1: '119' }],
+  ['status.select', '选择 导出', { 1: '导出' }],
+  ['status.filterByTitle', '标题筛选：example title', { 1: 'example title' }],
+  ['status.select_41', '已选 4', { 1: '4' }],
+  ['status.chats_42', '4 条聊天记录', { 1: '4' }],
+  ['status.chats_43', '4 条 · 导出', { 1: '4', 2: '导出' }],
+  ['status.status', '导出失败：network timeout',
+    { 1: '导出失败', 2: 'network timeout' }],
+  ['status.failedToOpenChatGPT', '打开 ChatGPT 失败：network timeout',
+    { 1: 'network timeout' }],
+  ['status.inProgress', '导出中…', { 1: '导出' }],
+  ['status.failed', '全文索引失败：network timeout',
+    { 1: '全文索引', 2: 'network timeout' }],
+  ['status.failedToUpdateAutomaticIndexing', '自动更新设置失败：network timeout',
+    { 1: 'network timeout' }],
+  ['status.indexStartFailed', '索引启动失败：network timeout', { 1: 'network timeout' }],
+  ['status.incrementalSyncComplete', 'Batch-A · 已完成增量同步', { 1: 'Batch-A' }]
+];
+const sourceKeyByValue = new Map(Object.entries(sources).map(([key, value]) => [value, key]));
+for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(locale))) {
+  i18n.setLanguage(locale);
+  for (const [key, source, values] of finalDynamicStatuses) {
+    const template = packs[locale][key];
+    const slots = [...template.matchAll(/\{(\d+)\}/g)].map(match => Number(match[1]));
+    assert.deepEqual(slots.sort((a, b) => a - b),
+      Object.keys(values).map(Number).sort((a, b) => a - b),
+      `${locale}/${key}: final status placeholders changed`);
+    const expected = template.replace(/\{(\d+)\}/g, (_, index) => {
+      const value = values[index];
+      const sourceKey = sourceKeyByValue.get(value);
+      return sourceKey ? i18n.t(sourceKey) : value;
+    });
+    assert.equal(i18n.translateText(source), expected,
+      `${locale}/${key}: final dynamic status does not use its reviewed translation`);
+  }
+  assert.equal(i18n.translateText('无权写入该导出任务'),
+    packs[locale]['ui.notAllowedToWriteThisExportTask'],
+    `${locale}/status.notAllowedToWrite: fixed export-task permission error was not translated`);
+  assert.deepEqual([...packs[locale]['status.notAllowedToWrite'].matchAll(/\{(\d+)\}/g)]
+    .map(match => Number(match[1])), [1],
+  `${locale}/status.notAllowedToWrite: status template placeholder changed`);
+}
+console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, all stable UI keys covered`);

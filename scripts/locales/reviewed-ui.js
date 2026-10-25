@@ -4460,6 +4460,292 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           '{1}/{2} · {3}：{4}'
         ]
       }
+    },
+    {
+      // Small labels and task feedback used by the settings panel and status UI.
+      keys: [
+        'ui.timestampSize',
+        'ui.small',
+        'ui.medium',
+        'ui.large',
+        'ui.succeeded',
+        'ui.taskNotFoundForCurrentAccount_3826111',
+        'ui.invalidTaskOperation_d3e0539'
+      ],
+      translations: {
+        'zh-TW': [
+          '時間字級',
+          '小',
+          '中',
+          '大',
+          '成功',
+          '找不到目前帳號的任務',
+          '無效的任務操作'
+        ],
+        es: [
+          'Tamaño de la marca de tiempo',
+          'Pequeño',
+          'Mediano',
+          'Grande',
+          'Correcto',
+          'No se encontró la tarea de la cuenta actual',
+          'Operación de tarea no válida'
+        ],
+        hi: [
+          'टाइमस्टैम्प फ़ॉन्ट का आकार',
+          'छोटा',
+          'मध्यम',
+          'बड़ा',
+          'सफल',
+          'वर्तमान खाते के लिए कार्य नहीं मिला',
+          'कार्य की अमान्य कार्रवाई'
+        ],
+        ar: [
+          'حجم خط الطابع الزمني',
+          'صغير',
+          'متوسط',
+          'كبير',
+          'نجح',
+          'لم يتم العثور على مهمة للحساب الحالي',
+          'عملية مهمة غير صالحة'
+        ],
+        'pt-BR': [
+          'Tamanho da marca de tempo',
+          'Pequeno',
+          'Médio',
+          'Grande',
+          'Concluído com sucesso',
+          'Tarefa não encontrada para a conta atual',
+          'Operação de tarefa inválida'
+        ],
+        bn: [
+          'টাইমস্ট্যাম্পের ফন্টের আকার',
+          'ছোট',
+          'মাঝারি',
+          'বড়',
+          'সফল',
+          'বর্তমান অ্যাকাউন্টের জন্য কাজ পাওয়া যায়নি',
+          'কাজের অপারেশনটি বৈধ নয়'
+        ],
+        id: [
+          'Ukuran font stempel waktu',
+          'Kecil',
+          'Sedang',
+          'Besar',
+          'Berhasil',
+          'Tugas tidak ditemukan untuk akun saat ini',
+          'Operasi tugas tidak valid'
+        ],
+        fr: [
+          'Taille de l’horodatage',
+          'Petit',
+          'Moyen',
+          'Grand',
+          'Réussi',
+          'Tâche introuvable pour le compte actuel',
+          'Opération de tâche invalide'
+        ],
+        ru: [
+          'Размер шрифта временной метки',
+          'Маленький',
+          'Средний',
+          'Большой',
+          'Успешно',
+          'Задача для текущей учётной записи не найдена',
+          'Недопустимая операция с задачей'
+        ],
+        ja: [
+          'タイムスタンプの文字サイズ',
+          '小',
+          '中',
+          '大',
+          '成功',
+          '現在のアカウントのタスクが見つかりません',
+          '無効なタスク操作です'
+        ]
+      }
+    },
+    {
+      // Remaining dynamic status templates. Captured values may be counts,
+      // labels, or diagnostics; preserve them unless they are known UI labels.
+      keys: [
+        'status.notAllowedToWrite',
+        'status.authorizeToBuildAFullTextIndex',
+        'status.select',
+        'status.filterByTitle',
+        'status.select_41',
+        'status.chats_42',
+        'status.chats_43',
+        'status.status',
+        'status.failedToOpenChatGPT',
+        'status.inProgress',
+        'status.failed',
+        'status.failedToUpdateAutomaticIndexing',
+        'status.indexStartFailed',
+        'status.incrementalSyncComplete'
+      ],
+      translations: {
+        'zh-TW': [
+          '{1} · 無權寫入…',
+          '首次建立全文索引需要授權；不會自動擷取聊天正文。現有索引仍可搜尋 · 已索引 {1} 筆',
+          '選取 {1}',
+          '依標題篩選：{1}',
+          '已選取 {1}',
+          '{1} 則聊天記錄',
+          '{1} 則 · {2}',
+          '{1}：{2}',
+          '開啟 ChatGPT 失敗：{1}',
+          '{1} 進行中…',
+          '{1} 失敗：{2}',
+          '更新自動索引設定失敗：{1}',
+          '索引啟動失敗：{1}',
+          '{1} · 增量同步已完成'
+        ],
+        es: [
+          'No tienes permiso para escribir en {1}',
+          'Autoriza la creación del índice de texto completo; los cuerpos de los chats no se descargan automáticamente. El índice existente sigue disponible para búsquedas · {1} indexados',
+          'Seleccionar {1}',
+          'Filtrar por título: {1}',
+          'Seleccionados: {1}',
+          '{1} conversaciones',
+          '{1} conversaciones · {2}',
+          '{1}: {2}',
+          'No se pudo abrir ChatGPT: {1}',
+          '{1} en curso…',
+          'Error en {1}: {2}',
+          'No se pudo actualizar la indexación automática: {1}',
+          'No se pudo iniciar la indexación: {1}',
+          '{1} · Sincronización incremental completada'
+        ],
+        hi: [
+          '{1} में लिखने की अनुमति नहीं है',
+          'पूर्ण-पाठ इंडेक्स बनाने की अनुमति दें; चैट का मुख्य पाठ अपने-आप डाउनलोड नहीं होगा। मौजूदा इंडेक्स खोजा जा सकता है · {1} इंडेक्स किए गए',
+          '{1} चुनें',
+          'शीर्षक के अनुसार फ़िल्टर करें: {1}',
+          'चुने गए: {1}',
+          '{1} चैट',
+          '{1} चैट · {2}',
+          '{1}: {2}',
+          'ChatGPT खोलना विफल रहा: {1}',
+          '{1} जारी है…',
+          '{1} विफल: {2}',
+          'स्वचालित इंडेक्सिंग सेटिंग अपडेट नहीं हो सकी: {1}',
+          'इंडेक्सिंग शुरू नहीं हो सकी: {1}',
+          '{1} · इंक्रीमेंटल सिंक पूरा हुआ'
+        ],
+        ar: [
+          'غير مسموح بالكتابة إلى {1}',
+          'امنح الإذن لإنشاء فهرس النص الكامل؛ لن يتم جلب محتوى المحادثات تلقائيًا. يظل الفهرس الحالي قابلًا للبحث · تمت فهرسة {1}',
+          'تحديد {1}',
+          'تصفية حسب العنوان: {1}',
+          'تم تحديد {1}',
+          '{1} من المحادثات',
+          '{1} من المحادثات · {2}',
+          '{1}: {2}',
+          'تعذر فتح ChatGPT: {1}',
+          '{1} قيد التنفيذ…',
+          'فشل {1}: {2}',
+          'تعذر تحديث إعداد الفهرسة التلقائية: {1}',
+          'تعذر بدء الفهرسة: {1}',
+          '{1} · اكتملت المزامنة التزايدية'
+        ],
+        'pt-BR': [
+          'Você não tem permissão para gravar em {1}',
+          'Autorize a criação do índice de texto completo; o conteúdo das conversas não será baixado automaticamente. O índice existente continua pesquisável · {1} indexados',
+          'Selecionar {1}',
+          'Filtrar por título: {1}',
+          'Selecionados: {1}',
+          '{1} conversas',
+          '{1} conversas · {2}',
+          '{1}: {2}',
+          'Falha ao abrir o ChatGPT: {1}',
+          '{1} em andamento…',
+          'Falha em {1}: {2}',
+          'Falha ao atualizar a indexação automática: {1}',
+          'Falha ao iniciar a indexação: {1}',
+          '{1} · Sincronização incremental concluída'
+        ],
+        bn: [
+          '{1}-এ লেখার অনুমতি নেই',
+          'সম্পূর্ণ-টেক্সট ইনডেক্স তৈরির অনুমতি দিন; কথোপকথনের মূল লেখা স্বয়ংক্রিয়ভাবে ডাউনলোড হবে না। বিদ্যমান ইনডেক্সে অনুসন্ধান করা যাবে · {1}টি ইনডেক্স করা হয়েছে',
+          '{1} নির্বাচন করুন',
+          'শিরোনাম দিয়ে ফিল্টার করুন: {1}',
+          'নির্বাচিত: {1}',
+          '{1}টি চ্যাট',
+          '{1}টি চ্যাট · {2}',
+          '{1}: {2}',
+          'ChatGPT খুলতে ব্যর্থ: {1}',
+          '{1} চলছে…',
+          '{1} ব্যর্থ হয়েছে: {2}',
+          'স্বয়ংক্রিয় ইনডেক্সিং সেটিং আপডেট করা যায়নি: {1}',
+          'ইনডেক্সিং শুরু করা যায়নি: {1}',
+          '{1} · ইনক্রিমেন্টাল সিঙ্ক সম্পন্ন'
+        ],
+        id: [
+          'Tidak diizinkan menulis ke {1}',
+          'Izinkan pembuatan indeks teks lengkap; isi percakapan tidak akan diambil otomatis. Indeks yang ada tetap dapat dicari · {1} terindeks',
+          'Pilih {1}',
+          'Filter berdasarkan judul: {1}',
+          'Dipilih: {1}',
+          '{1} percakapan',
+          '{1} percakapan · {2}',
+          '{1}: {2}',
+          'Gagal membuka ChatGPT: {1}',
+          '{1} sedang berlangsung…',
+          '{1} gagal: {2}',
+          'Gagal memperbarui pengaturan pengindeksan otomatis: {1}',
+          'Gagal memulai pengindeksan: {1}',
+          '{1} · Sinkronisasi inkremental selesai'
+        ],
+        fr: [
+          'Vous n’êtes pas autorisé à écrire dans {1}',
+          'Autorisez la création de l’index en texte intégral ; le contenu des conversations ne sera pas récupéré automatiquement. L’index existant reste consultable · {1} indexés',
+          'Sélectionner {1}',
+          'Filtrer par titre : {1}',
+          'Sélectionnés : {1}',
+          '{1} conversations',
+          '{1} conversations · {2}',
+          '{1} : {2}',
+          'Impossible d’ouvrir ChatGPT : {1}',
+          '{1} en cours…',
+          'Échec de {1} : {2}',
+          'Impossible de mettre à jour l’indexation automatique : {1}',
+          'Impossible de démarrer l’indexation : {1}',
+          '{1} · Synchronisation incrémentale terminée'
+        ],
+        ru: [
+          'Нет разрешения на запись: {1}',
+          'Разрешите создание полнотекстового индекса; содержимое чатов не загружается автоматически. Существующий индекс доступен для поиска · проиндексировано: {1}',
+          'Выбрать {1}',
+          'Фильтр по заголовку: {1}',
+          'Выбрано: {1}',
+          'Чатов: {1}',
+          'Чатов: {1} · {2}',
+          '{1}: {2}',
+          'Не удалось открыть ChatGPT: {1}',
+          '{1} выполняется…',
+          'Ошибка: {1} · {2}',
+          'Не удалось обновить настройки автоматической индексации: {1}',
+          'Не удалось запустить индексацию: {1}',
+          '{1} · Инкрементальная синхронизация завершена'
+        ],
+        ja: [
+          '{1} への書き込み権限がありません',
+          '全文インデックスの作成を許可してください。会話本文は自動取得されません。既存のインデックスは検索できます · インデックス済み {1} 件',
+          '{1} を選択',
+          'タイトルで絞り込む：{1}',
+          '選択済み：{1}',
+          'チャット {1} 件',
+          'チャット {1} 件 · {2}',
+          '{1}：{2}',
+          'ChatGPT を開けませんでした：{1}',
+          '{1} 中…',
+          '{1} に失敗しました：{2}',
+          '自動インデックス設定を更新できませんでした：{1}',
+          'インデックスを開始できませんでした：{1}',
+          '{1} · 差分同期が完了しました'
+        ]
+      }
     }
   ];
   for (const block of blocks) {

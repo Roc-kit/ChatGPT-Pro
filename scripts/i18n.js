@@ -106,7 +106,7 @@
     [/^· 还需 (\d+) 秒$/, m => `· ${m[1]}s remaining`],
     [/^· 等待结束，正在恢复$/, () => '· Resuming'],
     [/^(.+)中…$/, m => `${translateText(m[1])} in progress…`],
-    [/^(.+)失败：(.+)$/, m => `${translateText(m[1])} failed: ${translateText(m[2])}`],
+    [/^(?!(?:自动更新设置|索引启动)失败：)(.+)失败：(.+)$/, m => `${translateText(m[1])} failed: ${translateText(m[2])}`],
     [/^自动更新设置失败：(.+)$/, m => `Failed to update automatic indexing: ${translateText(m[1])}`],
     [/^索引启动失败：(.+)$/, m => `Index start failed: ${translateText(m[1])}`],
     [/^(.+) · ZIP (\d+) 卷$/, m => `${translateText(m[1])} · ${m[2]} ZIP parts`],
@@ -131,6 +131,12 @@
     const key = DYNAMIC_KEYS[index]?.[dynamicVariant(index, match)];
     const template = key && (PACKS[current]?.[key] || EN[key]);
     if (!template) return fallbackFormatter(match);
+    // This permission error is emitted as a fixed extension message. The
+    // generic matcher captures its Chinese suffix ("该导出任务"), which is
+    // not a standalone locale key, so use the already-reviewed full message.
+    if (key === 'status.notAllowedToWrite' && match[0] === '无权写入该导出任务') {
+      return t('ui.notAllowedToWriteThisExportTask');
+    }
     return template.replace(/\{(\d+)\}/g, (whole, digit) => {
       const value = match[Number(digit)];
       if (value == null) return '';
