@@ -14,8 +14,46 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 388, 'all 388 stable interface and dynamic status keys have reviewed translations');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
+const inactiveLegacyKeys = [
+  'ui.initializing_51a08fb',
+  'ui.settings',
+  'ui.timestampSize',
+  'ui.small',
+  'ui.medium',
+  'ui.large',
+  'ui.refresh',
+  'ui.checkingForUpdates',
+  'ui.startingImageDownloads',
+  'ui.noTasksForThisAccount',
+  'ui.allProjects',
+  'ui.permanentlyRemoveThisLocalOnlyChatFromJSON'
+];
+for (const key of inactiveLegacyKeys) {
+  assert(!keys.includes(key), `${key} is not an active user-facing UI string`);
+}
+
+// Every key explicitly referenced by runtime code or a dynamic UI template
+// must remain in the reviewed set. Catalog coverage alone is not enough.
+const runtimeFiles = [
+  'popup/popup.html', 'popup/popup.js', 'scripts/i18n.js',
+  'scripts/content-chatgpt.js', 'scripts/api-handler.js',
+  'scripts/chatgpt-dom-adapter.js', 'scripts/background.js',
+  'scripts/local-data-store.js'
+];
+const runtimeKeyReferences = new Set();
+for (const file of runtimeFiles) {
+  const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  for (const key of Object.keys(sources)) {
+    if (source.includes(key)) runtimeKeyReferences.add(key);
+  }
+}
+for (const variants of environment.ChatGPTProDynamicMessageKeys) {
+  for (const key of Object.values(variants)) runtimeKeyReferences.add(key);
+}
+for (const key of runtimeKeyReferences) {
+  assert(keys.includes(key), `runtime-referenced key is not reviewed: ${key}`);
+}
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
 for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(locale))) {
@@ -44,7 +82,6 @@ const samples = [
   ['es', 'ui.fullTextIndexCache', 'Índice de texto completo y caché'],
   ['ja', 'ui.initialIndexingConsentRequired', '初回インデックス（許可が必要）'],
   ['fr', 'ui.downloadPreviouslySavedZIPPartsAgain', 'Retélécharger les dernières parties ZIP enregistrées'],
-  ['id', 'ui.noTasksForThisAccount', 'Tidak ada tugas untuk akun ini'],
   ['pt-BR', 'ui.localDataCountForThisAccount', 'Dados locais da conta atual'],
   ['es', 'ui.localOnlyConfirmedRemoteDeletion', 'Solo local · eliminación oficial confirmada'],
   ['fr', 'ui.exportThisConversationAsMarkdown', 'Exporter ce chat au format Markdown'],
@@ -118,10 +155,6 @@ const samples = [
     '完全な JSON がローカルに保存されていないため、クラウド上のチャットは削除していません。'],
   ['ja', 'ui.indexingIsRunningInAnotherTab', '別のタブでインデックス作成が実行中です。'],
   ['es', 'ui.indexPausedResumeItInTaskManager', 'La indexación está en pausa. Reanúdala desde el gestor de tareas.'],
-  ['ja', 'ui.timestampSize', 'タイムスタンプの文字サイズ'],
-  ['es', 'ui.small', 'Pequeño'],
-  ['fr', 'ui.medium', 'Moyen'],
-  ['pt-BR', 'ui.large', 'Grande'],
   ['id', 'ui.succeeded', 'Berhasil'],
   ['ru', 'ui.taskNotFoundForCurrentAccount_3826111', 'Задача для текущей учётной записи не найдена'],
   ['ja', 'ui.invalidTaskOperation_d3e0539', '無効なタスク操作です']
@@ -255,6 +288,10 @@ const zipStatuses = [
   ['status.succeededFailedZIPParts', '3 / 10 · 成功 2 · 失败 1 · ZIP 4 卷',
     { 1: '3', 2: '10', 3: '2', 4: '1', 5: '4' }],
   ['status.succeededFailed', '3 / 10 · 成功 2 · 失败 1',
+    { 1: '3', 2: '10', 3: '2', 4: '1' }],
+  ['status.succeededFailedZIPParts', '3/10 · 成功 2 · 失败 1 · ZIP 4 卷',
+    { 1: '3', 2: '10', 3: '2', 4: '1', 5: '4' }],
+  ['status.succeededFailed', '3/10 · 成功 2 · 失败 1',
     { 1: '3', 2: '10', 3: '2', 4: '1' }],
   ['status.startedZIPPartDownloadsCheckBrowserDownloads',
     '已发起 4 个分卷下载，请检查浏览器下载提示', { 1: '4' }],
@@ -412,4 +449,4 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
     .map(match => Number(match[1])), [1],
   `${locale}/status.notAllowedToWrite: status template placeholder changed`);
 }
-console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, all stable UI keys covered`);
+console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed UI keys × 10 locales; runtime references covered`);

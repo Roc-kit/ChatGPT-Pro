@@ -21,4 +21,4 @@
 3. 不得用「包含汉字」判断是否没有翻译：繁体中文、日语本身包含汉字。
 4. 需要回归：`node tests/i18n-coverage-smoke.cjs`、`node tests/i18n-diagnostics-smoke.cjs`、`node tests/i18n-hardcoded-audit.cjs`、`node tests/i18n-reviewed-ui-smoke.cjs`。
 
-语言包中的 Key 覆盖率表示结构完整，不能代替译文质量审校；`reviewed-ui.js` 只标记已实际审校的内容。
+语言包中的 Key 覆盖率表示结构完整，不能代替译文质量审校；`reviewed-ui.js` 只标记已实际审校且仍有运行时用途的用户界面文案，不要求与 `keys.json` 数量相等。不要用固定 Key 数量作为多语言完成标准。确认无运行时引用的历史条目应退出审校集合；是否从语言包目录彻底删除，应另有调用链证据。

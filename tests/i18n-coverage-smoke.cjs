@@ -13,7 +13,8 @@ environment.window = environment;
 const i18n = loadLocales(environment);
 const packs = environment.ChatGPTProLocalePacks;
 const stableKeys = Object.keys(keys);
-assert(stableKeys.length >= 380, 'user-visible interface and dynamic status keys must be preserved');
+assert(stableKeys.length > 0, 'locale catalog must contain message keys');
+assert.equal(new Set(stableKeys).size, stableKeys.length, 'catalog keys must be unique');
 const dynamicKeys = environment.ChatGPTProDynamicMessageKeys;
 assert.equal(dynamicKeys.length, 63, 'dynamic UI templates must have no redundant rules');
 for (const variants of dynamicKeys) {

@@ -23,7 +23,6 @@ for (const language of languages) {
   assert.notEqual(i18n.t('打开 ChatGPT ↗'), '', `open action label exists for ${language}`);
   if (language !== 'zh-CN') {
     assert.notEqual(i18n.t('扩展已就绪'), '扩展已就绪', `ready text translated for ${language}`);
-    assert.notEqual(i18n.t('功能设置'), '功能设置', `settings translated for ${language}`);
     for (const value of [
       '长对话快速导航（Minimap）', '导出整个对话（Markdown）', '下载当前对话所有图片 ZIP',
       '正在导出整个对话…', '已导出整个对话', '归档', '删除',

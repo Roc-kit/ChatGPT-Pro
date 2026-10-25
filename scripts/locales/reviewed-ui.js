@@ -8,6 +8,23 @@
  */
 (function (scope) {
   'use strict';
+  // These catalog entries have no active runtime UI reference. Keep the
+  // locale catalog structurally complete for now, but do not count or apply
+  // their reviewed overrides as active user-facing copy.
+  const inactiveLegacyKeys = new Set([
+    'ui.initializing_51a08fb',
+    'ui.settings',
+    'ui.timestampSize',
+    'ui.small',
+    'ui.medium',
+    'ui.large',
+    'ui.refresh',
+    'ui.checkingForUpdates',
+    'ui.startingImageDownloads',
+    'ui.noTasksForThisAccount',
+    'ui.allProjects',
+    'ui.permanentlyRemoveThisLocalOnlyChatFromJSON'
+  ]);
   const blocks = [
     {
       keys: `ui.openChatGPT
@@ -4756,10 +4773,12 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
       const pack = scope.ChatGPTProLocalePacks?.[locale];
       if (!pack) throw new Error(`Missing locale pack: ${locale}`);
       block.keys.forEach((key, index) => {
+        if (inactiveLegacyKeys.has(key)) return;
         if (!Object.prototype.hasOwnProperty.call(pack, key)) throw new Error(`Unknown reviewed key: ${key}`);
         pack[key] = translations[index].replaceAll('⏎', '\n');
       });
     }
   }
-  scope.ChatGPTProReviewedLocaleKeys = blocks.flatMap(block => block.keys);
+  scope.ChatGPTProReviewedLocaleKeys = blocks.flatMap(block => block.keys)
+    .filter(key => !inactiveLegacyKeys.has(key));
 })(window);

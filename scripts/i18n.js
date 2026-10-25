@@ -54,7 +54,7 @@
       `${m[1]} / ${m[2]} · group ${m[3]} / ${m[4]}`],
     [/^(.+?) · (\d+) 条$/, m => `${translateText(m[1])} · ${m[2]} chats`],
     [/^当前账号 (\d+) 条(?: · 未归属旧索引 (\d+) 条)?$/, m => `${m[1]} account chats${m[2] ? ` · ${m[2]} unassigned legacy entries` : ''}`],
-    [/^(\d+) \/ (\d+) · 成功 (\d+) · 失败 (\d+)(?: · ZIP (\d+) 卷)?$/, m =>
+    [/^(\d+)\s*\/\s*(\d+) · 成功 (\d+) · 失败 (\d+)(?: · ZIP (\d+) 卷)?$/, m =>
       `${m[1]}/${m[2]} · ${m[3]} succeeded · ${m[4]} failed${m[5] ? ` · ${m[5]} ZIP parts` : ''}`],
     [/^已发起 (\d+) 个分卷下载，请检查浏览器下载提示$/, m => `Started ${m[1]} ZIP part downloads; check browser downloads`],
     [/^已清理 (\d+) 个本地 ZIP 分卷，原始聊天缓存和任务历史仍保留$/, m => `Deleted ${m[1]} saved ZIP parts; original chat cache and task history remain`],
