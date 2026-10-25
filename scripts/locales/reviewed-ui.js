@@ -8,9 +8,10 @@
  */
 (function (scope) {
   'use strict';
-  // These catalog entries have no active runtime UI reference. Keep the
-  // locale catalog structurally complete for now, but do not count or apply
-  // their reviewed overrides as active user-facing copy.
+  // These retired entries have no active runtime UI reference and have been
+  // removed from the canonical locale packs. Their old translation rows are
+  // still present in this line-aligned overlay, so skip them until that legacy
+  // block data is regenerated; never apply them or expose them as reviewed UI.
   const inactiveLegacyKeys = new Set([
     'ui.initializing_51a08fb',
     'ui.settings',

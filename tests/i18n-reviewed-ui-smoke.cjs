@@ -31,6 +31,10 @@ const inactiveLegacyKeys = [
 ];
 for (const key of inactiveLegacyKeys) {
   assert(!keys.includes(key), `${key} is not an active user-facing UI string`);
+  assert(!Object.hasOwn(sources, key), `${key} is excluded from the canonical locale catalog`);
+  for (const [locale, pack] of Object.entries(packs)) {
+    assert(!Object.hasOwn(pack, key), `${key} is excluded from the ${locale} locale pack`);
+  }
 }
 
 // Every key explicitly referenced by runtime code or a dynamic UI template
