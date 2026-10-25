@@ -83,7 +83,8 @@ class PipeCDP {
     const reply = await this.send('Runtime.evaluate', {
       expression, returnByValue: true, awaitPromise: true
     }, session);
-    if (reply.exceptionDetails) throw Error(reply.exceptionDetails.text || 'Page exception');
+    if (reply.exceptionDetails) throw Error(reply.exceptionDetails.exception?.description
+      || reply.exceptionDetails.text || 'Page exception');
     return reply.result?.value;
   }
 }
@@ -276,19 +277,52 @@ async function main() {
       document.querySelector('[data-message-id="answer"]').style.minHeight = '';
       window.scrollTo({ top: 0, behavior: 'auto' });
     })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
+    'minimap ready for delayed last-message test');
+    await cdp.eval(pageSession, `(() => {
+      const main = document.querySelector('main');
+      const question = document.querySelector('[data-message-id="question"]');
+      const answer = document.querySelector('[data-message-id="answer"]');
+      const lastMarker = [...document.querySelectorAll('.chatgpt-pro-minimap-marker')].at(-1);
+      question.style.minHeight = '1500px';
+      answer.style.minHeight = '1500px';
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
+      answer.remove();
+      lastMarker.click();
+      window.setTimeout(() => main.append(answer), 5000);
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `(() => { const target = document.querySelector('[data-message-id="answer"]');
+        const anchor = target?.closest('[data-chatgpt-search-unit-key], [data-content-search-unit-key], [data-turn-key], section[data-turn-id]') || target;
+        return Boolean(anchor && Math.abs(anchor.getBoundingClientRect().top) <= 8); })()`),
+    'clicking an unloaded last message keeps retrying through a 5-second delay and aligns it automatically', 15000);
+    await cdp.eval(pageSession, `(() => {
+      document.querySelector('[data-message-id="question"]').style.minHeight = '';
+      document.querySelector('[data-message-id="answer"]').style.minHeight = '';
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
+    'minimap restored after delayed last-message load');
     await cdp.eval(pageSession, `(() => {
       const main = document.querySelector('main');
       const question = document.querySelector('[data-message-id="question"]');
       const next = question.nextSibling;
+      const firstMarker = document.querySelector('.chatgpt-pro-minimap-marker');
       document.querySelector('[data-message-id="answer"]').style.minHeight = '1500px';
       window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
       question.remove();
-      document.querySelector('.chatgpt-pro-minimap-first').click();
-      window.setTimeout(() => main.insertBefore(question, next), 600);
+      firstMarker.click();
+      window.setTimeout(() => {
+        main.insertBefore(question, next);
+      }, 5000);
     })()`);
     await eventually(async () => cdp.eval(pageSession,
-      `Math.abs(document.querySelector('[data-message-id="question"]').getBoundingClientRect().top) <= 3`),
-    'clicking an unloaded first message waits for lazy rendering and jumps to its start automatically');
+      `(() => { const target = document.querySelector('[data-message-id="question"]');
+        const anchor = target?.closest('[data-chatgpt-search-unit-key], [data-content-search-unit-key], [data-turn-key], section[data-turn-id]') || target;
+        return Boolean(anchor && Math.abs(anchor.getBoundingClientRect().top) <= 8); })()`),
+    'clicking an unloaded first message keeps retrying through a 5-second delay and aligns it automatically', 15000);
     await cdp.eval(pageSession, `(() => {
       document.querySelector('[data-message-id="answer"]').style.minHeight = '';
       window.scrollTo({ top: 0, behavior: 'auto' });
