@@ -682,15 +682,19 @@ async function main() {
     const unverifiedSeed = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
       action: 'localDataUpsertDirectory', accountId: 's6-isolated-account',
       records: [{ id: 'r8-unverified-status', title: 'Unverified status fixture',
-        createTime: 1770000300, updateTime: 1770000300, remoteState: 'unverified' }]
+        createTime: 1770000300, updateTime: 1770000300, remoteState: 'unverified' },
+      { id: 'r8-unnamed-project', title: 'Unnamed project fixture',
+        createTime: 1770000310, updateTime: 1770000310, projectId: 'g-p-r8-unnamed' }]
     })`);
-    assert(unverifiedSeed?.success, 'controlled unverified conversation added to local directory');
+    assert(unverifiedSeed?.success, 'controlled unverified and unnamed-project conversations added to local directory');
     await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
     await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
     await eventually(async () => cdp.eval(pageSession,
       `Array.from(document.querySelectorAll('.chatgpt-pro-row-title'))
-        .some(el => el.textContent.includes('Unverified status fixture'))`),
-    'directory renders a controlled unverified-status record');
+        .some(el => el.textContent.includes('Unverified status fixture')) &&
+       Array.from(document.querySelectorAll('.chatgpt-pro-row-title'))
+        .some(el => el.textContent.includes('Unnamed project fixture'))`),
+    'directory renders controlled unverified-status and unnamed-project records');
     // Language choice is shared with the real content script, remains scoped
     // to extension elements, and supports RTL without changing ChatGPT itself.
     await cdp.eval(popupSession, `(() => {
@@ -707,6 +711,14 @@ async function main() {
       `document.querySelector('.chatgpt-pro-project-filter option[value="g-p-r8-project"]')?.textContent`),
     'Proyecto · R8 独立项目',
     'Spanish project filter translates its generated prefix without translating the project name');
+    assert.equal(await cdp.eval(pageSession, `(() => {
+      const row = Array.from(document.querySelectorAll('.chatgpt-pro-row'))
+        .find(item => item.querySelector('.chatgpt-pro-row-title-text')?.textContent === 'Unnamed project fixture');
+      const option = document.querySelector('.chatgpt-pro-project-filter option[value="g-p-r8-unnamed"]');
+      return JSON.stringify({ row: row?.querySelector('.chatgpt-pro-row-project')?.textContent,
+        option: option?.textContent });
+    })()`), JSON.stringify({ row: 'Proyecto sin nombre', option: 'Proyecto · Proyecto sin nombre' }),
+    'Spanish unnamed-project fallback is translated in both the row and project filter');
     const spanishDirectoryLabels = await cdp.eval(pageSession, `(() => {
       const titles = Array.from(document.querySelectorAll('.chatgpt-pro-row-title'));
       const local = titles.find(el => el.textContent.includes('Offline acceptance test'));
@@ -734,6 +746,14 @@ async function main() {
       `document.querySelector('.chatgpt-pro-project-filter option[value="g-p-r8-project"]')?.textContent`),
     'مشروع · R8 独立项目',
     'Arabic project filter translates its generated prefix without translating the project name');
+    assert.equal(await cdp.eval(pageSession, `(() => {
+      const row = Array.from(document.querySelectorAll('.chatgpt-pro-row'))
+        .find(item => item.querySelector('.chatgpt-pro-row-title-text')?.textContent === 'Unnamed project fixture');
+      const option = document.querySelector('.chatgpt-pro-project-filter option[value="g-p-r8-unnamed"]');
+      return JSON.stringify({ row: row?.querySelector('.chatgpt-pro-row-project')?.textContent,
+        option: option?.textContent });
+    })()`), JSON.stringify({ row: 'مشروع بلا اسم', option: 'مشروع · مشروع بلا اسم' }),
+    'Arabic unnamed-project fallback is translated in both the row and project filter');
     assert.equal(await cdp.eval(pageSession, `document.documentElement.getAttribute('dir')`), null,
       'localization does not alter ChatGPT document direction');
     assert.equal(await cdp.eval(pageSession, `(() => {

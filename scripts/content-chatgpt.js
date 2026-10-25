@@ -1189,7 +1189,12 @@
 
       const project = document.createElement('span');
       project.className = 'chatgpt-pro-row-project';
-      project.textContent = conversationSourceName(rec);
+      if (rec.projectId && !rec.projectName && conversationSourceType(rec) !== 'gpt') {
+        project.dataset.fallbackNameKey = 'ui.unnamedProject';
+        project.textContent = window.ChatGPTProI18n?.t('ui.unnamedProject') || '未命名项目';
+      } else {
+        project.textContent = conversationSourceName(rec);
+      }
 
       const exportCell = document.createElement('span');
       exportCell.className = 'chatgpt-pro-row-export';
@@ -3295,6 +3300,9 @@
         S.timeline?.querySelectorAll('.chatgpt-pro-project-filter option[data-project-type]').forEach(option => {
           option.textContent = projectFilterOptionLabel(
             option.dataset.projectType, option.dataset.projectName, option.dataset.projectNameKey || '');
+        });
+        S.timeline?.querySelectorAll('.chatgpt-pro-row-project[data-fallback-name-key]').forEach(project => {
+          project.textContent = window.ChatGPTProI18n?.t(project.dataset.fallbackNameKey) || '未命名项目';
         });
         window.ChatGPTProI18n?.apply(S.launcher);
         window.ChatGPTProI18n?.apply(document.querySelector('[data-chatgpt-pro-current-export]'));
