@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 315, 'reviewed interface, directory synchronization, ZIP export tasks and account safety include 315 strings');
+assert.equal(keys.length, 341, 'reviewed interface, cache integrity, directory synchronization and ZIP export tasks include 341 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -90,6 +90,19 @@ const samples = [
     'Annulez ou terminez la tâche avant de supprimer les parties ZIP enregistrées'],
   ['ja', 'ui.failedItemsVariable', '失敗した項目：\n{items}'],
   ['pt-BR', 'ui.noSavedZIPPartsForThisTask', 'Não há partes ZIP salvas para esta tarefa'],
+  ['ja', 'ui.conversationJSONIncompleteNotCached',
+    '会話の JSON が不完全なため、キャッシュに保存されませんでした'],
+  ['es', 'ui.indexVersionDoesNotMatchFullJSONRebuild',
+    'La versión del índice de texto completo no coincide con el JSON completo. Reconstruye el índice.'],
+  ['fr', 'ui.activeOrPendingTasksExistPauseOrCancel',
+    'Des tâches sont en cours ou en attente pour ce compte. Mettez-les en pause ou annulez-les avant le nettoyage.'],
+  ['id', 'ui.newerFullJSONExistsRefusingToOverwriteWith',
+    'JSON lengkap yang lebih baru sudah tersedia. Data lama tidak digunakan untuk menimpanya.'],
+  ['ar', 'ui.anExplicitAccountIDIsRequiredLegacyIndex',
+    'يلزم تحديد معرّف الحساب صراحةً؛ لا يمكن إسناد إدخالات الفهرس القديم إلى الحساب الحالي تلقائيًا.'],
+  ['pt-BR', 'ui.automaticIndexingNotEnabledForThisAccount',
+    'A indexação automática de texto completo não está ativada para esta conta'],
+  ['zh-TW', 'ui.fullTextSearchFailed', '全文搜尋失敗'],
   ['es', 'ui.completeJSONNotStoredLocallyOnlyASearch',
     'El JSON original completo no está guardado localmente; solo hay fragmentos de búsqueda y no se puede mostrar la vista previa completa.'],
   ['fr', 'ui.unableToReadCompleteLocalContent', 'Impossible de lire le contenu local complet'],
@@ -252,4 +265,4 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
       `${locale}/${key}: image download status does not use reviewed translation`);
   }
 }
-console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including ZIP export tasks, saved-part recovery and live export statuses`);
+console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including cache integrity, index validation and export tasks`);
