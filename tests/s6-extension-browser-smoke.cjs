@@ -574,6 +574,23 @@ async function main() {
       `document.querySelector('.chatgpt-pro-search-result-meta')?.textContent.includes('Solo local') &&
        document.querySelector('.chatgpt-pro-search-result-meta')?.textContent.includes('Usuario')`),
     'search result provenance and user role are localized without changing the indexed snippet');
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-search-result-snippet')?.textContent`),
+    's6 acceptance unique phrase',
+    'user-authored search snippets remain unchanged in Spanish');
+    await cdp.eval(pageSession, `(() => {
+      const input = document.querySelector('.chatgpt-pro-fulltext-input');
+      input.value = 'Offline acceptance test';
+      document.querySelector('.chatgpt-pro-fulltext-form').dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true }));
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-search-result-snippet')?.textContent === 'Coincidencia en el título'`),
+    'extension-generated title-only search snippet is translated in Spanish');
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-search-result strong')?.textContent`),
+    'Offline acceptance test',
+    'title-only search translation does not modify the original conversation title');
     await cdp.eval(pageSession, `Array.from(document.querySelectorAll('.chatgpt-pro-search-result button'))
       .find(button => button.textContent.includes('Vista previa local completa')).click()`);
     await eventually(async () => cdp.eval(pageSession,

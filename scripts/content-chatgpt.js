@@ -2476,6 +2476,11 @@
       const snippet = document.createElement('span');
       snippet.className = 'chatgpt-pro-search-result-snippet';
       snippet.textContent = result.snippet;
+      // This is extension-generated UI copy, unlike a normal message excerpt.
+      // Opt only the title-only fallback into translation; preserve all chat text.
+      if (!result.messageId && result.snippet === '标题匹配') {
+        snippet.setAttribute('data-chatgpt-pro-i18n', '');
+      }
       button.append(title, meta, snippet);
       if (localOnly) {
         const previewButton = document.createElement('button');

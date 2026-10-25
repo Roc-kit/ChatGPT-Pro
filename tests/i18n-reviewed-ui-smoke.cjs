@@ -107,6 +107,7 @@ const samples = [
   ['bn', 'ui.fullTextSearch', 'সম্পূর্ণ টেক্সটে খুঁজুন'],
   ['zh-TW', 'ui.indexDataManagement', '索引與資料管理'],
   ['es', 'ui.fullTextIndexCache', 'Índice de texto completo y caché'],
+  ['es', 'ui.titleMatch', 'Coincidencia en el título'],
   ['ja', 'ui.initialIndexingConsentRequired', '初回インデックス（許可が必要）'],
   ['fr', 'ui.downloadPreviouslySavedZIPPartsAgain', 'Retélécharger les dernières parties ZIP enregistrées'],
   ['pt-BR', 'ui.localDataCountForThisAccount', 'Dados locais da conta atual'],
