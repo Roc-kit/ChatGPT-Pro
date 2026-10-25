@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 193, 'reviewed interface, popup controls, safety, indexing, ZIP export, retry and diagnostic hints include 193 strings');
+assert.equal(keys.length, 215, 'reviewed interface, popup controls, local-only search results, export safety, retry and diagnostic hints include 215 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -46,6 +46,11 @@ const samples = [
   ['fr', 'ui.downloadPreviouslySavedZIPPartsAgain', 'Retélécharger les dernières parties ZIP enregistrées'],
   ['id', 'ui.noTasksForThisAccount', 'Tidak ada tugas untuk akun ini'],
   ['pt-BR', 'ui.localDataCountForThisAccount', 'Dados locais da conta atual'],
+  ['es', 'ui.localOnlyConfirmedRemoteDeletion', 'Solo local · eliminación oficial confirmada'],
+  ['fr', 'ui.exportThisConversationAsMarkdown', 'Exporter ce chat au format Markdown'],
+  ['zh-TW', 'ui.remoteStatusNotVerified', '遠端狀態待核實'],
+  ['id', 'ui.failedToDownloadSavedZIPParts', 'Gagal mengunduh bagian ZIP yang tersimpan'],
+  ['ja', 'ui.accountSwitchedSearchAgain', 'アカウントが切り替わりました。もう一度検索してください'],
   ['ja', 'ui.completeJSONNotSavedLocallyRemoteDeletionCanceled',
     '完全な JSON がローカルに保存されていないため、クラウド上のチャットは削除していません。'],
   ['ja', 'ui.indexingIsRunningInAnotherTab', '別のタブでインデックス作成が実行中です。'],
@@ -181,4 +186,4 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
       `${locale}/${key}: appended cooldown fragment did not use the reviewed translation`);
   }
 }
-console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including popup controls, indexing, ZIP export, retry/cooldown and live wait fragments`);
+console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including popup controls, local-only search states, export safety, retry/cooldown and live wait fragments`);
