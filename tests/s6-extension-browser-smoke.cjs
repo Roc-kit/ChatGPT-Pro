@@ -679,6 +679,18 @@ async function main() {
       `document.querySelectorAll('.chatgpt-pro-row').length`), 1,
     'title filter composes with project navigation');
     assert.equal(requests.details, 1, 'filtering cached directory never calls conversation detail API');
+    const unverifiedSeed = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
+      action: 'localDataUpsertDirectory', accountId: 's6-isolated-account',
+      records: [{ id: 'r8-unverified-status', title: 'Unverified status fixture',
+        createTime: 1770000300, updateTime: 1770000300, remoteState: 'unverified' }]
+    })`);
+    assert(unverifiedSeed?.success, 'controlled unverified conversation added to local directory');
+    await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
+    await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `Array.from(document.querySelectorAll('.chatgpt-pro-row-title'))
+        .some(el => el.textContent.includes('Unverified status fixture'))`),
+    'directory renders a controlled unverified-status record');
     // Language choice is shared with the real content script, remains scoped
     // to extension elements, and supports RTL without changing ChatGPT itself.
     await cdp.eval(popupSession, `(() => {
@@ -691,6 +703,16 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelector('[data-panel-view="directory"]').textContent.toLocaleLowerCase('es').includes('conversaciones')`),
     'Spanish conversation panel translated without remounting');
+    assert.equal(await cdp.eval(pageSession, `(() => {
+      const titles = Array.from(document.querySelectorAll('.chatgpt-pro-row-title'));
+      const local = titles.find(el => el.textContent.includes('Offline acceptance test'));
+      const unverified = titles.find(el => el.textContent.includes('Unverified status fixture'));
+      return Boolean(local?.textContent.includes('Solo local') &&
+        unverified?.textContent.includes('Sin verificar') &&
+        local.querySelector('.chatgpt-pro-row-title-text')?.textContent === 'Offline acceptance test' &&
+        unverified.querySelector('.chatgpt-pro-row-title-text')?.textContent === 'Unverified status fixture');
+    })()`), true,
+    'Spanish directory local-only/unverified labels translate while user-authored titles remain unchanged');
     await cdp.eval(popupSession, `(() => {
       const select = document.querySelector('#languageSelect');
       select.value = 'ar'; select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -701,9 +723,18 @@ async function main() {
     'Arabic RTL panel and UI labels applied');
     assert.equal(await cdp.eval(pageSession, `document.documentElement.getAttribute('dir')`), null,
       'localization does not alter ChatGPT document direction');
-    assert.match(await cdp.eval(pageSession,
-      `document.querySelector('.chatgpt-pro-row-title').textContent`), /R8 unique/,
-    'user conversation titles are never translated');
+    assert.equal(await cdp.eval(pageSession, `(() => {
+      const titles = Array.from(document.querySelectorAll('.chatgpt-pro-row-title'));
+      const local = titles.find(el => el.textContent.includes('Offline acceptance test'));
+      const unverified = titles.find(el => el.textContent.includes('Unverified status fixture'));
+      const project = titles.find(el => el.textContent.includes('R8 unique project fixture'));
+      return Boolean(local?.textContent.includes('محلي فقط') &&
+        unverified?.textContent.includes('غير متحقق منه') &&
+        local.querySelector('.chatgpt-pro-row-title-text')?.textContent === 'Offline acceptance test' &&
+        unverified.querySelector('.chatgpt-pro-row-title-text')?.textContent === 'Unverified status fixture' &&
+        project.querySelector('.chatgpt-pro-row-title-text')?.textContent === 'R8 unique project fixture');
+    })()`), true,
+    'Arabic status labels translate while all user-authored conversation titles remain unchanged');
     assert(!browserErrors.some(Boolean), `Chrome runtime exceptions: ${browserErrors.join('; ')}`);
     console.log(`S6_EXTENSION_PASS: real MV3, timestamps, filename settings, single MD/JSON, project/title filter, cached index and two ZIP parts; requests=${JSON.stringify(requests)}`);
   } finally {

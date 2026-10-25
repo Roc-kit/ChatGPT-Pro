@@ -174,6 +174,8 @@ window.ChatGPTProLocalePacks["ar"] = {
   "ui.project": "المشروع",
   "ui.unverified": "غير مصدق عليه؛",
   "ui.localOnly_efb7560": "محلي فقط",
+  "ui.unverifiedStatus": "غير متحقق منه",
+  "ui.localOnlyStatus": "محلي فقط",
   "ui.exportThisConversationAsMarkdown": "تصدير هذه المحادثة كعلامة",
   "ui.exportThisConversationAsOriginalJSON": "Export this conversation as original JSON",
   "ui.removeLocalOnlyConversationData": "إزالة البيانات المتعلقة بالمحادثات المحلية فقط",

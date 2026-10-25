@@ -4892,6 +4892,23 @@ ui.chatgptTabConnectionInterruptedReloadAndTryAgain`.split('\n'),
         ru: ['Анализ официального демо NocoBase'],
         ja: ['NocoBase 公式デモの分析']
       }
+    },
+    {
+      keys: `ui.unverifiedStatus
+ui.localOnlyStatus`.split('\n'),
+      translations: {
+        en: ['Unverified', 'Local only'],
+        'zh-TW': ['待核實', '僅本機'],
+        es: ['Sin verificar', 'Solo local'],
+        hi: ['सत्यापित नहीं', 'केवल स्थानीय'],
+        ar: ['غير متحقق منه', 'محلي فقط'],
+        'pt-BR': ['Não verificado', 'Somente local'],
+        bn: ['যাচাই করা হয়নি', 'শুধু স্থানীয়'],
+        id: ['Belum diverifikasi', 'Hanya lokal'],
+        fr: ['Non vérifié', 'Local uniquement'],
+        ru: ['Не проверено', 'Только локально'],
+        ja: ['未確認', 'ローカルのみ']
+      }
     }
   ];
   for (const block of blocks) {

@@ -1163,7 +1163,17 @@
 
       const title = document.createElement('span');
       title.className = 'chatgpt-pro-row-title';
-      title.textContent = `${onlyLocal ? '仅本地 · ' : rec.remoteState === 'unverified' ? '待核实 · ' : ''}${rec.title}`;
+      if (onlyLocal || rec.remoteState === 'unverified') {
+        const statusLabel = document.createElement('span');
+        statusLabel.className = 'chatgpt-pro-row-status';
+        statusLabel.textContent = onlyLocal ? '仅本地' : '待核实';
+        title.appendChild(statusLabel);
+        title.appendChild(document.createTextNode(' · '));
+      }
+      const titleText = document.createElement('span');
+      titleText.className = 'chatgpt-pro-row-title-text';
+      titleText.textContent = rec.title;
+      title.appendChild(titleText);
       if (onlyLocal) row.title = '官方明确删除标记，原始数据和导出保留在本地';
 
       const project = document.createElement('span');

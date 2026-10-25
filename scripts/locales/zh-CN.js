@@ -174,6 +174,8 @@ window.ChatGPTProLocalePacks["zh-CN"] = {
   "ui.project": "项目",
   "ui.unverified": "待核实 · ",
   "ui.localOnly_efb7560": "仅本地 · ",
+  "ui.unverifiedStatus": "待核实",
+  "ui.localOnlyStatus": "仅本地",
   "ui.exportThisConversationAsMarkdown": "导出该聊天为 Markdown",
   "ui.exportThisConversationAsOriginalJSON": "导出该聊天原始 JSON",
   "ui.removeLocalOnlyConversationData": "清理此条仅本地对话的本地数据",

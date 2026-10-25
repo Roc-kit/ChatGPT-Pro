@@ -211,7 +211,7 @@
   function translateNode(node) {
     if (node.nodeType !== 3 || !node.parentElement) return;
     const parent = node.parentElement;
-    if (parent.closest('script,style,.chatgpt-pro-row-title,.chatgpt-pro-row-project,.chatgpt-pro-local-preview,#filenamePreview')) return;
+    if (parent.closest('script,style,.chatgpt-pro-row-title-text,.chatgpt-pro-row-project,.chatgpt-pro-local-preview,#filenamePreview')) return;
     if (parent.closest('.chatgpt-pro-search-result') && !parent.closest('[data-chatgpt-pro-i18n]')) return;
     const previous = originals.get(node);
     const source = previous && previous.last === node.nodeValue ? previous.source : node.nodeValue;

@@ -174,6 +174,8 @@ window.ChatGPTProLocalePacks["en"] = {
   "ui.project": "Project",
   "ui.unverified": "Unverified · ",
   "ui.localOnly_efb7560": "Local only · ",
+  "ui.unverifiedStatus": "Unverified",
+  "ui.localOnlyStatus": "Local only",
   "ui.exportThisConversationAsMarkdown": "Export this conversation as Markdown",
   "ui.exportThisConversationAsOriginalJSON": "Export this conversation as original JSON",
   "ui.removeLocalOnlyConversationData": "Remove local-only conversation data",

@@ -174,6 +174,8 @@ window.ChatGPTProLocalePacks["id"] = {
   "ui.project": "Projek",
   "ui.unverified": "Belum diverifikasi",
   "ui.localOnly_efb7560": "Hanya lokal",
+  "ui.unverifiedStatus": "Belum diverifikasi",
+  "ui.localOnlyStatus": "Hanya lokal",
   "ui.exportThisConversationAsMarkdown": "Ekspor percakapan ini sebagai Markdown",
   "ui.exportThisConversationAsOriginalJSON": "Ekspor percakapan ini sebagai JSON asli",
   "ui.removeLocalOnlyConversationData": "Hapus data percakapan local- hanya",

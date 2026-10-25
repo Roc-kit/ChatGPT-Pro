@@ -174,6 +174,8 @@ window.ChatGPTProLocalePacks["hi"] = {
   "ui.project": "परियोजना",
   "ui.unverified": "Unverified",
   "ui.localOnly_efb7560": "केवल",
+  "ui.unverifiedStatus": "सत्यापित नहीं",
+  "ui.localOnlyStatus": "केवल स्थानीय",
   "ui.exportThisConversationAsMarkdown": "इस बातचीत को मार्कडाउन के रूप में निर्यात करें",
   "ui.exportThisConversationAsOriginalJSON": "इस बातचीत को मूल JSON के रूप में निर्यात करें",
   "ui.removeLocalOnlyConversationData": "स्थानीय-only वार्तालाप डेटा निकालें",

@@ -174,6 +174,8 @@ window.ChatGPTProLocalePacks["bn"] = {
   "ui.project": "প্রজেক্ট",
   "ui.unverified": "অপরিক্ষীত",
   "ui.localOnly_efb7560": "শুধুমাত্র স্থানীয়",
+  "ui.unverifiedStatus": "যাচাই করা হয়নি",
+  "ui.localOnlyStatus": "শুধু স্থানীয়",
   "ui.exportThisConversationAsMarkdown": "এই কথোপকথনটি মার্কুস রূপে এক্সপোর্ট করুন",
   "ui.exportThisConversationAsOriginalJSON": "বর্তমান কথোপকথনটি মূল JSON হিসাবে এক্সপোর্ট করুন",
   "ui.removeLocalOnlyConversationData": "শুধুমাত্র স্থানীয় কথোপকথনের তথ্য মুছে ফেলা হবে",
