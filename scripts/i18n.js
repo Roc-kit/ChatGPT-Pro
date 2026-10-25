@@ -115,7 +115,8 @@
     [/^(正在归档|正在永久删除) (\d+) \/ (\d+) · 成功 (\d+)、失败 (\d+)$/, m => `${m[1] === '正在归档' ? 'Archiving' : 'Deleting'} ${m[2]} / ${m[3]} · ${m[4]} succeeded, ${m[5]} failed`],
     [/^(归档|永久删除)完成：成功 (\d+)、失败 (\d+)(（点击查看失败清单）)?$/, m => `${t(m[1])} completed: ${m[2]} succeeded, ${m[3]} failed${m[4] ? ' (click for failures)' : ''}`],
     [/^(归档|永久删除)中止：(.+)$/, m => `${t(m[1])} stopped: ${translateText(m[2])}`],
-    [/^(\d+)\/(\d+) · (用户|ChatGPT|消息)：(.+)$/, m => `${m[1]}/${m[2]} · ${t(m[3])}: ${m[4]}`]
+    [/^(\d+)\/(\d+) · (用户|ChatGPT|消息)：(.+)$/, m => `${m[1]}/${m[2]} · ${t(m[3])}: ${m[4]}`],
+    [/^(\d+)\/(\d+) · (用户|ChatGPT|消息)$/, m => `${m[1]}/${m[2]} · ${translateText(m[3])}`]
   ];
   function valueVerb(text) { return text.startsWith('正在归档') ? 'Archiving' : 'Deleting'; }
   function dynamicVariant(index, match) {
@@ -221,7 +222,7 @@
   function translateNode(node) {
     if (node.nodeType !== 3 || !node.parentElement) return;
     const parent = node.parentElement;
-    if (parent.closest('script,style,.chatgpt-pro-row-title-text,.chatgpt-pro-row-project,.chatgpt-pro-local-preview,#filenamePreview')) return;
+    if (parent.closest('script,style,.chatgpt-pro-row-title-text,.chatgpt-pro-row-project,.chatgpt-pro-local-preview,.chatgpt-pro-minimap-preview-text,#filenamePreview')) return;
     if (parent.closest('.chatgpt-pro-search-result') && !parent.closest('[data-chatgpt-pro-i18n]')) return;
     const previous = originals.get(node);
     const source = previous && previous.last === node.nodeValue ? previous.source : node.nodeValue;

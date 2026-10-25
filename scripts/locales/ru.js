@@ -375,5 +375,6 @@ window.ChatGPTProLocalePacks["ru"] = {
   "status.deletePermanentlyCompletedSucceededFailed": "Удалить окончательно заполненные: {2} преуспел, {3} неудачный",
   "status.deletePermanentlyCompletedSucceededFailedClickFor": "Удалить окончательно заполненные: {2} преуспел, {3} Неудачи (кликните на неудачи)",
   "status.stopped": "{1} остановились: {2}",
-  "status.status_68": "{1}/{2} · {3}: {4}"
+  "status.status_68": "{1}/{2} · {3}: {4}",
+  "status.minimapSpeaker": "{1}/{2} · {3}"
 };

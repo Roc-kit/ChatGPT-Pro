@@ -375,5 +375,6 @@ window.ChatGPTProLocalePacks["ja"] = {
   "status.deletePermanentlyCompletedSucceededFailed": "恒久的に完了した削除: {2} 成功, {3} 失敗しました",
   "status.deletePermanentlyCompletedSucceededFailedClickFor": "恒久的に完了した削除: {2} 成功, {3} 失敗しました(失敗のためにかちりと言う音)",
   "status.stopped": "{1} 停止: {2}",
-  "status.status_68": "{1}/{2} · {3}: {4}"
+  "status.status_68": "{1}/{2} · {3}: {4}",
+  "status.minimapSpeaker": "{1}/{2} · {3}"
 };

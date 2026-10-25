@@ -323,6 +323,16 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelector('[data-chatgpt-pro-current-images]').title === 'Downloading images 2 / 10'`),
     'dynamic image download tooltip translated after attribute change');
+    await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-minimap-user')?.dispatchEvent(new Event('pointerenter'))`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-minimap-user')?.title === '1/2 · User' &&
+       document.querySelector('.chatgpt-pro-minimap-preview-heading')?.textContent === '1/2 · User'`),
+    'minimap marker and hover heading speaker labels translated');
+    const minimapPreviewTextBeforeLocaleChange = await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-minimap-preview-text')?.textContent || ''`);
+    assert(minimapPreviewTextBeforeLocaleChange,
+      'minimap hover preview retains the original message text in a separate node');
     assert.equal(await cdp.eval(popupSession,
       `document.querySelector('label[for="size"]')?.textContent || document.querySelector('#size').type`), 'number');
     await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
@@ -350,6 +360,10 @@ async function main() {
     await eventually(async () => cdp.eval(popupSession,
       `document.querySelector('#indexStart').textContent.includes('需授权')`),
     'language switch restores original Simplified Chinese copy');
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-minimap-preview-text')?.textContent || ''`),
+    minimapPreviewTextBeforeLocaleChange,
+    'switching interface language never translates the user-authored minimap message preview');
     assert.equal(await cdp.eval(popupSession,
       `document.querySelector('#filenamePreset').value`), 'datetime_title',
     'new users default to sortable creation date and time');
@@ -708,6 +722,9 @@ async function main() {
       `document.querySelector('[data-panel-view="directory"]').textContent.toLocaleLowerCase('es').includes('conversaciones')`),
     'Spanish conversation panel translated without remounting');
     assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-minimap-user')?.title`), '1/2 · Usuario',
+    'Spanish minimap speaker tooltip translates after a live language change');
+    assert.equal(await cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-project-filter option[value="g-p-r8-project"]')?.textContent`),
     'Proyecto · R8 独立项目',
     'Spanish project filter translates its generated prefix without translating the project name');
@@ -742,6 +759,9 @@ async function main() {
       `document.querySelector('.chatgpt-pro-panel')?.dir === 'rtl' &&
        document.querySelector('[data-panel-view="search"]').textContent.includes('البحث')`),
     'Arabic RTL panel and UI labels applied');
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-minimap-user')?.title`), '1/2 · المستخدم',
+    'Arabic minimap speaker tooltip translates after a live language change');
     assert.equal(await cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-project-filter option[value="g-p-r8-project"]')?.textContent`),
     'مشروع · R8 独立项目',

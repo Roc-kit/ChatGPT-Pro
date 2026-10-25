@@ -375,5 +375,6 @@ window.ChatGPTProLocalePacks["es"] = {
   "status.deletePermanentlyCompletedSucceededFailed": "Suprímase permanentemente completado: {2} Sucedió, {3} falló.",
   "status.deletePermanentlyCompletedSucceededFailedClickFor": "Suprímase permanentemente completado: {2} Sucedió, {3} falló (haga clic para fracasos)",
   "status.stopped": "{1} Detuvo: {2}",
-  "status.status_68": "{1}/{2} · {3}: {4}"
+  "status.status_68": "{1}/{2} · {3}: {4}",
+  "status.minimapSpeaker": "{1}/{2} · {3}"
 };

@@ -196,5 +196,8 @@ window.ChatGPTProDynamicMessageKeys = [
   },
   {
     "default": "status.status_68"
+  },
+  {
+    "default": "status.minimapSpeaker"
   }
 ];

@@ -460,6 +460,11 @@
     preview.className = 'chatgpt-pro-minimap-preview';
     preview.hidden = true;
     preview.setAttribute('role', 'tooltip');
+    const previewHeading = document.createElement('span');
+    previewHeading.className = 'chatgpt-pro-minimap-preview-heading';
+    const previewText = document.createElement('span');
+    previewText.className = 'chatgpt-pro-minimap-preview-text';
+    preview.append(previewHeading, previewText);
     const entries = [];
     rail.style.gridTemplateRows = `repeat(${sampled.length}, minmax(0, 1fr))`;
     for (const entry of sampled) {
@@ -473,7 +478,8 @@
       if (index === 0) marker.classList.add('chatgpt-pro-minimap-first');
       if (index === allEntries.length - 1) marker.classList.add('chatgpt-pro-minimap-last');
       const showPreview = () => {
-        preview.textContent = `${index + 1}/${allEntries.length} · ${speaker}\n${entry.preview}`;
+        previewHeading.textContent = `${index + 1}/${allEntries.length} · ${speaker}`;
+        previewText.textContent = entry.preview;
         const markerTop = marker.getBoundingClientRect().top - panel.getBoundingClientRect().top;
         preview.style.top = `${Math.max(4, Math.min(panel.clientHeight - 155, markerTop - 28))}px`;
         preview.hidden = false;

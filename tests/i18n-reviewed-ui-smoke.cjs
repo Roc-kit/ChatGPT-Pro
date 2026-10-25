@@ -532,4 +532,17 @@ for (const locale of localeNames) {
       `${locale}: mixed accessibility labels translate UI copy but preserve user-authored titles`);
   }
 }
+for (const locale of localeNames) {
+  i18n.setLanguage(locale);
+  for (const source of ['1/2 · 用户', '2/2 · ChatGPT', '3/5 · 消息']) {
+    const match = source.match(/^(\d+)\/(\d+) · (用户|ChatGPT|消息)$/);
+    const speakerKey = sourceKeyByValue.get(match[3]);
+    const speaker = speakerKey ? i18n.t(speakerKey) : match[3];
+    const expected = locale === 'zh-CN' ? source
+      : packs[locale]['status.minimapSpeaker'].replace('{1}', match[1])
+        .replace('{2}', match[2]).replace('{3}', speaker);
+    assert.equal(i18n.translateText(source), expected,
+      `${locale}: minimap speaker labels must be translated without touching counts`);
+  }
+}
 console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed UI keys × 10 locales; runtime references covered`);

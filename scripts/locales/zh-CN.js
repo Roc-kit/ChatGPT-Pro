@@ -375,5 +375,6 @@ window.ChatGPTProLocalePacks["zh-CN"] = {
   "status.deletePermanentlyCompletedSucceededFailed": "{2} {3} · …完成：成功 …、失败 ……?",
   "status.deletePermanentlyCompletedSucceededFailedClickFor": "{2} {3} · …完成：成功 …、失败 ……?",
   "status.stopped": "{1} {2} · …中止：…",
-  "status.status_68": "{1} {2} {3} {4} · …/… · …：…"
+  "status.status_68": "{1} {2} {3} {4} · …/… · …：…",
+  "status.minimapSpeaker": "{1}/{2} · {3}"
 };

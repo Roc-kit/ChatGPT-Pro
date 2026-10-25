@@ -375,5 +375,6 @@ window.ChatGPTProLocalePacks["ar"] = {
   "status.deletePermanentlyCompletedSucceededFailed": "تحذف الصيغة المستكملة بصفة دائمة: {2} نجحت، {3} فشل",
   "status.deletePermanentlyCompletedSucceededFailedClickFor": "تحذف الصيغة المستكملة بصفة دائمة: {2} نجحت، {3} فشل (انقر للفشل)",
   "status.stopped": "{1} توقف: {2}",
-  "status.status_68": "{1}/{2} · {3}: {4}"
+  "status.status_68": "{1}/{2} · {3}: {4}",
+  "status.minimapSpeaker": "{1}/{2} · {3}"
 };

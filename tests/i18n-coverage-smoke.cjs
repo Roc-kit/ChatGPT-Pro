@@ -16,7 +16,7 @@ const stableKeys = Object.keys(keys);
 assert(stableKeys.length > 0, 'locale catalog must contain message keys');
 assert.equal(new Set(stableKeys).size, stableKeys.length, 'catalog keys must be unique');
 const dynamicKeys = environment.ChatGPTProDynamicMessageKeys;
-assert.equal(dynamicKeys.length, 63, 'dynamic UI templates must have no redundant rules');
+assert.equal(dynamicKeys.length, 64, 'dynamic UI templates must have no redundant rules');
 for (const variants of dynamicKeys) {
   for (const key of Object.values(variants)) {
     assert(Object.prototype.hasOwnProperty.call(keys, key), `missing dynamic catalog key ${key}`);
