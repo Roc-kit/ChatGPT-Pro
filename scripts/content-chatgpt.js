@@ -2983,7 +2983,10 @@
               success++;
               renderCurrent();
             } catch (error) {
-              failed.push(`${rec.title}: ${error.message}`);
+              // Translate only the generated error detail. Conversation titles
+              // are user-authored content and must remain exactly as stored.
+              const errorMessage = window.ChatGPTProI18n?.translateText(error.message) || error.message;
+              failed.push(`${rec.title}: ${errorMessage}`);
               if (/登录账号已切换|HTTP 401|HTTP 403/.test(error.message)) break;
             }
             // Keep mutations sequential to avoid spiking ChatGPT's API.
