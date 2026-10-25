@@ -323,17 +323,48 @@
     S.minimap.active = active;
   }
 
+  function groupMinimapMessages(entries) {
+    const grouped = [];
+    for (const entry of entries) {
+      if (!['user', 'assistant'].includes(entry.role)) continue;
+      const previous = grouped[grouped.length - 1];
+      if (entry.role === 'assistant' && previous?.role === 'assistant') {
+        const targets = previous.targets || (previous.target ? [previous.target] : []);
+        if (entry.target && !targets.includes(entry.target)) targets.push(entry.target);
+        previous.targets = targets;
+        if (!previous.target && entry.target) previous.target = entry.target;
+        // Keep the first rendered node as the scroll target, but show the
+        // final/last message in the assistant turn as the preview and ID.
+        if (entry.channel === 'final' || previous.channel !== 'final') {
+          previous.id = entry.id || previous.id;
+          previous.preview = entry.preview || previous.preview;
+          previous.channel = entry.channel || previous.channel;
+        }
+        continue;
+      }
+      grouped.push({
+        ...entry,
+        targets: entry.target ? [entry.target] : [...(entry.targets || [])]
+      });
+    }
+    return grouped.map((entry, index) => ({ ...entry, index }));
+  }
+
   function minimapMessages(data, rendered) {
-    const dom = rendered.map((target, index) => ({
+    const domRaw = rendered.map((target, index) => ({
       id: window.ChatGPTDomAdapter.messageIds(target)[0] || '',
       target, role: window.ChatGPTDomAdapter.messageRole(target),
       preview: String(target.innerText || target.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 180),
       index
     }));
+    const domHasRoles = domRaw.some(entry => ['user', 'assistant'].includes(entry.role));
+    const dom = domHasRoles
+      ? groupMinimapMessages(domRaw)
+      : domRaw.map((entry, index) => ({ ...entry, index, targets: entry.target ? [entry.target] : [] }));
     if (!data?.mapping) return dom;
     const byId = new Map();
-    for (const entry of dom) if (entry.id) byId.set(entry.id, entry.target);
-    const full = currentBranchMessages(data)
+    for (const entry of domRaw) if (entry.id) byId.set(entry.id, entry.target);
+    const fullRaw = currentBranchMessages(data)
       .filter(message => ['user', 'assistant'].includes(message?.author?.role)
         && !message.metadata?.is_visually_hidden_from_conversation
         && (!message.recipient || message.recipient === 'all')
@@ -341,14 +372,24 @@
       .map((message, index) => ({
         id: message.id, role: message.author.role,
         target: byId.get(message.id) || null,
-        preview: messageText(message).replace(/\s+/g, ' ').trim().slice(0, 180), index
+        preview: messageText(message).replace(/\s+/g, ' ').trim().slice(0, 180),
+        channel: message.channel, index
       }));
+    const full = groupMinimapMessages(fullRaw);
     // If ChatGPT has changed its DOM IDs, retain the full first/last entries
-    // but use DOM ordering for positions that cannot be associated by ID.
+    // but use DOM ordering when the cached branch does not match this page.
     if (full.length && !full.some(entry => entry.target) && full.length === dom.length) {
-      full.forEach((entry, index) => { entry.target = dom[index].target; });
+      full.forEach((entry, index) => {
+        entry.target = dom[index].target;
+        entry.targets = dom[index].targets || (dom[index].target ? [dom[index].target] : []);
+      });
     }
-    return full.length >= dom.length ? full : dom;
+    const matchedDomGroups = domHasRoles
+      ? dom.filter(entry => entry.targets?.some(target => full.some(item => item.targets?.includes(target)))).length
+      : 0;
+    const domCoverage = dom.length ? matchedDomGroups / dom.length : 0;
+    if (full.length && !domHasRoles && full.some(entry => entry.target)) return full;
+    return full.length && (full.length >= dom.length || domCoverage >= 0.5) ? full : dom;
   }
 
   function minimapSample(messages, activeIndex) {
@@ -445,7 +486,7 @@
       return r.bottom > window.innerHeight * 0.38;
     });
     const nearby = messages[Math.max(0, seen)];
-    const mapped = allEntries.findIndex(entry => entry.target && entry.target === nearby);
+    const mapped = allEntries.findIndex(entry => entry.target === nearby || entry.targets?.includes(nearby));
     const activeIndex = mapped >= 0 ? mapped
       : Math.min(allEntries.length - 1, Math.round(Math.max(0, seen) / Math.max(1, messages.length - 1) * (allEntries.length - 1)));
     const sampled = minimapSample(allEntries, activeIndex);

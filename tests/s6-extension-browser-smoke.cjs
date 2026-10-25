@@ -266,6 +266,64 @@ async function main() {
     'minimap switch immediately restores navigation');
     await cdp.eval(pageSession, `(() => {
       const main = document.querySelector('main');
+      main.querySelectorAll('[data-message-id]').forEach(node => node.remove());
+      const fragment = document.createDocumentFragment();
+      for (let turn = 1; turn <= 6; turn++) {
+        const user = document.createElement('section');
+        user.setAttribute('data-message-id', 'logical-user-' + turn);
+        user.setAttribute('data-message-author-role', 'user');
+        user.setAttribute('data-minimap-logical-test', '1');
+        user.textContent = 'User message ' + turn;
+        fragment.append(user);
+        for (let part = 1; part <= 3; part++) {
+          const assistant = document.createElement('section');
+          assistant.setAttribute('data-message-id', 'logical-assistant-' + turn + '-' + part);
+          assistant.setAttribute('data-message-author-role', 'assistant');
+          assistant.setAttribute('data-minimap-logical-test', '1');
+          assistant.textContent = part === 3
+            ? 'Final assistant reply ' + turn
+            : 'Intermediate assistant part ' + turn + '-' + part;
+          fragment.append(assistant);
+        }
+      }
+      main.append(fragment);
+    })()`);
+    await eventually(async () => cdp.eval(pageSession, `(() => {
+      const markers = [...document.querySelectorAll('.chatgpt-pro-minimap-marker')];
+      return markers.length === 12 && markers[0]?.title.startsWith('1/12') &&
+        markers.at(-1)?.title.startsWith('12/12');
+    })()`), 'six user messages and six multi-part assistant replies are grouped into 12 logical entries');
+    const logicalCounts = await cdp.eval(pageSession, `(() => {
+      const markers = [...document.querySelectorAll('.chatgpt-pro-minimap-marker')];
+      return { total: markers.length,
+        users: markers.filter(marker => marker.classList.contains('chatgpt-pro-minimap-user')).length,
+        assistants: markers.filter(marker => marker.classList.contains('chatgpt-pro-minimap-assistant')).length,
+        assistantTitle: markers[1]?.title };
+    })()`);
+    assert.deepEqual(logicalCounts, {
+      total: 12, users: 6, assistants: 6, assistantTitle: '2/12 · ChatGPT'
+    }, 'minimap counts one assistant reply even when its DOM is split into multiple parts');
+    await cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker')[1].dispatchEvent(new Event('pointerenter'))`);
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-minimap-preview-text').textContent`),
+    'Final assistant reply 1', 'grouped assistant preview uses the final reply, not an intermediate chunk');
+    await cdp.eval(pageSession, `document.querySelectorAll('[data-minimap-logical-test]').forEach(node => node.remove());
+      const main = document.querySelector('main');
+      const question = document.createElement('section');
+      question.setAttribute('data-message-id', 'question');
+      question.setAttribute('data-message-author-role', 'user');
+      question.textContent = 's6 acceptance unique phrase';
+      const answer = document.createElement('section');
+      answer.setAttribute('data-message-id', 'answer');
+      answer.setAttribute('data-message-author-role', 'assistant');
+      answer.textContent = 'hello from controlled fixture';
+      main.append(question, answer);`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
+    'short fixture restored after logical-turn grouping test');
+    await cdp.eval(pageSession, `(() => {
+      const main = document.querySelector('main');
       for (let index = 0; index < 120; index++) {
         const section = document.createElement('section');
         section.setAttribute('data-message-id', 'minimap-test-' + index);
