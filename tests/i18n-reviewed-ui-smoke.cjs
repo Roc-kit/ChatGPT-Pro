@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 247, 'reviewed interface, image downloads, directory navigation, popup controls and export safety include 247 strings');
+assert.equal(keys.length, 263, 'reviewed interface, account-switch safeguards, image downloads and export safety include 263 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -66,6 +66,14 @@ const samples = [
   ['fr', 'ui.imageExceeds80MiBLimit', 'Une image dépasse la limite de téléchargement de 80 MiB'],
   ['id', 'ui.chatgptDidNotProvideADownloadableImageURL',
     'ChatGPT tidak menyediakan tautan untuk mengunduh gambar'],
+  ['ja', 'ui.accountChangedVerifyTheRemoteOperationResult',
+    'ログイン中のアカウントが切り替わりました。リモート側の操作結果を確認してください'],
+  ['es', 'ui.accountChangedDetailCacheWriteCanceled',
+    'Ha cambiado la cuenta; se ha cancelado la escritura de detalles en caché'],
+  ['fr', 'ui.unableToVerifyChatGPTAccountStoppedReadingAccount',
+    'Impossible de vérifier le compte ChatGPT connecté ; la lecture de son cache a été arrêtée'],
+  ['pt-BR', 'ui.authenticationErrorTaskPaused',
+    'Problema de login ou permissão; tarefa pausada'],
   ['es', 'ui.completeJSONNotStoredLocallyOnlyASearch',
     'El JSON original completo no está guardado localmente; solo hay fragmentos de búsqueda y no se puede mostrar la vista previa completa.'],
   ['fr', 'ui.unableToReadCompleteLocalContent', 'Impossible de lire le contenu local complet'],
@@ -226,4 +234,4 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
       `${locale}/${key}: image download status does not use reviewed translation`);
   }
 }
-console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including four image progress templates and download errors`);
+console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including account-switch safety and four image progress templates`);
