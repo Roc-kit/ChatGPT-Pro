@@ -58,6 +58,7 @@ for (const language of ['en', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru',
     '3/10 · 成功 2 · 失败 1',
     '3/10 · 成功 2 · 失败 1 · ZIP 4 卷',
     '第 2 个 ZIP 已保存并发起下载 · 10 / 20',
+    '正在导出 3 / 10 · 第 1 / 2 组…',
     '请求失败 · 18 秒后重试 2 / 3 · 10 / 20 · 第 1 / 2 组',
     '已从当前账号清除 119 条全文搜索索引；其他数据保持不变',
     '账号请求冷却中 · 剩余 15 秒 · 到期后可自动继续',
@@ -71,6 +72,9 @@ for (const language of ['en', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru',
       assert(!/[\u3400-\u9fff]/u.test(converted), `${language}: ${value} -> ${converted}`);
     }
   }
+  assert.equal(i18n.translateText('正在导出 测试标题…'),
+    i18n.t('status.exporting').replace('{1}', '测试标题…'),
+    `${language}: nested progress translation must preserve user-authored titles`);
   const confirmation = i18n.format('确定{action}选中的 {count} 条对话？\n\n{detail}\n\n操作可能持续一段时间，失败的条目会保留供重试。',
     { action: i18n.t('永久删除'), count: 3, detail: i18n.t('归档只影响 ChatGPT 云端的对话列表，不会清理扩展本地数据。') });
   assert.notEqual(confirmation, '确定永久删除选中的 3 条对话？', `${language}: untranslated confirmation`);

@@ -146,8 +146,10 @@
       if (SOURCE_TO_KEY.has(value)) return t(value);
       // A nested export/index progress message may itself be a recognized
       // extension status. Never apply this to arbitrary user-authored text.
-      return (translateTechnicalError(value) || DYNAMIC.some(([pattern]) => pattern.test(value)))
-        ? translateText(value) : value;
+      const suffix = value.endsWith('…') ? '…' : '';
+      const nestedValue = suffix ? value.slice(0, -1) : value;
+      return (translateTechnicalError(nestedValue) || DYNAMIC.some(([pattern]) => pattern.test(nestedValue)))
+        ? `${translateText(nestedValue)}${suffix}` : value;
     });
   }
   // Internal storage/ZIP/scheduler failures carry stable English diagnostics.
