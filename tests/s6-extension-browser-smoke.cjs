@@ -707,16 +707,21 @@ async function main() {
       `document.querySelector('.chatgpt-pro-project-filter option[value="g-p-r8-project"]')?.textContent`),
     'Proyecto · R8 独立项目',
     'Spanish project filter translates its generated prefix without translating the project name');
-    assert.equal(await cdp.eval(pageSession, `(() => {
+    const spanishDirectoryLabels = await cdp.eval(pageSession, `(() => {
       const titles = Array.from(document.querySelectorAll('.chatgpt-pro-row-title'));
       const local = titles.find(el => el.textContent.includes('Offline acceptance test'));
       const unverified = titles.find(el => el.textContent.includes('Unverified status fixture'));
-      return Boolean(local?.textContent.includes('Solo local') &&
-        unverified?.textContent.includes('Sin verificar') &&
-        local.querySelector('.chatgpt-pro-row-title-text')?.textContent === 'Offline acceptance test' &&
-        unverified.querySelector('.chatgpt-pro-row-title-text')?.textContent === 'Unverified status fixture');
-    })()`), true,
-    'Spanish directory local-only/unverified labels translate while user-authored titles remain unchanged');
+      const mdLabel = local?.closest('.chatgpt-pro-row')?.querySelector('.chatgpt-pro-row-export button')?.getAttribute('aria-label');
+      return { localText: local?.textContent, unverifiedText: unverified?.textContent, mdLabel,
+        localTitle: local?.querySelector('.chatgpt-pro-row-title-text')?.textContent,
+        unverifiedTitle: unverified?.querySelector('.chatgpt-pro-row-title-text')?.textContent };
+    })()`);
+    assert(spanishDirectoryLabels.localText?.includes('Solo local') &&
+      spanishDirectoryLabels.unverifiedText?.includes('Sin verificar') &&
+      spanishDirectoryLabels.mdLabel === 'Exportar este chat como Markdown: Offline acceptance test' &&
+      spanishDirectoryLabels.localTitle === 'Offline acceptance test' &&
+      spanishDirectoryLabels.unverifiedTitle === 'Unverified status fixture',
+    `Spanish directory status and accessibility labels translate while user-authored titles remain unchanged: ${JSON.stringify(spanishDirectoryLabels)}`);
     await cdp.eval(popupSession, `(() => {
       const select = document.querySelector('#languageSelect');
       select.value = 'ar'; select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -736,8 +741,10 @@ async function main() {
       const local = titles.find(el => el.textContent.includes('Offline acceptance test'));
       const unverified = titles.find(el => el.textContent.includes('Unverified status fixture'));
       const project = titles.find(el => el.textContent.includes('R8 unique project fixture'));
+      const mdLabel = local?.closest('.chatgpt-pro-row')?.querySelector('.chatgpt-pro-row-export button')?.getAttribute('aria-label');
       return Boolean(local?.textContent.includes('محلي فقط') &&
         unverified?.textContent.includes('غير متحقق منه') &&
+        mdLabel === 'تصدير هذه المحادثة بصيغة Markdown: Offline acceptance test' &&
         local.querySelector('.chatgpt-pro-row-title-text')?.textContent === 'Offline acceptance test' &&
         unverified.querySelector('.chatgpt-pro-row-title-text')?.textContent === 'Unverified status fixture' &&
         project.querySelector('.chatgpt-pro-row-title-text')?.textContent === 'R8 unique project fixture');

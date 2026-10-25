@@ -518,4 +518,18 @@ for (const locale of localeNames) {
   assert.equal(wrapped, expectedWrapped,
     `${locale}: wrapped Popup connection errors should also be translated`);
 }
+for (const locale of localeNames) {
+  i18n.setLanguage(locale);
+  for (const [prefix, userTitle] of [
+    ['导出该聊天为 Markdown', 'NocoBase 官方 Demo 分析'],
+    ['导出该聊天原始 JSON', 'R8 独立项目']
+  ]) {
+    const actual = i18n.translateText(`${prefix}：${userTitle}`);
+    const expected = locale === 'zh-CN'
+      ? `${prefix}：${userTitle}`
+      : `${i18n.t(prefix)}: ${userTitle}`;
+    assert.equal(actual, expected,
+      `${locale}: mixed accessibility labels translate UI copy but preserve user-authored titles`);
+  }
+}
 console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed UI keys × 10 locales; runtime references covered`);
