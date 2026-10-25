@@ -78,8 +78,6 @@ window.ChatGPTProLocalePacks["fr"] = {
   "ui.delete": "Supprimer",
   "ui.downloadAllConversationImagesZIP": "Télécharger toutes les images de conversation (ZIP)",
   "ui.conversationMinimap": "Minicarte de conversation",
-  "ui.expandMinimap": "Élargir la minicarte",
-  "ui.collapseMinimap": "Réduire la mini-carte",
   "ui.projectsAll": "Projets · Tous",
   "ui.allSources": "Toutes les sources",
   "ui.searchQuery": "Recherche",

@@ -78,8 +78,6 @@ window.ChatGPTProLocalePacks["id"] = {
   "ui.delete": "Hapus",
   "ui.downloadAllConversationImagesZIP": "Unduh semua gambar percakapan ignity ZIP)",
   "ui.conversationMinimap": "Minimap percakapan",
-  "ui.expandMinimap": "Perluas minimap",
-  "ui.collapseMinimap": "Lipat minimap",
   "ui.projectsAll": "Proyek",
   "ui.allSources": "Semua sumber",
   "ui.searchQuery": "Cari query",

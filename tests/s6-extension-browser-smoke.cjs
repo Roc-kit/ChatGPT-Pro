@@ -249,12 +249,12 @@ async function main() {
       return { height: el.getBoundingClientRect().height,
         width: el.getBoundingClientRect().width,
         rail: el.querySelector('.chatgpt-pro-minimap-rail').getBoundingClientRect().height,
-        viewport: innerHeight };
+        viewport: innerHeight, viewportWidth: innerWidth };
     })()`);
-    assert(minimapSize.height >= minimapSize.viewport * 0.78,
-      'minimap rail fills most of the viewport, even for short conversations');
+    assert(minimapSize.height >= minimapSize.viewport * 0.58,
+      'minimap occupies the available height above the movable export actions');
     assert(minimapSize.width >= 36 && minimapSize.rail > minimapSize.height * 0.85,
-      'minimap uses a wide vertical track rather than a compact pill');
+      'minimap shares a compact, continuous toolbar with the export actions');
     assert.equal(await cdp.eval(popupSession,
       `document.querySelector('#minimapToggle').getAttribute('aria-checked')`), 'true');
     await cdp.eval(popupSession, `document.querySelector('#minimapToggle').click()`);
@@ -289,20 +289,81 @@ async function main() {
     assert.equal(await cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-minimap-preview').hidden`), false,
     'message navigation offers hover preview');
-    await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-minimap-toggle').click()`);
-    const collapsedPosition = await cdp.eval(pageSession, `(() => {
-      const rect = document.querySelector('.chatgpt-pro-minimap').getBoundingClientRect();
-      return { top: rect.top, height: rect.height };
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-minimap-toggle') === null`), true,
+    'minimap has no redundant in-page collapse control');
+    const beforeDrag = await cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      const panel = dock.querySelector('.chatgpt-pro-minimap');
+      const actions = dock.querySelector('[data-chatgpt-pro-tool-actions]');
+      const first = panel.querySelector('.chatgpt-pro-minimap-first');
+      return { actionTop: actions.getBoundingClientRect().top,
+        panelHeight: panel.getBoundingClientRect().height,
+        dockHeight: dock.getBoundingClientRect().height,
+        firstHitHeight: first.getBoundingClientRect().height,
+        firstMarkHeight: parseFloat(getComputedStyle(first, '::before').height),
+        actionsCount: actions.querySelectorAll('button').length,
+        imageAfterChat: actions.children[1]?.hasAttribute('data-chatgpt-pro-current-images') };
     })()`);
-    assert(Math.abs(collapsedPosition.top - minimapAnchors.top) < 2 && collapsedPosition.height <= 44,
-      `collapsing minimap keeps its toggle docked at top: expanded=${JSON.stringify(minimapAnchors)}, collapsed=${JSON.stringify(collapsedPosition)}`);
-    await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-minimap-toggle').click()`);
+    assert(beforeDrag.firstHitHeight >= 9 && beforeDrag.firstMarkHeight >= 9,
+      'first and last minimap messages have enlarged visible marks and click targets');
+    assert.equal(beforeDrag.actionsCount, 2, 'both export actions share the same movable toolbar group');
+    assert.equal(beforeDrag.imageAfterChat, true, 'image export follows conversation export at the bottom');
+    const dragPoint = await cdp.eval(pageSession, `(() => {
+      const button = document.querySelector('[data-chatgpt-pro-current-export]');
+      const r = button.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    })()`);
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed', x: dragPoint.x, y: dragPoint.y, button: 'left', clickCount: 1
+    }, pageSession);
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved', x: dragPoint.x, y: dragPoint.y - 140, button: 'left', buttons: 1
+    }, pageSession);
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x: dragPoint.x, y: dragPoint.y - 140, button: 'left'
+    }, pageSession);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-tool-actions]').getBoundingClientRect().top < ${beforeDrag.actionTop - 100}`),
+    'export actions can be moved upward to avoid covering page content');
+    const afterDrag = await cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      return { actionTop: dock.querySelector('[data-chatgpt-pro-tool-actions]').getBoundingClientRect().top,
+        panelHeight: dock.querySelector('.chatgpt-pro-minimap').getBoundingClientRect().height,
+        dockHeight: dock.getBoundingClientRect().height };
+    })()`);
+    assert(afterDrag.panelHeight < beforeDrag.panelHeight - 100 &&
+      afterDrag.dockHeight < beforeDrag.dockHeight - 100,
+    `moving export actions upward automatically shortens minimap and dock: before=${JSON.stringify(beforeDrag)}, after=${JSON.stringify(afterDrag)}`);
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 640, height: 600, deviceScaleFactor: 1, mobile: false
+    }, pageSession);
+    await eventually(async () => cdp.eval(pageSession,
+      'innerWidth === 640 && innerHeight === 600'), 'narrow viewport applied');
+    const narrowLayout = await cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      const panel = dock.querySelector('.chatgpt-pro-minimap').getBoundingClientRect();
+      const actions = dock.querySelector('[data-chatgpt-pro-tool-actions]').getBoundingClientRect();
+      const outer = dock.getBoundingClientRect();
+      return { width: innerWidth, height: innerHeight, left: outer.left, right: outer.right,
+        dockHeight: outer.height, panelBottom: panel.bottom, actionsTop: actions.top,
+        actionsBottom: actions.bottom };
+    })()`);
+    assert(narrowLayout.left >= 0 && narrowLayout.right <= narrowLayout.width &&
+      narrowLayout.actionsBottom <= narrowLayout.height &&
+      narrowLayout.panelBottom <= narrowLayout.actionsTop + 1 &&
+      narrowLayout.dockHeight < narrowLayout.height,
+    `narrow viewport keeps the movable dock inside the viewport without overlap: ${JSON.stringify(narrowLayout)}`);
+    await cdp.send('Emulation.clearDeviceMetricsOverride', {}, pageSession);
+    await eventually(async () => cdp.eval(pageSession,
+      `innerWidth === ${minimapSize.viewportWidth} && innerHeight === ${minimapSize.viewport}`),
+    'original viewport restored');
     await cdp.eval(pageSession, `document.querySelectorAll('[data-minimap-test]').forEach(item => item.remove())`);
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
     'minimap restores compact message count after DOM changes');
     if (process.argv.includes('--minimap-only')) {
-      console.log('MINIMAP_PASS: bounded window, pinned first/last, hover preview, anchored collapse');
+      console.log('MINIMAP_PASS: bounded window, pinned and clickable first/last, hover preview, draggable auto-shrinking dock');
       return;
     }
     // Hover tooltips are not in the Popup's DOM, and dynamic updates must

@@ -84,8 +84,6 @@ window.ChatGPTProLocalePacks["zh-TW"] = {
   "ui.delete": "刪除",
   "ui.downloadAllConversationImagesZIP": "下載所有對話影像 (ZIP)",
   "ui.conversationMinimap": "相談相談相談相談相談相想",
-  "ui.expandMinimap": "展開迷你相片",
-  "ui.collapseMinimap": "折叠迷你相片",
   "ui.searchQuery": "搜尋查詢",
   "ui.loadingIndexStatus": "正在載入索引狀態...",
   "ui.includeUnassignedLegacyIndexNotLinkedToThis": "包含未指定的遺傳索引( 不與此帳號相連接 )",

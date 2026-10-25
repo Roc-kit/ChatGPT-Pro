@@ -34,7 +34,9 @@
     'ui.bulkTaskItemFailed',
     'ui.taskStatusChanged',
     'ui.cannotClearLegacyIndex',
-    'ui.cannotClearCurrentAccountIndex'
+    'ui.cannotClearCurrentAccountIndex',
+    'ui.expandMinimap',
+    'ui.collapseMinimap'
   ]);
   const blocks = [
     {

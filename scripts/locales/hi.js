@@ -78,8 +78,6 @@ window.ChatGPTProLocalePacks["hi"] = {
   "ui.delete": "डिलीट",
   "ui.downloadAllConversationImagesZIP": "सभी वार्तालाप छवियों (ZIP) डाउनलोड करें",
   "ui.conversationMinimap": "वार्तालाप मिनीमैप",
-  "ui.expandMinimap": "मिनिममैप का विस्तार",
-  "ui.collapseMinimap": "कोलैप मिनीमैप",
   "ui.projectsAll": "परियोजनाएँ",
   "ui.allSources": "सभी स्रोत",
   "ui.searchQuery": "खोज क्वेरी",

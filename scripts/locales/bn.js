@@ -78,8 +78,6 @@ window.ChatGPTProLocalePacks["bn"] = {
   "ui.delete": "মুছে ফেলুন",
   "ui.downloadAllConversationImagesZIP": "সকল কথোপকথনের ছবি ডাউনলোড করুন (ZIP)",
   "ui.conversationMinimap": "কথোপকথন মিনিকার্ড",
-  "ui.expandMinimap": "মিনিকার্ড প্রসারণ",
-  "ui.collapseMinimap": "সংকুচিত মিনিম্যাপ",
   "ui.projectsAll": "সমস্ত কিছু",
   "ui.allSources": "সকল উৎস",
   "ui.searchQuery": "অনুসন্ধান",

@@ -78,8 +78,6 @@ window.ChatGPTProLocalePacks["ar"] = {
   "ui.delete": "تحذف",
   "ui.downloadAllConversationImagesZIP": "تحميل جميع صور المحادثة (ZIP)",
   "ui.conversationMinimap": "خريطة مصغرة للخلاف",
-  "ui.expandMinimap": "Expand minimap",
-  "ui.collapseMinimap": "Collapse minimap",
   "ui.projectsAll": "المشاريع: جميع المشاريع",
   "ui.allSources": "جميع المصادر",
   "ui.searchQuery": "استفسارات البحث",

@@ -78,8 +78,6 @@ window.ChatGPTProLocalePacks["ru"] = {
   "ui.delete": "Исключить",
   "ui.downloadAllConversationImagesZIP": "Скачать все изображения разговора (ZIP)",
   "ui.conversationMinimap": "Разговорная мини-карта",
-  "ui.expandMinimap": "Расширить мини-карту",
-  "ui.collapseMinimap": "Мини-карта коллапса",
   "ui.projectsAll": "Проекты · Все",
   "ui.allSources": "Все источники",
   "ui.searchQuery": "Поисковый запрос",

@@ -8,6 +8,7 @@
   const BACKGROUND_SYNC_MS = 5 * 60 * 1000;
   const PANEL_OVERLAP = 8;
   const VIEWPORT_MARGIN = 10;
+  const TOOL_DOCK_TOP = 8;
   const PANEL_MIN_WIDTH = 390;
   const PANEL_MIN_HEIGHT = 280;
   const PANEL_COMPACT_WIDTH = 500;
@@ -40,7 +41,7 @@
     observedConversationId: undefined,
     observedMessageSignature: '',
     messageRouteRetryTimers: [],
-    minimap: { id: null, signature: '', entries: [], collapsed: false, active: null, frame: 0,
+    minimap: { id: null, signature: '', entries: [], active: null, frame: 0, layoutSlots: 0,
       cachedId: null, cachedMessages: null, lastCacheCheck: 0, checking: false },
     settings: {
       enabled: true,
@@ -298,7 +299,7 @@
   }
 
   function updateMinimapActive() {
-    if (S.minimap.collapsed || !S.minimap.entries.length) return;
+    if (!S.minimap.entries.length) return;
     const items = S.minimap.entries.filter(item => item.target?.isConnected);
     if (!items.length) return;
     const anchor = window.innerHeight * 0.38;
@@ -352,15 +353,22 @@
   }
 
   function minimapSample(messages, activeIndex) {
-    // Like Superpower's windowed rail: permanent first/last anchors, and a
-    // sliding window near the visible message instead of shrinking each row.
     const total = messages.length;
-    const slots = Math.max(3, Math.min(49, Math.floor(window.innerHeight * 0.72 / 10)));
+    const slots = minimapSlotCount();
     if (total <= slots) return messages;
     const inside = slots - 2;
     const start = Math.max(1, Math.min(total - inside - 1,
       Math.max(1, activeIndex) - Math.floor(inside / 2)));
     return [messages[0], ...messages.slice(start, start + inside), messages[total - 1]];
+  }
+
+  function minimapSlotCount() {
+    const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+    const actions = dock?.querySelector('[data-chatgpt-pro-tool-actions]');
+    const railHeight = actions
+      ? Math.max(0, actions.offsetTop - 12)
+      : Math.max(36, window.innerHeight * 0.72);
+    return Math.max(3, Math.min(49, Math.floor(railHeight / 10)));
   }
 
   async function checkMinimapCache(id) {
@@ -407,6 +415,8 @@
     const previous = document.querySelector('[data-chatgpt-pro-minimap]');
     if (!id) {
       previous?.remove();
+      document.querySelector('[data-chatgpt-pro-tool-dock]')?.classList.add('chatgpt-pro-tool-dock-minimap-hidden');
+      updateMinimapDockLayout();
       S.minimap.id = null;
       S.minimap.signature = '';
       S.minimap.entries = [];
@@ -415,12 +425,16 @@
       S.minimap.cachedMessages = null;
       return;
     }
+    const dock = ensureCurrentChatToolDock();
+    dock.classList.remove('chatgpt-pro-tool-dock-minimap-hidden');
     // Do not require role attributes: some ChatGPT views expose message IDs
     // without the role, and filtering them all previously hid the minimap.
     const messages = window.ChatGPTDomAdapter.messageElements();
     checkMinimapCache(id).catch(error => log('Minimap cache lookup failed:', error.message));
     if (messages.length < 2 && !(S.minimap.cachedId === id && S.minimap.cachedMessages)) {
       previous?.remove();
+      dock.classList.add('chatgpt-pro-tool-dock-minimap-hidden');
+      updateMinimapDockLayout();
       S.minimap.signature = '';
       S.minimap.entries = [];
       S.minimap.active = null;
@@ -436,10 +450,11 @@
     const activeIndex = mapped >= 0 ? mapped
       : Math.min(allEntries.length - 1, Math.round(Math.max(0, seen) / Math.max(1, messages.length - 1) * (allEntries.length - 1)));
     const sampled = minimapSample(allEntries, activeIndex);
-    const signature = `${id}:${allEntries.length}:${sampled.map(item => item.index).join(',')}:${messages.map((element, index) =>
+    const signature = `${id}:${allEntries.length}:slots=${minimapSlotCount()}:${sampled.map(item => item.index).join(',')}:${messages.map((element, index) =>
       window.ChatGPTDomAdapter.messageIds(element).join(',') || `position-${index}`).join('|')}`;
     if (previous && S.minimap.signature === signature &&
         S.minimap.entries.length === sampled.length) {
+      updateMinimapDockLayout();
       updateMinimapActive();
       return;
     }
@@ -447,11 +462,6 @@
     panel.className = 'chatgpt-pro-minimap';
     panel.setAttribute('data-chatgpt-pro-minimap', '1');
     panel.setAttribute('aria-label', '长对话快速导航');
-    const toggle = document.createElement('button');
-    toggle.type = 'button';
-    toggle.className = 'chatgpt-pro-minimap-toggle';
-    toggle.textContent = S.minimap.collapsed ? '›' : '‹';
-    toggle.title = S.minimap.collapsed ? '展开消息导航' : '收起消息导航';
     const rail = document.createElement('div');
     rail.className = 'chatgpt-pro-minimap-rail';
     rail.setAttribute('aria-label', '对话消息导航');
@@ -525,23 +535,16 @@
       event.preventDefault();
       jumpMinimapEntry(sampled[index], allEntries.length);
     });
-    toggle.addEventListener('click', () => {
-      S.minimap.collapsed = !S.minimap.collapsed;
-      panel.classList.toggle('chatgpt-pro-minimap-collapsed', S.minimap.collapsed);
-      toggle.textContent = S.minimap.collapsed ? '›' : '‹';
-      toggle.title = S.minimap.collapsed ? '展开消息导航' : '收起消息导航';
-      chrome.storage.local.set({ minimapCollapsed: S.minimap.collapsed });
-      updateMinimapActive();
-    });
-    panel.append(toggle, rail, preview);
-    panel.classList.toggle('chatgpt-pro-minimap-collapsed', S.minimap.collapsed);
+    panel.append(rail, preview);
     previous?.remove();
-    document.body.append(panel);
+    dock.insertBefore(panel, dock.firstChild);
     window.ChatGPTProI18n?.watch(panel);
     S.minimap.id = id;
     S.minimap.signature = signature;
     S.minimap.entries = entries;
     S.minimap.active = null;
+    S.minimap.layoutSlots = minimapSlotCount();
+    updateMinimapDockLayout();
     updateMinimapActive();
   }
 
@@ -805,24 +808,66 @@
     return cached || { id, title: document.title.replace(/\s*[|·-]\s*ChatGPT.*$/i, '').trim() || 'ChatGPT 聊天记录' };
   }
 
-  function placeCurrentChatExportButton(button = document.querySelector('[data-chatgpt-pro-current-export]')) {
-    if (!button) return;
-    const maxTop = Math.max(VIEWPORT_MARGIN, window.innerHeight - button.offsetHeight - VIEWPORT_MARGIN);
-    const y = Math.max(0, Math.min(1, Number(S.settings.currentExportPositionY) || 0));
-    const top = Math.round(VIEWPORT_MARGIN + (maxTop - VIEWPORT_MARGIN) * y);
-    button.style.top = `${top}px`;
-    const images = document.querySelector('[data-chatgpt-pro-current-images]');
-    if (images) images.style.top = `${top >= 54 ? top - 44 : top + 44}px`;
+  function ensureCurrentChatToolDock() {
+    let dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+    if (dock) return dock;
+    dock = document.createElement('div');
+    dock.className = 'chatgpt-pro-tool-dock';
+    dock.setAttribute('data-chatgpt-pro-tool-dock', '1');
+    document.body.appendChild(dock);
+    window.ChatGPTProI18n?.watch(dock);
+    return dock;
   }
 
-  function saveCurrentChatExportPosition(top, button) {
-    const maxTop = Math.max(VIEWPORT_MARGIN, window.innerHeight - button.offsetHeight - VIEWPORT_MARGIN);
-    const y = Math.max(0, Math.min(1, (top - VIEWPORT_MARGIN) / Math.max(1, maxTop - VIEWPORT_MARGIN)));
+  function ensureCurrentChatToolActions() {
+    const dock = ensureCurrentChatToolDock();
+    let actions = dock.querySelector('[data-chatgpt-pro-tool-actions]');
+    if (actions) return actions;
+    actions = document.createElement('div');
+    actions.className = 'chatgpt-pro-tool-actions';
+    actions.setAttribute('data-chatgpt-pro-tool-actions', '1');
+    dock.appendChild(actions);
+    return actions;
+  }
+
+  function toolActionPositionBounds(actions) {
+    const minTop = Math.min(TOOL_DOCK_TOP + 44, Math.max(VIEWPORT_MARGIN, window.innerHeight - actions.offsetHeight - VIEWPORT_MARGIN));
+    const maxTop = Math.max(minTop, window.innerHeight - actions.offsetHeight - VIEWPORT_MARGIN);
+    return { minTop, maxTop };
+  }
+
+  function updateMinimapDockLayout() {
+    const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+    const actions = dock?.querySelector('[data-chatgpt-pro-tool-actions]');
+    const panel = dock?.querySelector('[data-chatgpt-pro-minimap]');
+    if (!dock || !actions) return;
+    const panelHeight = Math.max(0, actions.offsetTop - 6);
+    dock.style.setProperty('height', `${Math.max(0, actions.offsetTop + actions.offsetHeight + 4)}px`, 'important');
+    if (panel) panel.style.setProperty('height', `${panelHeight}px`, 'important');
+  }
+
+  function placeCurrentChatExportButton() {
+    const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+    const actions = dock?.querySelector('[data-chatgpt-pro-tool-actions]');
+    if (!dock || !actions) return;
+    const { minTop, maxTop } = toolActionPositionBounds(actions);
+    const y = Math.max(0, Math.min(1, Number(S.settings.currentExportPositionY) || 0));
+    const top = Math.round(minTop + (maxTop - minTop) * y);
+    actions.style.setProperty('top', `${top - TOOL_DOCK_TOP}px`, 'important');
+    updateMinimapDockLayout();
+  }
+
+  function saveCurrentChatExportPosition(top, actions) {
+    const { minTop, maxTop } = toolActionPositionBounds(actions);
+    const y = Math.max(0, Math.min(1, (top - minTop) / Math.max(1, maxTop - minTop)));
     S.settings.currentExportPositionY = y;
     chrome.storage.local.set({ currentExportPositionY: y });
   }
 
   function setupCurrentChatExportDrag(button) {
+    const dock = button.closest('[data-chatgpt-pro-tool-dock]');
+    const actions = button.closest('[data-chatgpt-pro-tool-actions]');
+    if (!dock || !actions) return;
     let dragging = false;
     let startY = 0;
     let startTop = 0;
@@ -831,9 +876,8 @@
       if (event.button !== 0) return;
       dragging = true;
       S.currentExportMoved = false;
-      const rect = button.getBoundingClientRect();
       startY = event.clientY;
-      startTop = rect.top;
+      startTop = actions.getBoundingClientRect().top;
       button.setPointerCapture(event.pointerId);
       button.classList.add('chatgpt-pro-dragging');
     });
@@ -842,11 +886,12 @@
       if (!dragging) return;
       const dy = event.clientY - startY;
       if (Math.abs(dy) > 5) S.currentExportMoved = true;
-      const maxTop = window.innerHeight - button.offsetHeight - VIEWPORT_MARGIN;
-      const top = Math.max(VIEWPORT_MARGIN, Math.min(maxTop, startTop + dy));
-      button.style.top = `${top}px`;
-      const images = document.querySelector('[data-chatgpt-pro-current-images]');
-      if (images) images.style.top = `${top >= 54 ? top - 44 : top + 44}px`;
+      const { minTop, maxTop } = toolActionPositionBounds(actions);
+      const top = Math.max(minTop, Math.min(maxTop, startTop + dy));
+      actions.style.setProperty('top', `${top - TOOL_DOCK_TOP}px`, 'important');
+      updateMinimapDockLayout();
+      const slots = minimapSlotCount();
+      if (S.minimap.layoutSlots !== slots) syncConversationMinimap();
     });
 
     const finish = event => {
@@ -854,7 +899,7 @@
       dragging = false;
       button.classList.remove('chatgpt-pro-dragging');
       try { button.releasePointerCapture(event.pointerId); } catch (_) {}
-      saveCurrentChatExportPosition(button.getBoundingClientRect().top, button);
+      saveCurrentChatExportPosition(actions.getBoundingClientRect().top, actions);
     };
     button.addEventListener('pointerup', finish);
     button.addEventListener('pointercancel', finish);
@@ -864,12 +909,13 @@
     const id = currentConversationId();
     const existing = document.querySelector('[data-chatgpt-pro-current-export]');
     if (!id) {
-      existing?.remove();
-      document.querySelector('[data-chatgpt-pro-current-images]')?.remove();
+      document.querySelector('[data-chatgpt-pro-tool-dock]')?.remove();
       return;
     }
     if (existing) {
+      ensureCurrentChatToolActions().appendChild(existing);
       ensureCurrentChatImageButton();
+      placeCurrentChatExportButton();
       return;
     }
 
@@ -913,7 +959,7 @@
         button.disabled = false;
       }
     });
-    document.body.appendChild(button);
+    ensureCurrentChatToolActions().appendChild(button);
     window.ChatGPTProI18n?.watch(button);
     placeCurrentChatExportButton(button);
     setupCurrentChatExportDrag(button);
@@ -921,7 +967,12 @@
   }
 
   function ensureCurrentChatImageButton() {
-    if (!currentConversationId() || document.querySelector('[data-chatgpt-pro-current-images]')) return;
+    if (!currentConversationId()) return;
+    const existing = document.querySelector('[data-chatgpt-pro-current-images]');
+    if (existing) {
+      ensureCurrentChatToolActions().appendChild(existing);
+      return;
+    }
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'chatgpt-pro-current-export chatgpt-pro-current-images';
@@ -930,6 +981,10 @@
     button.title = '下载当前对话所有图片 ZIP';
     button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.5"/><path d="m3 17 5-5 4 4 3-3 6 5"/></svg>';
     button.addEventListener('click', async () => {
+      if (S.currentExportMoved) {
+        S.currentExportMoved = false;
+        return;
+      }
       if (button.disabled) return;
       const rec = currentConversationRecord();
       if (!rec) return;
@@ -941,8 +996,9 @@
         button.title = `图片下载失败：${error.message}`;
       } finally { button.disabled = false; }
     });
-    document.body.appendChild(button);
+    ensureCurrentChatToolActions().appendChild(button);
     window.ChatGPTProI18n?.watch(button);
+    setupCurrentChatExportDrag(button);
     placeCurrentChatExportButton();
   }
 
@@ -950,9 +1006,7 @@
     closeTimeline();
     S.launcher?.remove();
     S.launcher = null;
-    document.querySelector('[data-chatgpt-pro-current-export]')?.remove();
-    document.querySelector('[data-chatgpt-pro-current-images]')?.remove();
-    document.querySelector('[data-chatgpt-pro-minimap]')?.remove();
+    document.querySelector('[data-chatgpt-pro-tool-dock]')?.remove();
   }
 
   function positionTimelinePanel() {
@@ -3154,7 +3208,7 @@
   async function loadSettings() {
     const values = await new Promise(resolve => {
       chrome.storage.local.get(
-        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'currentExportPositionY', 'panelSize', 'uiLanguage', 'minimapCollapsed'],
+        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'currentExportPositionY', 'panelSize', 'uiLanguage'],
         data => resolve(data || {})
       );
     });
@@ -3171,7 +3225,6 @@
       S.settings.launcherPosition = values.launcherPosition;
     }
     if (values.currentExportPositionY != null) S.settings.currentExportPositionY = values.currentExportPositionY;
-    S.minimap.collapsed = values.minimapCollapsed === true;
     if (values.panelSize?.width && values.panelSize?.height) S.settings.panelSize = values.panelSize;
   }
 
@@ -3370,6 +3423,7 @@
       placeLauncher();
       placeCurrentChatExportButton();
       positionTimelinePanel();
+      syncConversationMinimap();
     });
     S.ready = true;
     ensureCurrentChatExportButton();

@@ -95,13 +95,11 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
   }
 }
 const samples = [
-  ['ja', 'ui.collapseMinimap', 'ナビゲーションを折りたたむ'],
   ['ja', 'ui.pausedAfterRepeatedFailures', '連続エラーで一時停止中。手動で再開してください'],
   ['es', 'ui.downloadAllConversationImagesZIP', 'Descargar todas las imágenes de esta conversación (ZIP)'],
   ['fr', 'ui.indexDataManagement', 'Gestion de l’index et des données'],
   ['pt-BR', 'ui.archive', 'Arquivar'],
   ['ru', 'ui.conversations', 'Список чатов'],
-  ['ar', 'ui.collapseMinimap', 'طي شريط التنقل'],
   ['id', 'ui.fullTextSearch', 'Pencarian teks lengkap'],
   ['hi', 'ui.delete', 'मिटाएँ'],
   ['bn', 'ui.fullTextSearch', 'সম্পূর্ণ টেক্সটে খুঁজুন'],

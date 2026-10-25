@@ -78,8 +78,6 @@ window.ChatGPTProLocalePacks["ja"] = {
   "ui.delete": "削除",
   "ui.downloadAllConversationImagesZIP": "すべての会話画像をダウンロード (ZIP)",
   "ui.conversationMinimap": "会話ミニマップ",
-  "ui.expandMinimap": "ミニマップの拡大",
-  "ui.collapseMinimap": "崩壊ミニマップ",
   "ui.projectsAll": "プロジェクト・すべて",
   "ui.allSources": "すべてのソース",
   "ui.searchQuery": "クエリ検索",
