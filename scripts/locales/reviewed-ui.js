@@ -2813,6 +2813,166 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           '消去'
         ]
       }
+    },
+    {
+      // Image downloads in a conversation branch: user-facing progress and
+      // errors only, not internal ZIP transport validation.
+      keys: [
+        'ui.imageDownloadFailed',
+        'ui.startingImageDownloads',
+        'ui.noAccessibleImagesInTheCurrentConversationBranch',
+        'ui.returnedDataIsNotAnImage',
+        'ui.emptyImage',
+        'ui.imageExceeds80MiBLimit',
+        'ui.invalidImageFileIdentifier',
+        'ui.chatgptDidNotProvideADownloadableImageURL',
+        'status.imageDownloadHTTP',
+        'status.imageZIPReadySucceededFailedParts',
+        'status.downloadingImages',
+        'status.savingImageZIP'
+      ],
+      translations: {
+        'zh-TW': [
+          '圖片下載失敗',
+          '開始下載圖片',
+          '目前對話分支沒有可辨識的圖片資源',
+          '傳回的資料不是圖片',
+          '圖片內容為空',
+          '單張圖片超過 80 MiB 下載上限',
+          '圖片檔案識別碼無效',
+          'ChatGPT 未提供可下載的圖片連結',
+          '圖片下載失敗（HTTP {1}）',
+          '圖片 ZIP 已產生：成功 {1} 張、失敗 {2} 張；共 {3} 個分卷',
+          '正在下載圖片 {1}/{2}',
+          '正在儲存圖片 ZIP {1}/{2}'
+        ],
+        es: [
+          'No se pudo descargar la imagen',
+          'Iniciando la descarga de imágenes',
+          'No se encontraron imágenes accesibles en esta rama de la conversación',
+          'Los datos recibidos no corresponden a una imagen',
+          'La imagen no contiene datos',
+          'La imagen supera el límite de descarga de 80 MiB',
+          'Identificador de archivo de imagen no válido',
+          'ChatGPT no proporcionó un enlace de descarga para la imagen',
+          'Error al descargar la imagen (HTTP {1})',
+          'ZIP de imágenes generado: {1} correctas, {2} fallidas; {3} partes en total',
+          'Descargando imágenes {1}/{2}',
+          'Guardando el ZIP de imágenes {1}/{2}'
+        ],
+        hi: [
+          'तस्वीर डाउनलोड नहीं हो सकी',
+          'तस्वीरें डाउनलोड की जा रही हैं',
+          'इस चैट की वर्तमान शाखा में कोई उपलब्ध तस्वीर नहीं मिली',
+          'प्राप्त डेटा तस्वीर नहीं है',
+          'तस्वीर का डेटा खाली है',
+          'एक तस्वीर 80 MiB की डाउनलोड सीमा से बड़ी है',
+          'तस्वीर की फ़ाइल पहचान अमान्य है',
+          'ChatGPT ने तस्वीर डाउनलोड करने का लिंक नहीं दिया',
+          'तस्वीर डाउनलोड विफल (HTTP {1})',
+          'तस्वीरों का ZIP बन गया: {1} सफल, {2} विफल; कुल {3} हिस्से',
+          'तस्वीरें डाउनलोड हो रही हैं {1}/{2}',
+          'तस्वीरों का ZIP सेव हो रहा है {1}/{2}'
+        ],
+        ar: [
+          'تعذر تنزيل الصورة',
+          'بدء تنزيل الصور',
+          'لا توجد صور يمكن الوصول إليها في فرع المحادثة الحالي',
+          'البيانات المستلمة ليست صورة',
+          'ملف الصورة فارغ',
+          'يتجاوز حجم الصورة الواحدة حد التنزيل البالغ 80 MiB',
+          'معرّف ملف الصورة غير صالح',
+          'لم يوفر ChatGPT رابطًا لتنزيل الصورة',
+          'فشل تنزيل الصورة (HTTP {1})',
+          'تم إنشاء ملف ZIP للصور: نجح {1}، وفشل {2}؛ بإجمالي {3} أجزاء',
+          'جارٍ تنزيل الصور {1}/{2}',
+          'جارٍ حفظ ملف ZIP للصور {1}/{2}'
+        ],
+        'pt-BR': [
+          'Falha ao baixar a imagem',
+          'Iniciando o download das imagens',
+          'Não foram encontradas imagens acessíveis nesta ramificação da conversa',
+          'Os dados recebidos não são uma imagem',
+          'A imagem não contém dados',
+          'A imagem ultrapassa o limite de download de 80 MiB',
+          'Identificador de arquivo de imagem inválido',
+          'O ChatGPT não forneceu um link para baixar a imagem',
+          'Falha ao baixar a imagem (HTTP {1})',
+          'ZIP de imagens criado: {1} com sucesso, {2} com falha; {3} partes no total',
+          'Baixando imagens {1}/{2}',
+          'Salvando o ZIP de imagens {1}/{2}'
+        ],
+        bn: [
+          'ছবি ডাউনলোড করা যায়নি',
+          'ছবি ডাউনলোড শুরু হচ্ছে',
+          'এই চ্যাটের বর্তমান শাখায় ব্যবহারযোগ্য কোনো ছবি পাওয়া যায়নি',
+          'পাওয়া ডেটা কোনো ছবি নয়',
+          'ছবির ডেটা খালি',
+          'একটি ছবির আকার 80 MiB ডাউনলোড সীমা ছাড়িয়েছে',
+          'ছবির ফাইল শনাক্তকারী সঠিক নয়',
+          'ChatGPT ছবি ডাউনলোডের কোনো লিংক দেয়নি',
+          'ছবি ডাউনলোড ব্যর্থ (HTTP {1})',
+          'ছবির ZIP তৈরি হয়েছে: {1}টি সফল, {2}টি ব্যর্থ; মোট {3}টি অংশ',
+          'ছবি ডাউনলোড হচ্ছে {1}/{2}',
+          'ছবির ZIP সংরক্ষণ হচ্ছে {1}/{2}'
+        ],
+        id: [
+          'Gagal mengunduh gambar',
+          'Memulai pengunduhan gambar',
+          'Tidak ada gambar yang dapat diakses pada cabang percakapan ini',
+          'Data yang diterima bukan gambar',
+          'Data gambar kosong',
+          'Ukuran satu gambar melebihi batas unduhan 80 MiB',
+          'Identitas berkas gambar tidak valid',
+          'ChatGPT tidak menyediakan tautan untuk mengunduh gambar',
+          'Gagal mengunduh gambar (HTTP {1})',
+          'ZIP gambar berhasil dibuat: {1} berhasil, {2} gagal; total {3} bagian',
+          'Mengunduh gambar {1}/{2}',
+          'Menyimpan ZIP gambar {1}/{2}'
+        ],
+        fr: [
+          'Échec du téléchargement de l’image',
+          'Démarrage du téléchargement des images',
+          'Aucune image accessible dans cette branche de la conversation',
+          'Les données reçues ne sont pas une image',
+          'Le fichier image est vide',
+          'Une image dépasse la limite de téléchargement de 80 MiB',
+          'Identifiant de fichier image non valide',
+          'ChatGPT n’a fourni aucun lien permettant de télécharger l’image',
+          'Échec du téléchargement de l’image (HTTP {1})',
+          'ZIP des images créé : {1} réussites, {2} échecs ; {3} parties au total',
+          'Téléchargement des images {1}/{2}',
+          'Enregistrement du ZIP des images {1}/{2}'
+        ],
+        ru: [
+          'Не удалось скачать изображение',
+          'Начало загрузки изображений',
+          'В текущей ветке чата нет доступных изображений',
+          'Полученные данные не являются изображением',
+          'Данные изображения пусты',
+          'Размер одного изображения превышает ограничение на загрузку 80 MiB',
+          'Недопустимый идентификатор файла изображения',
+          'ChatGPT не предоставил ссылку для скачивания изображения',
+          'Ошибка загрузки изображения (HTTP {1})',
+          'ZIP с изображениями создан: успешно {1}, ошибок {2}; частей {3}',
+          'Загрузка изображений {1}/{2}',
+          'Сохранение ZIP с изображениями {1}/{2}'
+        ],
+        ja: [
+          '画像のダウンロードに失敗しました',
+          '画像のダウンロードを開始しています',
+          '現在のチャットの分岐には取得可能な画像がありません',
+          '取得したデータは画像ではありません',
+          '画像データが空です',
+          '画像 1 枚のサイズがダウンロード上限の 80 MiB を超えています',
+          '画像ファイルの識別子が無効です',
+          'ChatGPT から画像のダウンロードリンクが提供されませんでした',
+          '画像のダウンロードに失敗しました（HTTP {1}）',
+          '画像 ZIP を作成しました：成功 {1} 件、失敗 {2} 件、全 {3} 分割',
+          '画像をダウンロード中 {1}/{2}',
+          '画像 ZIP を保存中 {1}/{2}'
+        ]
+      }
     }
   ];
   for (const block of blocks) {

@@ -14,7 +14,7 @@ const keys = environment.ChatGPTProReviewedLocaleKeys;
 const packs = environment.ChatGPTProLocalePacks;
 const sources = JSON.parse(fs.readFileSync(path.join(__dirname, '../scripts/locales/keys.json'), 'utf8'));
 
-assert.equal(keys.length, 235, 'reviewed interface, directory navigation, popup controls, local-only search results and export safety include 235 strings');
+assert.equal(keys.length, 247, 'reviewed interface, image downloads, directory navigation, popup controls and export safety include 247 strings');
 assert.equal(new Set(keys).size, keys.length, 'reviewed keys cannot contain duplicates');
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
@@ -60,6 +60,12 @@ const samples = [
   ['fr', 'ui.titleMatch', 'Correspondance dans le titre'],
   ['ar', 'ui.unnamedProject', 'مشروع بلا اسم'],
   ['id', 'ui.locallyStored', 'Sudah tersimpan secara lokal'],
+  ['ja', 'ui.returnedDataIsNotAnImage', '取得したデータは画像ではありません'],
+  ['es', 'ui.noAccessibleImagesInTheCurrentConversationBranch',
+    'No se encontraron imágenes accesibles en esta rama de la conversación'],
+  ['fr', 'ui.imageExceeds80MiBLimit', 'Une image dépasse la limite de téléchargement de 80 MiB'],
+  ['id', 'ui.chatgptDidNotProvideADownloadableImageURL',
+    'ChatGPT tidak menyediakan tautan untuk mengunduh gambar'],
   ['es', 'ui.completeJSONNotStoredLocallyOnlyASearch',
     'El JSON original completo no está guardado localmente; solo hay fragmentos de búsqueda y no se puede mostrar la vista previa completa.'],
   ['fr', 'ui.unableToReadCompleteLocalContent', 'Impossible de lire le contenu local complet'],
@@ -198,4 +204,26 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
       `${locale}/${key}: appended cooldown fragment did not use the reviewed translation`);
   }
 }
-console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including directory navigation, popup controls, search, export safety and retry/cooldown`);
+// Image-download status text is generated dynamically. Verify actual
+// translation and numeric placeholders, not just the language bundle rows.
+const imageStatuses = [
+  ['status.imageDownloadHTTP', '图片下载 HTTP 403', { 1: '403' }],
+  ['status.imageZIPReadySucceededFailedParts',
+    '图片 ZIP 已生成：成功 3，失败 1；共 2 卷', { 1: '3', 2: '1', 3: '2' }],
+  ['status.downloadingImages', '正在下载图片 2 / 5', { 1: '2', 2: '5' }],
+  ['status.savingImageZIP', '正在保存图片 ZIP 1 / 2', { 1: '1', 2: '2' }]
+];
+for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(locale))) {
+  i18n.setLanguage(locale);
+  for (const [key, original, args] of imageStatuses) {
+    const template = packs[locale][key];
+    const captures = [...template.matchAll(/\{(\d+)\}/g)].map(match => Number(match[1]));
+    assert.deepEqual(captures.sort((a, b) => a - b),
+      Object.keys(args).map(Number).sort((a, b) => a - b),
+      `${locale}/${key}: image progress variables changed`);
+    const expected = template.replace(/\{(\d+)\}/g, (_, index) => args[index]);
+    assert.equal(i18n.translateText(original), expected,
+      `${locale}/${key}: image download status does not use reviewed translation`);
+  }
+}
+console.log(`I18N_REVIEWED_PASS: ${keys.length} reviewed keys × 10 locales, including four image progress templates and download errors`);
