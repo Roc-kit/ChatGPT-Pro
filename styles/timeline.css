@@ -590,6 +590,17 @@
   gap: 10px !important;
   white-space: nowrap !important;
 }
+.chatgpt-pro-search-index-error-skip {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #6b7280 !important;
+  font: inherit !important;
+  cursor: pointer !important;
+}
+.chatgpt-pro-search-index-error-skip:hover:not(:disabled) { color: #dc2626 !important; }
+.chatgpt-pro-search-index-error-skip:disabled { opacity: .55 !important; cursor: wait !important; }
 .chatgpt-pro-search-index-error-title strong { color: #374151 !important; }
 .chatgpt-pro-search-index-error-title a { color: #0d9373 !important; text-decoration: none !important; white-space: nowrap !important; }
 .chatgpt-pro-search-index-error-message { margin-top: 3px !important; color: #4b5563 !important; }

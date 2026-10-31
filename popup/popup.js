@@ -237,6 +237,9 @@ document.addEventListener('DOMContentLoaded', () => {
       detail.className = 'hint';
       const description = `${task.done}/${task.total} · 成功 ${task.successes} · 失败 ${task.failures}`;
       detail.textContent = task.savedVolumes ? `${description} · ZIP ${task.savedVolumes} 卷` : description;
+      if (task.skipped) {
+        detail.append(` · ${i18n.format('status.skippedIndexConversations', { count: task.skipped })}`);
+      }
       if (task.status === 'running' && cooldownDeadline > Date.now()) {
         detail.append(' · 等待账号限流冷却');
       } else if (task.phase) {

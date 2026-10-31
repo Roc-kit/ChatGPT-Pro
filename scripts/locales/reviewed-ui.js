@@ -4946,6 +4946,16 @@ ui.retryRequiresIdleIndex`.split('\n');
       'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
     ].map(locale => [locale, retryIndexKeys.map(key => scope.ChatGPTProLocalePacks[locale][key])]))
   });
+  const indexSkipKeys = `ui.skipIndexConversation
+ui.skipIndexConversationConfirm
+status.skippedIndexConversations`.split('\n');
+  // The skip action is translated directly in each offline locale bundle.
+  blocks.push({
+    keys: indexSkipKeys,
+    translations: Object.fromEntries([
+      'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
+    ].map(locale => [locale, indexSkipKeys.map(key => scope.ChatGPTProLocalePacks[locale][key])]))
+  });
   for (const block of blocks) {
     for (const [locale, translations] of Object.entries(block.translations)) {
       if (translations.length !== block.keys.length) {

@@ -768,6 +768,17 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     const consentBefore = await storage.getStats(consentId);
     check(consentBefore.complete === 2 && consentBefore.indexed === 2,
       'clear test starts with both complete JSON and searchable text');
+    const skipBeforeClear = await send({ action: 'taskCreate', accountId: consentId, type: 'index',
+      items: [{ id: 'consent-a', updateTime: 1700000010 }] });
+    const skipBeforeClearClaim = await send({ action: 'taskClaim', accountId: consentId,
+      id: skipBeforeClear.result.id, owner: 'skip-before-clear-tab' });
+    await send({ action: 'taskCheckpoint', accountId: consentId, id: skipBeforeClear.result.id,
+      owner: 'skip-before-clear-tab', token: skipBeforeClearClaim.result.token,
+      itemIndex: 0, outcome: 'failed', error: 'mock-404' });
+    check((await send({ action: 'indexSkipConversation', accountId: consentId,
+      taskId: skipBeforeClear.result.id, conversationId: 'consent-a' })).success &&
+      (await send({ action: 'indexPolicyGet', accountId: consentId })).result.skippedIndexIds.includes('consent-a'),
+      'skip list is account-scoped and available before clearing');
     const clearRaw = await send({ action: 'localDataClearAccount', accountId: consentId, kind: 'raw' });
     check(clearRaw.success && clearRaw.result.removed === 2, 'raw clear reports exact number removed');
     const afterRaw = await storage.getStats(consentId);
@@ -782,8 +793,8 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     const clearedPolicy = (await send({ action: 'indexPolicyGet', accountId: consentId })).result;
     check(afterIndex.indexed === 0 && afterIndex.directory === consentBefore.directory &&
       clearedPolicy.consentAt === initialPolicy.consentAt && !clearedPolicy.initialCompletedAt &&
-      clearedPolicy.autoEnabled === false,
-      'clear index retains original consent, resets completion and disables auto-update');
+      clearedPolicy.autoEnabled === false && clearedPolicy.skippedIndexIds.length === 0,
+      'clear index retains original consent, resets completion, auto-update and skipped IDs');
     check(!(await send({ action: 'taskCreate', accountId: consentId, type: 'index',
       items: automaticItem, options: { automatic: true } })).success,
       'automatic reconstruction is blocked after index clear');
@@ -798,7 +809,17 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     // Only a newly requested initial scan, not reopening a tab, re-enables auto-update.
     check((await send({ action: 'indexPolicyDirectoryVerified', accountId: consentId,
       records: snapshot })).success, 'consented account may manually scan again');
-    for (const item of snapshot) {
+    const skipInitial = await send({ action: 'taskCreate', accountId: consentId, type: 'index',
+      items: [snapshot[0]] });
+    const skipInitialClaim = await send({ action: 'taskClaim', accountId: consentId,
+      id: skipInitial.result.id, owner: 'skip-initial-tab' });
+    await send({ action: 'taskCheckpoint', accountId: consentId, id: skipInitial.result.id,
+      owner: 'skip-initial-tab', token: skipInitialClaim.result.token,
+      itemIndex: 0, outcome: 'failed', error: 'mock-404' });
+    check((await send({ action: 'indexSkipConversation', accountId: consentId,
+      taskId: skipInitial.result.id, conversationId: snapshot[0].id })).success,
+      'initial indexing can persist an explicitly skipped conversation');
+    for (const item of snapshot.slice(1)) {
       await storage.putConversation(consentId, { id: item.id, updateTime: item.updateTime,
         raw: { id: item.id, mapping: {} }, searchRecord: { id: item.id, messages: [] } });
     }
@@ -883,6 +904,18 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     const pausedTask = await send({ action: 'taskGet', accountId: 'batch-b-fail', id: failureTask.result.id });
     check(pausedTask.result.status === 'paused' && pausedTask.result.consecutiveFailures === 3 &&
       pausedTask.result.nextIndex === 3, 'three consecutive failures pause and retain cursor');
+    const skippedFailure = await send({ action: 'indexSkipConversation', accountId: 'batch-b-fail',
+      taskId: failureTask.result.id, conversationId: 'failure-0' });
+    const afterSkipTask = await send({ action: 'taskGet', accountId: 'batch-b-fail', id: failureTask.result.id });
+    const afterSkipPolicy = await send({ action: 'indexPolicyGet', accountId: 'batch-b-fail' });
+    check(skippedFailure.success && afterSkipTask.result.errors.length === 2 &&
+      afterSkipTask.result.failureCount === 2 && afterSkipTask.result.skippedCount === 1,
+      'skipping a failed item removes it from the failure list and task failure count');
+    check(afterSkipPolicy.result.skippedIndexIds.includes('failure-0'),
+      'skipped conversation is persisted for this account');
+    check(!(await send({ action: 'indexSkipConversation', accountId: 'batch-b-other',
+      taskId: failureTask.result.id, conversationId: 'failure-1' })).success,
+      'another account cannot skip an item from this task');
     check((await send({ action: 'logList', accountId: 'batch-b-fail' })).result.some(entry =>
       entry.code === 'consecutive-failures-paused'), 'automatic pause appears in structured logs');
     check(!(await send({ action: 'taskCheckpoint', accountId: 'batch-b-fail',
@@ -935,7 +968,7 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }
-    document.getElementById('result').textContent = 'S1_PASS: account switching, scoped directory/search, JSON versions';
+    document.getElementById('result').textContent = 'S1_PASS: account switching, scoped directory/search, JSON versions, persistent index skip';
   } catch (error) {
     document.getElementById('result').textContent = 'S1_FAIL: ' + (error.stack || error.message);
   }

@@ -108,6 +108,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       message.itemIndex, message.outcome, message.error
     ),
     taskControl: () => ChatGPTProLocalData.controlTask(message.accountId, message.id, message.operation, message.reason),
+    indexSkipConversation: () => ChatGPTProLocalData.skipIndexConversation(
+      message.accountId, message.taskId, message.conversationId
+    ),
     taskVolumeSave: () => ChatGPTProLocalData.saveExportVolume(
       message.accountId, message.id, message.owner, message.token, message.payload
     ),
@@ -172,6 +175,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             : { type: 'failure', code: 'item-failed', taskId: message.id, message: '批量任务单条处理失败' };
         } else if (message.action === 'taskControl' && ['pause', 'resume', 'cancel'].includes(message.operation)) {
           event = { type: 'task', code: message.operation, taskId: message.id, message: '任务状态已修改' };
+        } else if (message.action === 'indexSkipConversation') {
+          event = { type: 'task', code: 'index-item-skipped', taskId: message.taskId,
+            message: '用户跳过了一条索引失败的对话' };
         }
         if (event) await ChatGPTProLocalData.addLog(message.accountId, event).catch(() => {});
         sendResponse({ success: true, result });

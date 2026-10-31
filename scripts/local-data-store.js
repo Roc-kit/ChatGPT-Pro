@@ -286,18 +286,26 @@ globalThis.ChatGPTProLocalData = (() => {
 
   async function clearSearchIndex(accountId) {
     validateAccount(accountId);
-    return transaction([STORES.search], 'readwrite', stores => new Promise((resolve, reject) => {
+    return transaction([STORES.search, STORES.accounts], 'readwrite', async stores => {
       let removed = 0;
-      const cursorRequest = stores[STORES.search].index('byAccount').openCursor(IDBKeyRange.only(accountId));
-      cursorRequest.onsuccess = () => {
-        const cursor = cursorRequest.result;
-        if (!cursor) { resolve({ removed }); return; }
-        cursor.delete();
-        removed++;
-        cursor.continue();
-      };
-      cursorRequest.onerror = () => reject(cursorRequest.error || new Error('无法清理当前账号索引'));
-    }));
+      await new Promise((resolve, reject) => {
+        const cursorRequest = stores[STORES.search].index('byAccount').openCursor(IDBKeyRange.only(accountId));
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result;
+          if (!cursor) { resolve(); return; }
+          cursor.delete();
+          removed++;
+          cursor.continue();
+        };
+        cursorRequest.onerror = () => reject(cursorRequest.error || new Error('无法清理当前账号索引'));
+      });
+      const account = await requested(stores[STORES.accounts].get(accountId));
+      if (account?.skippedIndexIds?.length) {
+        account.skippedIndexIds = [];
+        await requested(stores[STORES.accounts].put(account));
+      }
+      return { removed };
+    });
   }
 
   async function putConversation(accountId, { id, raw, updateTime, searchRecord = null }) {
@@ -374,7 +382,8 @@ globalThis.ChatGPTProLocalData = (() => {
       consentAt: account?.fullIndexConsentAt || null,
       initialCompletedAt: account?.initialIndexCompletedAt || null,
       autoEnabled: Boolean(account?.initialIndexCompletedAt && account.autoIncrementalIndex !== false),
-      setupPhase: account?.indexSetupUntil > Date.now() ? (account.indexSetupPhase || null) : null
+      setupPhase: account?.indexSetupUntil > Date.now() ? (account.indexSetupPhase || null) : null,
+      skippedIndexIds: Array.isArray(account?.skippedIndexIds) ? account.skippedIndexIds : []
     };
   }
 
@@ -430,6 +439,7 @@ globalThis.ChatGPTProLocalData = (() => {
         account.initialIndexCompletedAt = null;
         account.fullDirectoryScannedAt = null;
         account.autoIncrementalIndex = false;
+        account.skippedIndexIds = [];
         // A fresh manually initiated first scan will establish a new snapshot.
         delete account.firstIndexSnapshot;
         await requested(accountStore.put(account));
@@ -498,7 +508,9 @@ globalThis.ChatGPTProLocalData = (() => {
       const directory = account.firstIndexSnapshot;
       const indexed = await requested(stores[STORES.search].index('byAccount').getAll(IDBKeyRange.only(accountId)));
       const byId = new Map(indexed.map(entry => [entry.id, entry]));
+      const skippedIds = new Set(Array.isArray(account.skippedIndexIds) ? account.skippedIndexIds : []);
       const missing = directory.filter(record => {
+        if (skippedIds.has(record.id)) return false;
         const entry = byId.get(record.id);
         const directoryVersion = normalizeTime(record.updateTime);
         return !entry || (directoryVersion === null
@@ -550,7 +562,7 @@ globalThis.ChatGPTProLocalData = (() => {
     const task = {
       id: crypto.randomUUID(), accountId, type, items: records,
       status: 'pending', nextIndex: 0, successCount: 0, failureCount: 0,
-      consecutiveFailures: 0, rateLimitPauseCount: 0,
+      consecutiveFailures: 0, rateLimitPauseCount: 0, skippedCount: 0, skippedIds: [],
       errors: [], createdAt: now, updatedAt: now, lease: null, generation: 0,
       options: { checkLatest: options.checkLatest === true }
     };
@@ -721,6 +733,44 @@ globalThis.ChatGPTProLocalData = (() => {
       }
       task.generation++;
       return { changed: true };
+    });
+  }
+
+  async function skipIndexConversation(accountId, taskId, conversationId) {
+    validateAccount(accountId);
+    validateId(taskId);
+    validateId(conversationId);
+    return transaction([STORES.accounts, STORES.tasks], 'readwrite', async stores => {
+      const task = await requested(stores[STORES.tasks].get(taskId));
+      if (!task || task.accountId !== accountId || task.type !== 'index') {
+        throw new Error('E_INDEX_SKIP_TASK_NOT_FOUND');
+      }
+      if (!(task.items || []).some(item => item.id === conversationId)) {
+        throw new Error('E_INDEX_SKIP_ITEM_NOT_IN_TASK');
+      }
+      const errors = Array.isArray(task.errors) ? task.errors : [];
+      const removedErrors = errors.filter(error => error?.id === conversationId).length;
+      const accountStore = stores[STORES.accounts];
+      const account = await requested(accountStore.get(accountId)) || { id: accountId };
+      const skippedIds = new Set(Array.isArray(account.skippedIndexIds) ? account.skippedIndexIds : []);
+      const alreadySkipped = skippedIds.has(conversationId);
+      if (!removedErrors && !alreadySkipped) {
+        throw new Error('E_INDEX_SKIP_FAILURE_NOT_FOUND');
+      }
+      if (!alreadySkipped) {
+        skippedIds.add(conversationId);
+        account.skippedIndexIds = [...skippedIds];
+        await requested(accountStore.put(account));
+      }
+      if (removedErrors) {
+        task.errors = errors.filter(error => error?.id !== conversationId);
+        task.failureCount = Math.max(0, Number(task.failureCount || 0) - removedErrors);
+        task.skippedCount = Number(task.skippedCount || 0) + 1;
+        task.skippedIds = [...new Set([...(task.skippedIds || []), conversationId])];
+        task.updatedAt = Date.now();
+        await requested(stores[STORES.tasks].put(task));
+      }
+      return { skipped: true, alreadySkipped, skippedCount: Number(task.skippedCount || 0) };
     });
   }
 
@@ -1030,7 +1080,7 @@ globalThis.ChatGPTProLocalData = (() => {
     grantIndexConsent, recordFullDirectoryScan, finishInitialIndex,
     markOfficialGone, hideArchivedConversation, clearLocalOnlyConversation,
     createTask, getTask, listTasks, claimTask, updateTaskPhase,
-    heartbeatTask, checkpointTask, controlTask,
+    heartbeatTask, checkpointTask, controlTask, skipIndexConversation,
     saveExportVolume, getExportVolume,
     clearCompletedExportVolumes,
     readExportVolumeChunk, uploadExportChunk, finalizeExportChunks,

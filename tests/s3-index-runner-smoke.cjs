@@ -248,6 +248,16 @@ async function main() {
   assert.equal(newerDetail.indexedCount, 1);
   assert.equal(strictFullScans, 1, 'automatic incremental indexing never repeats first full scan');
 
+  policy.skippedIndexIds = ['user-skipped'];
+  const beforeSkipFilter = fetched.length;
+  const afterSkipFilter = await context.runner.updateFullTextIndex([
+    { id: 'user-skipped', title: 'User skipped', updateTime: 15 },
+    { id: 'after-skip', title: 'After skip', updateTime: 16 }
+  ]);
+  assert.equal(afterSkipFilter.indexedCount, 1);
+  assert.deepEqual(fetched.slice(beforeSkipFilter), ['after-skip'],
+    'persistently skipped conversations never re-enter a later index queue');
+
   const retryRecords = [
     { id: 'retry-success', title: 'Keep success', updateTime: 17 },
     { id: 'retry-once', title: 'Retry once', updateTime: 18 }
@@ -324,7 +334,7 @@ async function main() {
   assert.equal(authTask.status, 'paused');
   assert.equal(authTask.phase, 'auth-error');
   assert.equal(authTask.nextIndex, 0, 'authentication failure does not consume the current item');
-  console.log('S3_S4_PASS: checkpoints, pause/resume, first consent, verified full scan, auto incremental, single-item retry, rate-limit auto recovery, auth pause');
+  console.log('S3_S4_PASS: checkpoints, pause/resume, first consent, verified full scan, auto incremental, persistent skip, single-item retry, rate-limit auto recovery, auth pause');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

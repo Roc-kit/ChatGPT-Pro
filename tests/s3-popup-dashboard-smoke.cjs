@@ -12,7 +12,7 @@ const i18nJs = fs.readFileSync(path.join(__dirname, '../scripts/i18n.js'), 'utf8
 const mock = `<script>
   const tasks = [
     { id: 'i', type: 'index', status: 'running', done: 20, total: 100,
-      successes: 20, failures: 0, savedVolumes: 0 },
+      successes: 18, failures: 0, skipped: 2, savedVolumes: 0 },
     { id: 'm', type: 'export-md', status: 'paused', done: 50, total: 55,
       successes: 50, failures: 0, savedVolumes: 1 },
     { id: 'j', type: 'export-json', status: 'completed', done: 5, total: 5,
@@ -158,6 +158,8 @@ server.listen(0, '127.0.0.1', async () => {
         'running and paused jobs plus a completed index task with retryable failures are displayed');
       check(document.querySelector('[role="progressbar"]').getAttribute('aria-valuenow') === '20',
         'accessible progress shows cursor');
+      check(document.querySelector('.task-card').textContent.includes('已跳过 2 个'),
+        'task summary accounts for conversations intentionally skipped from indexing');
       check(!document.querySelector('#taskLogList') && !document.querySelector('#taskLogsWrap'),
         'event history is absent from the compact popup');
       check(!document.querySelector('#taskManager').open,

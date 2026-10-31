@@ -2966,7 +2966,7 @@
       }
       return {
         indexedCount: latest.successCount,
-        skippedCount: 0,
+        skippedCount: latest.skippedCount || 0,
         failures: latest.errors.map(error => `${error.id}：${error.message}`)
       };
     } finally {
@@ -2989,9 +2989,12 @@
     }
     if (existing) return runIndexTask(accountId, existing.id, onProgress);
 
+    const policy = await runtimeMessage({ action: 'indexPolicyGet', accountId });
+    const skippedIds = new Set(policy.result?.skippedIndexIds || []);
     const metadata = await runtimeMessage({ action: 'searchIndexMetadata', accountId });
     const indexed = new Map((metadata.records || []).map(record => [record.id, record]));
     const pending = records.filter(record => {
+      if (skippedIds.has(record.id)) return false;
       const existing = indexed.get(record.id);
       return !existing || existing.schemaVersion !== SEARCH_INDEX_SCHEMA_VERSION
         || Number(existing.updateTime || 0) < timestampValue(record.updateTime);
@@ -3165,6 +3168,7 @@
         total: task.items?.length || 0, done: task.nextIndex || 0,
         successes: task.successCount || 0, failures: task.failureCount || 0,
         errors: failuresByTask.get(task.id) || [],
+        skipped: task.skippedCount || 0,
         savedVolumes: task.volumesClearedAt ? 0 : (task.volumeCount || 0),
         phase: task.phase || null, waitUntil: task.waitUntil || 0,
         updatedAt: task.updatedAt, createdAt: task.createdAt,
@@ -3764,7 +3768,7 @@
       return '';
     };
 
-    const renderIndexFailures = (failures, tasks = []) => {
+    const renderIndexFailures = (failures, tasks = [], failureTask = null, skippedIds = new Set()) => {
       const itemById = new Map(currentRecords.map(record => [record.id, record]));
       for (const task of tasks) for (const item of task.items || []) {
         if (!itemById.has(item.id)) itemById.set(item.id, item);
@@ -3775,7 +3779,7 @@
         };
         const match = failure.match(/^([^:：]+)[:：]\s*([\s\S]*)$/);
         return { id: match?.[1] || '', message: match?.[2] || failure };
-      });
+      }).filter(failure => !failure.id || !skippedIds.has(failure.id));
       const wasHidden = searchIndexDetail.hidden;
       searchIndexDetail.hidden = normalized.length === 0;
       if (!normalized.length) {
@@ -3805,6 +3809,29 @@
         });
         const actions = document.createElement('div');
         actions.className = 'chatgpt-pro-search-index-error-actions';
+        if (failure.id && failureTask?.id) {
+          const skip = document.createElement('button');
+          skip.type = 'button';
+          skip.className = 'chatgpt-pro-search-index-error-skip';
+          skip.textContent = window.ChatGPTProI18n?.t('ui.skipIndexConversation') || '跳过';
+          skip.addEventListener('click', async () => {
+            const confirmText = window.ChatGPTProI18n?.t('ui.skipIndexConversationConfirm')
+              || '跳过此对话？跳过后，此对话将不再自动参与全文索引；清空全文索引后可重新纳入。';
+            if (!window.confirm(confirmText)) return;
+            skip.disabled = true;
+            try {
+              const accountId = await window.APIHandler.getAccountId(true);
+              await runtimeMessage({ action: 'indexSkipConversation', accountId,
+                taskId: failureTask.id, conversationId: failure.id });
+              await runtimeMessage({ action: 'indexPolicyFinishInitial', accountId }).catch(() => {});
+              await refreshSearchIndexStatus();
+            } catch (error) {
+              skip.disabled = false;
+              searchIndexStatus.textContent = `${window.ChatGPTProI18n?.t('ui.indexOperationFailed') || '索引操作失败'}: ${error.message}`;
+            }
+          });
+          actions.appendChild(skip);
+        }
         actions.appendChild(link);
         heading.append(title, actions);
         const id = document.createElement('div');
@@ -3834,15 +3861,27 @@
         ]);
         const indexTasks = (taskReply.result || []).filter(task => task.type === 'index')
           .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
-        const latestFailureTask = indexTasks.find(task => task.errors?.length);
-        const latestFailures = latestFailureTask?.errors || [];
+        const activeTask = indexTasks.find(task => ['pending', 'running', 'paused'].includes(task.status));
+        const latestFinishedTask = indexTasks.find(task => ['completed', 'failed', 'paused'].includes(task.status));
+        // Prefer the active task even before it has failures. Showing an older
+        // task's errors while a newer queue is running could offer a skip
+        // action for an item that is already waiting in that newer queue.
+        const failureTask = activeTask || latestFinishedTask;
+        const latestFailures = failureTask?.errors || [];
+        const skippedIds = new Set(policy.result?.skippedIndexIds || []);
+        const indexedIds = new Set((response.records || []).map(record => record.id));
+        const skippedCount = currentRecords.filter(record => skippedIds.has(record.id)).length;
+        const remaining = currentRecords.filter(record => !indexedIds.has(record.id)
+          && !skippedIds.has(record.id)).length;
         searchIndexUpdate.textContent = !policy.result?.consentAt
           ? '首次索引（需授权）'
           : policy.result.initialCompletedAt ? '更新索引' : '继续首次索引';
         searchIndexStatus.textContent = !policy.result?.consentAt
           ? `首次建立全文索引需点击授权；不会自动抓取正文。已有索引可搜索 · 当前 ${response.records?.length || 0} 条`
-          : `当前账号已索引 ${response.records?.length || 0} / ${currentRecords.length} 个`;
-        renderIndexFailures(latestFailures, indexTasks);
+          : `当前账号已索引 ${response.records?.length || 0} / ${currentRecords.length} 个`
+            + (remaining ? ` · 剩余 ${remaining} 个需要补齐` : '')
+            + (skippedCount ? ` · ${window.ChatGPTProI18n?.format?.('status.skippedIndexConversations', { count: skippedCount }) || `已跳过 ${skippedCount} 个`}` : '');
+        renderIndexFailures(latestFailures, indexTasks, failureTask, skippedIds);
       } catch (error) {
         searchIndexStatus.textContent = `索引状态读取失败：${error.message}`;
         renderIndexFailures([]);
