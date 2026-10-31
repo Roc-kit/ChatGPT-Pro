@@ -33,6 +33,7 @@ const CHAT = { id: CHAT_ID, title: 'Offline acceptance test', update_time: 17700
       message: { id: 'answer', author: { role: 'assistant' }, content: { content_type: 'text', parts: ['hello from controlled fixture'] }, create_time: 1770000001 } }
   }
 };
+let detailResponse = CHAT;
 const pad2 = value => String(value).padStart(2, '0');
 const fixtureDateTime = (() => {
   const date = new Date(CHAT.update_time * 1000);
@@ -135,7 +136,7 @@ async function main() {
       response = { items: [] };
     } else if (url.pathname === `/backend-api/conversation/${CHAT_ID}`) {
       requests.details++;
-      response = CHAT;
+      response = detailResponse;
     }
     const isJson = Boolean(response);
     const body = isJson ? JSON.stringify(response) : BODY;
@@ -922,6 +923,61 @@ async function main() {
     'minimap restores after a delayed full-text target is restored');
     assert.equal(requests.details, 1, 'searching the persisted index did not refetch JSON');
 
+    await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').length === 2`),
+    'message timestamps re-enabled for stale-cache regression');
+    // A newly rendered message can be newer than the locally cached raw
+    // conversation. Its real DOM ID must win over fallback-turn-N, and one
+    // forced network refresh must replace the stale cache without request loops.
+    const freshMessageTime = 1770004321;
+    detailResponse = {
+      ...CHAT,
+      update_time: freshMessageTime,
+      current_node: 'fresh-user',
+      mapping: {
+        ...CHAT.mapping,
+        'fresh-user': {
+          id: 'fresh-user', parent: 'answer', children: [],
+          message: { id: 'fresh-user', author: { role: 'user' },
+            content: { content_type: 'text', parts: ['fresh message fixture'] },
+            create_time: freshMessageTime }
+        }
+      }
+    };
+    await cdp.eval(pageSession, `(() => {
+      document.querySelector('[data-message-id="question"]')
+        .setAttribute('data-chatgpt-search-unit-key', 'fallback-turn-0:0:user');
+      document.querySelector('[data-message-id="answer"]')
+        .setAttribute('data-chatgpt-search-unit-key', 'fallback-turn-0:2:assistant');
+      const message = document.createElement('section');
+      message.setAttribute('data-message-id', 'fresh-user');
+      message.setAttribute('data-message-author-role', 'user');
+      message.setAttribute('data-chatgpt-search-unit-key', 'fallback-turn-0:0:user');
+      message.innerHTML = '<p>fresh message fixture</p>';
+      document.querySelector('main').append(message);
+    })()`);
+    await eventually(async () => cdp.eval(pageSession, `(() => {
+      const date = new Date(${freshMessageTime} * 1000);
+      const pad = value => String(value).padStart(2, '0');
+      const expected = date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' +
+        pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' +
+        pad(date.getSeconds());
+      return document.querySelector('[data-message-id="fresh-user"] > [data-chatgpt-pro-message-timestamp]')?.textContent === expected;
+    })()`), 'fresh real message ID resolves to its own server timestamp');
+    await sleep(1200);
+    assert.equal(requests.details, 2,
+      'a stale cached conversation triggers exactly one forced refresh for the new rendered message set');
+    await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').length === 0`),
+    'message timestamps disabled after stale-cache regression');
+    await cdp.eval(pageSession, `(() => {
+      document.querySelector('[data-message-id="fresh-user"]')?.remove();
+      document.querySelector('[data-message-id="question"]')?.removeAttribute('data-chatgpt-search-unit-key');
+      document.querySelector('[data-message-id="answer"]')?.removeAttribute('data-chatgpt-search-unit-key');
+    })()`);
+
     // Input searches are debounced and still work while indexing is only
     // partial; a confirmed local-only result never fetches an online detail.
     await cdp.eval(pageSession, `(() => {
@@ -932,7 +988,7 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-search-results').textContent.includes('hello from controlled fixture')`),
     'typing searches without explicit submit after debounce');
-    assert.equal(requests.details, 1, 'debounced search does not call remote API');
+    assert.equal(requests.details, 2, 'debounced search does not call remote API');
 
     const markLocal = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
       action: 'localDataMarkOfficialGone', accountId: 's6-isolated-account', id: '${CHAT_ID}'
@@ -984,7 +1040,7 @@ async function main() {
       `Array.from(document.querySelectorAll('.chatgpt-pro-search-result button'))
         .some(button => button.textContent.includes('Eliminar copia local'))`),
     'local-only cleanup action uses the active locale');
-    assert.equal(requests.details, 1, 'local-only preview did not reach official conversation endpoint');
+    assert.equal(requests.details, 2, 'local-only preview did not reach official conversation endpoint');
     await cdp.eval(popupSession, `new Promise(resolve =>
       chrome.storage.local.set({ uiLanguage: 'zh-CN' }, resolve))`);
     await eventually(async () => cdp.eval(pageSession,
@@ -998,7 +1054,7 @@ async function main() {
     await cdp.eval(pageSession, `document.querySelector('[data-batch-format="json"]').click()`);
     await eventually(async () => fs.readdirSync(downloadPath).some(name => name.endsWith('.zip')),
       'real browser saved the cached JSON ZIP volume', 24000);
-    assert.equal(requests.details, 1, 'ZIP export reused the indexed original JSON without extra details');
+    assert.equal(requests.details, 2, 'ZIP export reused the indexed original JSON without extra details');
     const zipName = fs.readdirSync(downloadPath).find(name => name.endsWith('.zip'));
     const bytes = fs.readFileSync(path.join(downloadPath, zipName));
     assert.equal(bytes.readUInt32LE(0), 0x04034b50, 'real Chrome download is a valid ZIP container');
@@ -1044,7 +1100,7 @@ async function main() {
     await cdp.eval(pageSession, `document.querySelector('[data-batch-format="md"]').click()`);
     await eventually(async () => fs.readdirSync(downloadPath).filter(name => name.endsWith('.zip')).length >= 3,
       'both Markdown ZIP volumes downloaded independently', 24000);
-    assert.equal(requests.details, 1, '56 cached records exported without further detail requests');
+    assert.equal(requests.details, 2, '56 cached records exported without further detail requests');
     const volumeFiles = fs.readdirSync(downloadPath).filter(name => name.endsWith('.zip'));
     const secondVolume = volumeFiles.find(name => name.includes('_MD_part002.zip'));
     assert(secondVolume, `second independent Markdown ZIP present: ${volumeFiles.join(', ')}`);
@@ -1088,7 +1144,7 @@ async function main() {
     assert.equal(await cdp.eval(pageSession,
       `document.querySelectorAll('.chatgpt-pro-row').length`), 1,
     'title filter composes with project navigation');
-    assert.equal(requests.details, 1, 'filtering cached directory never calls conversation detail API');
+    assert.equal(requests.details, 2, 'filtering cached directory never calls conversation detail API');
     const unverifiedSeed = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
       action: 'localDataUpsertDirectory', accountId: 's6-isolated-account',
       records: [{ id: 'r8-unverified-status', title: 'Unverified status fixture',

@@ -614,7 +614,7 @@ const APIHandler = (function () {
     return buildTimestampMap(records);
   }
 
-  async function scheduledConversationDetail(accountId, conversationId, updateTime) {
+  async function scheduledConversationDetail(accountId, conversationId, updateTime, options = {}) {
     // Account-wide IndexedDB lease: one in-flight detail request across tabs,
     // indexing and export. A shared 429 cooldown survives page/worker restarts.
     const owner = crypto.randomUUID();
@@ -635,10 +635,13 @@ const APIHandler = (function () {
         localDataMessage({ action: 'detailHeartbeat', accountId, owner, token }).catch(() => {});
       }, 10000);
       // Another tab may have populated the exact version while we waited.
-      const cached = await localDataMessage({
-        action: 'localDataGetConversation', accountId, id: conversationId, updateTime
-      });
-      if (cached.hit) return { data: cached.raw, source: 'cache' };
+      // An explicit forceNetwork request must bypass this second cache check too.
+      if (options.forceNetwork !== true) {
+        const cached = await localDataMessage({
+          action: 'localDataGetConversation', accountId, id: conversationId, updateTime
+        });
+        if (cached.hit) return { data: cached.raw, source: 'cache' };
+      }
 
       const accessToken = await getToken();
       const raw = await fetchAuthedJson(accessToken, `${baseUrl()}/conversation/${encodeURIComponent(conversationId)}`, { detail: true });
@@ -691,7 +694,7 @@ const APIHandler = (function () {
   async function getConversation(conversationId, options = {}) {
     if (!conversationId) throw new Error('Missing conversation id');
     const accountId = await getAccountId();
-    const key = JSON.stringify([accountId, conversationId]);
+    const key = JSON.stringify([accountId, conversationId, options.forceNetwork === true]);
     let promise = _conversationPromises.get(key);
     if (!promise) {
       promise = (async () => {
@@ -705,11 +708,13 @@ const APIHandler = (function () {
         });
         updateTime = directory.record?.updateTime ?? undefined;
         localOnly = directory.record?.remoteState === 'local-only';
-        const cached = await localDataMessage({
-          action: 'localDataGetConversation', accountId, id: conversationId,
-          ...(!localOnly ? { updateTime } : {})
-        });
-        if (cached.hit) return { data: cached.raw, source: 'cache' };
+        if (options.forceNetwork !== true) {
+          const cached = await localDataMessage({
+            action: 'localDataGetConversation', accountId, id: conversationId,
+            ...(!localOnly ? { updateTime } : {})
+          });
+          if (cached.hit) return { data: cached.raw, source: 'cache' };
+        }
         if (localOnly) throw new Error('仅本地对话没有可导出的完整原始 JSON');
       } catch (error) {
         if (localOnly) throw error;
@@ -718,7 +723,9 @@ const APIHandler = (function () {
         console.warn('[ChatGPT Pro] Detail cache read skipped:', error.message);
       }
 
-      return scheduledConversationDetail(accountId, conversationId, updateTime);
+      return scheduledConversationDetail(accountId, conversationId, updateTime, {
+        forceNetwork: options.forceNetwork === true
+      });
       })();
       _conversationPromises.set(key, promise);
       // Removing a failed promise is important: a later retry must be able

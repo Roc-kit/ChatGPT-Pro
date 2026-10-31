@@ -46,6 +46,8 @@
     messageConversationId: null,
     messageConversation: null,
     messageConversationPromise: null,
+    messageConversationRefreshSignature: '',
+    messageConversationRefreshAt: 0,
     messageVisibilityObserver: null,
     observedMessageElements: new WeakSet(),
     observedConversationId: undefined,
@@ -123,6 +125,8 @@
     S.messageConversationId = null;
     S.messageConversation = null;
     S.messageConversationPromise = null;
+    S.messageConversationRefreshSignature = '';
+    S.messageConversationRefreshAt = 0;
   }
 
   function clearMessageRouteRetryTimers() {
@@ -145,10 +149,14 @@
   }
 
   function conversationMessageForElement(data, messageEl) {
-    for (const id of window.ChatGPTDomAdapter.messageIds(messageEl)) {
+    const ids = window.ChatGPTDomAdapter.messageIds(messageEl);
+    for (const id of ids) {
       const message = data?.mapping?.[id]?.message;
       if (message?.create_time) return message;
     }
+    // A fallback-turn index belongs to the rendered window, not the full
+    // conversation. Never use it to infer a message timestamp when no
+    // authoritative ID matches the cached conversation data.
     return null;
   }
 
@@ -189,21 +197,44 @@
       S.messageConversationId = conversationId;
     }
     if (!S.messageConversation) {
-      S.messageConversationPromise ||= window.APIHandler.getConversation(conversationId);
+      const conversationPromise = S.messageConversationPromise
+        || (S.messageConversationPromise = window.APIHandler.getConversation(conversationId));
       try {
-        const data = await S.messageConversationPromise;
+        const data = await conversationPromise;
         if (currentConversationId() !== conversationId || S.messageConversationId !== conversationId) return 0;
         S.messageConversation = data;
       } catch (error) {
         log('Message timestamp data load failed:', error.message);
-        S.messageConversationPromise = null;
         return 0;
+      } finally {
+        if (S.messageConversationPromise === conversationPromise) S.messageConversationPromise = null;
+      }
+    }
+
+    const renderedIds = renderedMessageIds();
+    const renderedSignature = renderedIds.join('|');
+    const hasUncachedMessage = renderedIds.some(id => !S.messageConversation?.mapping?.[id]);
+    const refreshRetryElapsed = Date.now() - S.messageConversationRefreshAt >= 30000;
+    if (!window.ChatGPTDomAdapter.isGenerating() && hasUncachedMessage
+        && (renderedSignature !== S.messageConversationRefreshSignature || refreshRetryElapsed)) {
+      // A single refresh is enough for this rendered message set. The 30s
+      // retry window permits recovery from transient network failures without
+      // repeating a request on every mutation or route retry timer.
+      S.messageConversationRefreshSignature = renderedSignature;
+      S.messageConversationRefreshAt = Date.now();
+      try {
+        const data = await window.APIHandler.getConversation(conversationId, { forceNetwork: true });
+        if (currentConversationId() !== conversationId || S.messageConversationId !== conversationId) return 0;
+        S.messageConversation = data;
+      } catch (error) {
+        log('Message timestamp refresh failed:', error.message);
       }
     }
 
     const observer = ensureMessageVisibilityObserver();
     let observed = 0;
-    for (const messageEl of window.ChatGPTDomAdapter.messageElements()) {
+    const messageElements = window.ChatGPTDomAdapter.messageElements();
+    for (const messageEl of messageElements) {
       if (messageEl.closest('.chatgpt-pro-panel')) continue;
       const target = window.ChatGPTDomAdapter.timestampTarget(messageEl);
       if (!target) continue;
@@ -252,18 +283,20 @@
       S.messageVisibilityObserver = null;
       S.observedMessageElements = new WeakSet();
 
-      const ids = renderedMessageIds();
-      if (S.messageConversation && ids.some(id => !S.messageConversation?.mapping?.[id])) {
-        S.messageConversation = null;
-        S.messageConversationPromise = null;
-      }
       stampMessageTimestamps().catch(error => log('Message timestamp view refresh failed:', error.message));
       return;
     }
 
     // ChatGPT can rebuild a message body without changing its semantic IDs.
-    // Restore decorations that React removed from those reused nodes.
-    if (hasMissingRenderedTimestamps()) {
+    // Restore decorations that React removed from those reused nodes. Also
+    // retry one stale-cache refresh after generation has finished.
+    const renderedIds = renderedMessageIds();
+    const hasUncachedMessage = Boolean(S.messageConversation)
+      && renderedIds.some(id => !S.messageConversation?.mapping?.[id]);
+    const refreshRetryElapsed = Date.now() - S.messageConversationRefreshAt >= 30000;
+    if (hasMissingRenderedTimestamps()
+        || (hasUncachedMessage && !window.ChatGPTDomAdapter.isGenerating()
+          && (renderedIds.join('|') !== S.messageConversationRefreshSignature || refreshRetryElapsed))) {
       stampMessageTimestamps().catch(error => log('Message timestamp repair failed:', error.message));
     }
   }
