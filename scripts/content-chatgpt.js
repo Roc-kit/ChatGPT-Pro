@@ -419,10 +419,7 @@
     const byId = new Map();
     for (const entry of domRaw) if (entry.id) byId.set(entry.id, entry.target);
     const fullRaw = currentBranchMessages(data)
-      .filter(message => ['user', 'assistant'].includes(message?.author?.role)
-        && !message.metadata?.is_visually_hidden_from_conversation
-        && (!message.recipient || message.recipient === 'all')
-        && (!message.channel || ['final', 'commentary'].includes(message.channel)))
+      .filter(isUserVisibleMessage)
       .map((message, index) => ({
         id: message.id, role: message.author.role,
         target: byId.get(message.id) || null,
@@ -1995,6 +1992,17 @@
     return messages.reverse();
   }
 
+  const SEARCH_INDEX_SCHEMA_VERSION = 2;
+
+  function isUserVisibleMessage(message) {
+    if (!message?.id || !['user', 'assistant'].includes(message?.author?.role)) return false;
+    if (message.metadata?.is_visually_hidden_from_conversation) return false;
+    if (message.recipient && message.recipient !== 'all') return false;
+    if (message.channel && !['final', 'commentary'].includes(message.channel)) return false;
+    const contentType = message.content?.content_type;
+    return !contentType || ['text', 'multimodal_text'].includes(contentType);
+  }
+
   function messageText(message) {
     const content = message?.content;
     if (!content) return '';
@@ -2752,10 +2760,8 @@
 
   function buildSearchIndexRecord(data, rec) {
     const seen = new Set();
-    const messages = Object.values(data?.mapping || {})
-      .map(node => node?.message)
-      .filter(message => message?.id && ['user', 'assistant'].includes(message?.author?.role))
-      .sort((a, b) => timestampValue(a.create_time) - timestampValue(b.create_time))
+    const messages = currentBranchMessages(data)
+      .filter(isUserVisibleMessage)
       .filter(message => {
         if (seen.has(message.id)) return false;
         seen.add(message.id);
@@ -2772,7 +2778,11 @@
       id: rec.id,
       title: data?.title || rec.title || 'Untitled conversation',
       href: rec.href || `/c/${rec.id}`,
-      updateTime: timestampValue(rec.updateTime ?? data?.update_time ?? data?.updated_at),
+      schemaVersion: SEARCH_INDEX_SCHEMA_VERSION,
+      // The directory can lag behind a detail response. Prefer the complete
+      // JSON's own version so indexing never attempts to roll newer cached
+      // data back to the older directory timestamp.
+      updateTime: timestampValue(data?.update_time ?? data?.updated_at ?? rec.updateTime),
       messages
     };
   }
@@ -2830,7 +2840,7 @@
             action: 'localDataPutConversation', accountId,
             record: {
               id: rec.id, raw: data,
-              updateTime: rec.updateTime ?? data?.update_time ?? data?.updated_at,
+              updateTime: data?.update_time ?? data?.updated_at ?? rec.updateTime,
               searchRecord: buildSearchIndexRecord(data, rec)
             }
           });
@@ -2887,8 +2897,12 @@
     if (existing) return runIndexTask(accountId, existing.id, onProgress);
 
     const metadata = await runtimeMessage({ action: 'searchIndexMetadata', accountId });
-    const indexed = new Map((metadata.records || []).map(record => [record.id, Number(record.updateTime || 0)]));
-    const pending = records.filter(record => indexed.get(record.id) !== timestampValue(record.updateTime));
+    const indexed = new Map((metadata.records || []).map(record => [record.id, record]));
+    const pending = records.filter(record => {
+      const existing = indexed.get(record.id);
+      return !existing || existing.schemaVersion !== SEARCH_INDEX_SCHEMA_VERSION
+        || Number(existing.updateTime || 0) < timestampValue(record.updateTime);
+    });
     if (!pending.length) return { indexedCount: 0, skippedCount: records.length, failures: [] };
     const task = await indexTaskMessage('taskCreate', accountId, {
       type: 'index', items: pending, options: { automatic: options.automatic === true }

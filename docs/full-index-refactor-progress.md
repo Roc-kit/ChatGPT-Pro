@@ -2,6 +2,17 @@
 
 依据：2026-10-24 冻结的 Q1–Q9 重构计划，实施顺序 S1 → S6。此文档只记录实施结果，不改变产品范围。
 
+## 2026-10-31：全文索引只收录当前分支的用户可见消息
+
+**状态：功能实现及定向回归通过，独立提交。** 修正全文索引把工具调用、工具输出、分析通道、隐藏消息及非文本内部载荷写入搜索结果的问题，并让 Minimap 使用同一套可见消息判定。
+
+- `scripts/content-chatgpt.js`：新增 `isUserVisibleMessage()`，统一筛选当前分支中用户实际可见的 user/assistant 消息；保留普通文本、可见 commentary/final 与 `multimodal_text`，排除工具角色、非 `all` recipient、analysis 等非展示通道、视觉隐藏消息及 code 等非文本载荷。全文索引不再遍历整个 mapping，也不再把已放弃分支写入索引。
+- 搜索索引 schema 升级到 2。`scripts/local-data-store.js` 持久化并返回 `schemaVersion`；旧 schema 即使对话更新时间未变化，也会在下一次索引时重建。比较版本时允许已索引详情版本领先于目录时间戳，避免目录暂时滞后造成重复重建。
+- `tests/search-index-content-smoke.cjs` 覆盖当前分支、工具调用/输出、隐藏消息、analysis、code、多模态可见内容、Minimap 共用过滤、schema 元数据及旧 schema 重建。
+- `tests/s3-index-runner-smoke.cjs` 的隔离执行器加载同一 schema 常量，保持任务执行器回归与生产代码一致。
+
+验证：`node tests/search-index-content-smoke.cjs`、`node tests/s1-local-data-smoke.cjs`、`node tests/s3-index-runner-smoke.cjs`、`node tests/conversation-tools-smoke.cjs`、受影响脚本 `node --check` 与 `git diff --check` 通过；从干净 HEAD 加载本功能补丁的隔离 worktree 中，`node tests/s6-extension-browser-smoke.cjs` 也通过。原工作区的完整 S6 测试在 Popup 可达性断言处失败，该处涉及未提交的其他 Popup 修改；本次没有修改或提交这些差异。
+
 ## 2026-10-25：i18n · 全文搜索结果与仅本地预览即时翻译
 
 **状态：完成，独立提交。** 修复全文搜索结果中的状态标签、用户角色、仅本地预览/收起按钮和本地清理按钮未可靠跟随界面语言切换的问题。

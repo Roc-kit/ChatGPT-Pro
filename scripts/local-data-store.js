@@ -266,6 +266,7 @@ globalThis.ChatGPTProLocalData = (() => {
     const updateTime = normalizeTime(record.updateTime);
     return {
       accountId, id, updateTime, dataVersion: updateTime,
+      schemaVersion: Number(record.schemaVersion || 0),
       origin, indexedAt: Date.now(),
       title: String(record.title || 'Untitled conversation'),
       href: String(record.href || `/c/${id}`),
@@ -297,7 +298,10 @@ globalThis.ChatGPTProLocalData = (() => {
     validateAccount(accountId);
     const records = await transaction([STORES.search], 'readonly', stores =>
       requested(stores[STORES.search].index('byAccount').getAll(IDBKeyRange.only(accountId))));
-    return records.map(record => ({ id: record.id, updateTime: record.updateTime, indexedAt: record.indexedAt }));
+    return records.map(record => ({
+      id: record.id, updateTime: record.updateTime,
+      indexedAt: record.indexedAt, schemaVersion: Number(record.schemaVersion || 0)
+    }));
   }
 
   async function getSearchRecords(accountId) {

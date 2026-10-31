@@ -7,6 +7,11 @@ const vm = require('node:vm');
 const { randomUUID } = require('node:crypto');
 
 const source = fs.readFileSync(path.join(__dirname, '../scripts/content-chatgpt.js'), 'utf8');
+const schemaVersionStart = source.indexOf('  const SEARCH_INDEX_SCHEMA_VERSION =');
+const schemaVersionEnd = source.indexOf('\n', schemaVersionStart);
+assert(schemaVersionStart >= 0 && schemaVersionEnd > schemaVersionStart,
+  'search index schema version is present');
+const schemaVersionSource = source.slice(schemaVersionStart, schemaVersionEnd);
 const start = source.indexOf('  const INDEX_EXECUTOR_ID =');
 const end = source.indexOf('  function searchResultTime(', start);
 assert(start >= 0 && end > start, 'production task runner functions are present');
@@ -32,6 +37,7 @@ const context = {
   log() {},
   window: {
     confirm: () => consentApproved,
+    ChatGPTProI18n: { t: value => value },
     APIHandler: {
       getAccountId: async () => accountId,
       syncConversationList: async (full, options) => {
@@ -46,7 +52,8 @@ const context = {
   timestampValue: v => Number(v || 0),
   fetchConversationForExport: async record => {
     fetched.push(record.id);
-    return { data: { id: record.id, title: record.title, mapping: {} }, source: 'cache' };
+    return { data: { id: record.id, title: record.title, mapping: {},
+      ...(record.rawUpdateTime ? { update_time: record.rawUpdateTime } : {}) }, source: 'cache' };
   },
   buildSearchIndexRecord: (data, record) => ({ id: record.id, updateTime: record.updateTime, messages: [] }),
   waitForExport: async () => { throw new Error('local records should not incur network pacing'); },
@@ -66,7 +73,9 @@ const context = {
         policy.initialCompletedAt ||= Date.now();
         return { success: true, result: { completed: true, remaining: 0 } };
       case 'searchIndexMetadata':
-        return { success: true, records: [...indexed.entries()].map(([id, updateTime]) => ({ id, updateTime })) };
+        return { success: true, records: [...indexed.entries()].map(([id, updateTime]) => ({
+          id, updateTime, schemaVersion: 2
+        })) };
       case 'taskList':
         return { success: true, result: [...jobs.values()] };
       case 'taskCreate': {
@@ -89,6 +98,10 @@ const context = {
         job.waitUntil = msg.waitUntil || 0;
         return { success: true, result: { task: job } };
       case 'localDataPutConversation':
+        if (msg.record.id === 'newer-detail') {
+          assert.equal(msg.record.updateTime, 1700000100,
+            'detail JSON version takes precedence over a stale directory timestamp');
+        }
         indexed.set(msg.record.id, msg.record.searchRecord.updateTime);
         return { success: true };
       case 'taskCheckpoint':
@@ -105,7 +118,7 @@ const context = {
   }
 };
 vm.createContext(context);
-vm.runInContext(`${source.slice(start, end)}\nglobalThis.runner = {
+vm.runInContext(`${schemaVersionSource}\n${source.slice(start, end)}\nglobalThis.runner = {
   updateFullTextIndex, runIndexTask, recoverIndexTasks, updateIndexWithConsent, maybeAutoIncrementalIndex
 };`, context);
 
