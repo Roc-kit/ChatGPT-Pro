@@ -46,13 +46,13 @@ for (const locale of ['en','es','hi','ar','pt-BR','bn','id','fr','ru','ja','zh-T
 }
 assert.equal(i18n.t('ui.thisKeyDoesNotExist'), 'ui.thisKeyDoesNotExist',
   'unknown keys remain visible for future audit tooling');
-const indexed = '当前账号已索引 119 / 119 个 · 未归属旧索引 104 个';
+const indexed = '当前账号已索引 119 / 119 个';
 const downloading = '正在下载图片 2 / 12';
 const confirmations = '确定{action}选中的 {count} 条对话？\n\n{detail}\n\n操作可能持续一段时间，失败的条目会保留供重试。';
 for (const locale of localeNames.filter(locale => locale !== 'zh-CN')) {
   i18n.setLanguage(locale);
-  const expectedCount = packs[locale]['status.indexedForThisAccountUnassignedLegacyEntries']
-    .replace('{1}', '119').replace('{2}', '119').replace('{3}', '104');
+  const expectedCount = packs[locale]['status.indexedForThisAccount']
+    .replace('{1}', '119').replace('{2}', '119');
   const expectedDownload = packs[locale]['status.downloadingImages']
     .replace('{1}', '2').replace('{2}', '12');
   assert.equal(i18n.translateText(indexed), expectedCount, `${locale}: native index status missing`);

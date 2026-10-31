@@ -1497,7 +1497,7 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
       // Full-text indexing progress only; export and task-scheduler statuses
       // are intentionally outside this review batch.
       keys: [
-        'status.indexedForThisAccountUnassignedLegacyEntries',
+        'status.indexedForThisAccount',
         'status.updatingIndex',
         'status.addedUpdatedFailed',
         'status.chatsRemainToBeIndexedResumeTo',
@@ -1506,7 +1506,7 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
       ],
       translations: {
         'zh-TW': [
-          '此帳號已索引 {1}/{2} 段對話 · 尚未歸屬的舊索引 {3} 筆',
+          '此帳號已索引 {1}/{2} 段對話',
           '正在更新索引：{1}',
           '新增或更新 {1} 筆，失敗 {2} 筆',
           '首次索引尚有 {1} 段對話未完成，可繼續執行',
@@ -1514,7 +1514,7 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           '本機已有 {1} 段對話，正在檢查最新變更…'
         ],
         es: [
-          'Indexadas {1} de {2} conversaciones de esta cuenta · {3} entradas antiguas sin asignar',
+          'Indexadas {1} de {2} conversaciones de esta cuenta',
           'Actualizando el índice: {1}',
           '{1} registros añadidos o actualizados; {2} fallidos',
           'Quedan {1} conversaciones por indexar inicialmente; puedes reanudar la tarea',
@@ -1522,7 +1522,7 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'Hay {1} conversaciones guardadas localmente; comprobando cambios…'
         ],
         hi: [
-          'इस खाते की {1}/{2} चैट इंडेक्स हो चुकी हैं · {3} पुराने रिकॉर्ड अभी किसी खाते से नहीं जुड़े हैं',
+          'इस खाते की {1}/{2} चैट इंडेक्स हो चुकी हैं',
           'इंडेक्स अपडेट हो रहा है: {1}',
           '{1} रिकॉर्ड जोड़े या अपडेट किए गए; {2} विफल रहे',
           'पहली इंडेक्सिंग में {1} चैट अभी बाकी हैं; कार्य फिर शुरू किया जा सकता है',
@@ -1530,7 +1530,7 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'इस डिवाइस पर {1} चैट सेव हैं; नए बदलाव जाँचे जा रहे हैं…'
         ],
         ar: [
-          'تمت فهرسة {1} من أصل {2} محادثة لهذا الحساب · {3} سجلات قديمة غير مرتبطة',
+          'تمت فهرسة {1} من أصل {2} محادثة لهذا الحساب',
           'جارٍ تحديث الفهرس: {1}',
           'تمت إضافة أو تحديث {1} سجل؛ وفشل {2}',
           'تبقت {1} محادثة لإكمال الفهرسة الأولى؛ يمكنك استئناف المهمة',
@@ -1538,7 +1538,7 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'توجد {1} محادثة محفوظة محليًا؛ جارٍ التحقق من التغييرات…'
         ],
         'pt-BR': [
-          'Indexadas {1} de {2} conversas desta conta · {3} registros antigos sem vínculo',
+          'Indexadas {1} de {2} conversas desta conta',
           'Atualizando o índice: {1}',
           '{1} registros adicionados ou atualizados; {2} com falha',
           'Ainda faltam {1} conversas na indexação inicial; você pode retomar a tarefa',
@@ -1546,7 +1546,7 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'Há {1} conversas salvas localmente; verificando alterações…'
         ],
         bn: [
-          'এই অ্যাকাউন্টের {1}/{2}টি চ্যাট ইনডেক্স করা হয়েছে · {3}টি পুরোনো রেকর্ড এখনও সংযুক্ত নয়',
+          'এই অ্যাকাউন্টের {1}/{2}টি চ্যাট ইনডেক্স করা হয়েছে',
           'ইনডেক্স হালনাগাদ হচ্ছে: {1}',
           '{1}টি রেকর্ড যোগ বা হালনাগাদ হয়েছে; {2}টি ব্যর্থ হয়েছে',
           'প্রথম ইনডেক্স তৈরিতে এখনও {1}টি চ্যাট বাকি; কাজটি আবার শুরু করা যাবে',
@@ -1554,7 +1554,7 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'এই ডিভাইসে {1}টি চ্যাট সংরক্ষিত আছে; পরিবর্তন পরীক্ষা করা হচ্ছে…'
         ],
         id: [
-          '{1} dari {2} percakapan akun ini telah diindeks · {3} entri lama belum ditetapkan',
+          '{1} dari {2} percakapan akun ini telah diindeks',
           'Memperbarui indeks: {1}',
           '{1} entri ditambahkan atau diperbarui; {2} gagal',
           'Masih ada {1} percakapan dalam pengindeksan awal; tugas dapat dilanjutkan',
@@ -1562,7 +1562,7 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'Ada {1} percakapan tersimpan secara lokal; memeriksa perubahan…'
         ],
         fr: [
-          '{1} conversations indexées sur {2} pour ce compte · {3} anciennes entrées non attribuées',
+          '{1} conversations indexées sur {2} pour ce compte',
           'Mise à jour de l’index : {1}',
           '{1} entrées ajoutées ou mises à jour ; {2} échecs',
           'Il reste {1} conversations à indexer lors du premier passage ; vous pouvez reprendre la tâche',
@@ -1570,7 +1570,7 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           '{1} conversations enregistrées localement ; recherche des modifications…'
         ],
         ru: [
-          'Проиндексировано {1} из {2} чатов этой учётной записи · {3} старые записи не привязаны',
+          'Проиндексировано {1} из {2} чатов этой учётной записи',
           'Обновление индекса: {1}',
           'Добавлено или обновлено записей: {1}; ошибок: {2}',
           'В первичной индексации осталось {1} чатов; задачу можно продолжить',
@@ -1578,7 +1578,7 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'Локально сохранено {1} чатов; проверка изменений…'
         ],
         ja: [
-          'このアカウントのチャット {1}/{2} 件をインデックス済み · 未割り当ての旧データ {3} 件',
+          'このアカウントのチャット {1}/{2} 件をインデックス済み',
           'インデックスを更新中：{1}',
           '{1} 件を追加・更新、{2} 件が失敗',
           '初回のインデックス作成が残り {1} 件です。タスクを再開して続行できます',
@@ -1929,7 +1929,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
         'ui.initializing_51a08fb',
         'ui.fullTextIndexCache',
         'ui.dateAndTimeToTheSecondVariableVariable',
-        'ui.includeUnassignedLegacyIndexNotLinkedToThis',
         'ui.initialIndexingConsentRequired',
         'ui.continueFirstIndex',
         'ui.checkForNewChats',
@@ -1964,7 +1963,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           '正在初始化…',
           '全文索引與快取',
           '支援建立/更新時間（精確到秒）：{created_datetime}、{updated_datetime}；也支援 {title}、{created_date}、{updated_date}、{source}、{conversation_id}。MD 與 JSON 共用此規則。',
-          '另查未歸屬的舊版全文索引（不會歸入目前帳號）',
           '首次索引（需授權）',
           '繼續首次索引',
           '立即檢查新增聊天',
@@ -1998,7 +1996,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'Inicializando…',
           'Índice de texto completo y caché',
           'Admite fechas de creación y actualización con precisión de segundos: {created_datetime} y {updated_datetime}; también {title}, {created_date}, {updated_date}, {source} y {conversation_id}. MD y JSON usan la misma regla.',
-          'Buscar también en el índice antiguo sin asignar (no se vincula a la cuenta actual)',
           'Índice inicial (requiere autorización)',
           'Continuar índice inicial',
           'Buscar chats nuevos ahora',
@@ -2032,7 +2029,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'शुरू हो रहा है…',
           'पूर्ण-पाठ इंडेक्स और कैश',
           'निर्माण/अपडेट समय सेकंड तक समर्थित है: {created_datetime} और {updated_datetime}; साथ ही {title}, {created_date}, {updated_date}, {source} और {conversation_id}। MD और JSON एक ही नियम इस्तेमाल करते हैं।',
-          'पुराने, बिना खाते से जुड़े इंडेक्स में भी खोजें (वर्तमान खाते से नहीं जोड़ा जाएगा)',
           'प्रारंभिक इंडेक्स (अनुमति आवश्यक)',
           'प्रारंभिक इंडेक्स जारी रखें',
           'नई चैट अभी जाँचें',
@@ -2066,7 +2062,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'جارٍ التهيئة…',
           'فهرس البحث الكامل وذاكرة التخزين المؤقت',
           'يدعم وقت الإنشاء والتحديث بدقة ثانية: {created_datetime} و{updated_datetime}؛ وكذلك {title} و{created_date} و{updated_date} و{source} و{conversation_id}. يستخدم MD وJSON القاعدة نفسها.',
-          'ابحث أيضًا في الفهرس القديم غير المرتبط بحساب (لن يُنسب إلى الحساب الحالي)',
           'الفهرسة الأولية (تتطلب إذنًا)',
           'متابعة الفهرسة الأولية',
           'تحقق من المحادثات الجديدة الآن',
@@ -2100,7 +2095,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'Inicializando…',
           'Índice de texto completo e cache',
           'Suporta datas de criação e atualização até os segundos: {created_datetime} e {updated_datetime}; também {title}, {created_date}, {updated_date}, {source} e {conversation_id}. MD e JSON usam a mesma regra.',
-          'Pesquisar também no índice antigo sem conta atribuída (não vinculado à conta atual)',
           'Índice inicial (requer autorização)',
           'Continuar índice inicial',
           'Verificar novas conversas agora',
@@ -2134,7 +2128,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'শুরু হচ্ছে…',
           'সম্পূর্ণ টেক্সট ইনডেক্স ও ক্যাশে',
           'তৈরি ও আপডেটের সময় সেকেন্ড পর্যন্ত সমর্থিত: {created_datetime} এবং {updated_datetime}; এছাড়াও {title}, {created_date}, {updated_date}, {source} ও {conversation_id}। MD ও JSON একই নিয়ম ব্যবহার করে।',
-          'অ্যাকাউন্টে যুক্ত নয় এমন পুরোনো ইনডেক্সেও খুঁজুন (বর্তমান অ্যাকাউন্টে যুক্ত হবে না)',
           'প্রাথমিক ইনডেক্স (অনুমতি প্রয়োজন)',
           'প্রাথমিক ইনডেক্স চালিয়ে যান',
           'নতুন চ্যাট এখন পরীক্ষা করুন',
@@ -2168,7 +2161,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'Memulai…',
           'Indeks teks lengkap dan cache',
           'Mendukung waktu pembuatan dan pembaruan hingga detik: {created_datetime} dan {updated_datetime}; juga {title}, {created_date}, {updated_date}, {source}, dan {conversation_id}. MD dan JSON memakai aturan yang sama.',
-          'Cari juga di indeks lama yang belum ditautkan ke akun (tidak akan dikaitkan ke akun saat ini)',
           'Indeks awal (perlu izin)',
           'Lanjutkan indeks awal',
           'Periksa chat baru sekarang',
@@ -2202,7 +2194,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'Initialisation…',
           'Index de texte intégral et cache',
           'Prise en charge des dates de création et de mise à jour à la seconde : {created_datetime} et {updated_datetime} ; aussi {title}, {created_date}, {updated_date}, {source} et {conversation_id}. MD et JSON utilisent la même règle.',
-          'Rechercher aussi dans l’ancien index non attribué (non lié au compte actuel)',
           'Index initial (autorisation requise)',
           'Continuer l’index initial',
           'Rechercher les nouvelles conversations',
@@ -2236,7 +2227,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'Инициализация…',
           'Полнотекстовый индекс и кэш',
           'Поддерживаются дата и время создания/обновления с точностью до секунды: {created_datetime} и {updated_datetime}; также {title}, {created_date}, {updated_date}, {source} и {conversation_id}. MD и JSON используют один шаблон.',
-          'Искать также в старом индексе без привязки к аккаунту (не связывается с текущим аккаунтом)',
           'Первичная индексация (требуется разрешение)',
           'Продолжить первичную индексацию',
           'Проверить новые чаты',
@@ -2270,7 +2260,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           '初期化中…',
           '全文検索インデックスとキャッシュ',
           '作成日時・更新日時を秒単位で指定できます：{created_datetime}、{updated_datetime}。{title}、{created_date}、{updated_date}、{source}、{conversation_id} も使用できます。MD と JSON は同じルールを使います。',
-          '未割り当ての旧インデックスも検索（現在のアカウントには紐付けません）',
           '初回インデックス（許可が必要）',
           '初回インデックスを続行',
           '新しいチャットを今すぐ確認',
@@ -4161,7 +4150,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
         'status.failedToPrepareInitialIndex',
         'status.group',
         'status.chats',
-        'status.accountChatsUnassignedLegacyEntries',
         'status.accountChats',
         'status.requestSubmitted',
         'status.taskUnavailable',
@@ -4180,7 +4168,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           '首次索引準備失敗：{1}',
           '{1} / {2} · 第 {3} / {4} 組',
           '{1} · {2} 則聊天',
-          '此帳號有 {1} 則聊天 · {2} 筆未歸屬的舊索引',
           '此帳號有 {1} 則聊天',
           '{1} 操作已提交',
           '工作無法使用：{1}',
@@ -4198,7 +4185,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'No se pudo preparar la indexación inicial: {1}',
           '{1} / {2} · grupo {3} / {4}',
           '{1} · {2} conversaciones',
-          '{1} conversaciones en esta cuenta · {2} entradas antiguas sin asignar',
           '{1} conversaciones en esta cuenta',
           'Solicitud de {1} enviada',
           'Tarea no disponible: {1}',
@@ -4216,7 +4202,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'पहली इंडेक्सिंग की तैयारी विफल रही: {1}',
           '{1} / {2} · समूह {3} / {4}',
           '{1} · {2} चैट',
-          'इस खाते में {1} चैट · {2} बिना खाते से जुड़ी पुरानी प्रविष्टियाँ',
           'इस खाते में {1} चैट',
           '{1} का अनुरोध भेज दिया गया',
           'कार्य उपलब्ध नहीं है: {1}',
@@ -4234,7 +4219,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'فشل الإعداد للفهرسة الأولية: {1}',
           '{1} / {2} · المجموعة {3} / {4}',
           '{1} · {2} من المحادثات',
-          '{1} محادثة في هذا الحساب · {2} من إدخالات الفهرس القديم غير المسندة',
           '{1} محادثة في هذا الحساب',
           'تم إرسال طلب {1}',
           'المهمة غير متاحة: {1}',
@@ -4252,7 +4236,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'Falha ao preparar a indexação inicial: {1}',
           '{1} / {2} · grupo {3} / {4}',
           '{1} · {2} conversas',
-          '{1} conversas nesta conta · {2} entradas antigas sem atribuição',
           '{1} conversas nesta conta',
           'Solicitação de {1} enviada',
           'Tarefa indisponível: {1}',
@@ -4270,7 +4253,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'প্রথম ইনডেক্স তৈরির প্রস্তুতি ব্যর্থ হয়েছে: {1}',
           '{1} / {2} · গ্রুপ {3} / {4}',
           '{1} · {2}টি চ্যাট',
-          'এই অ্যাকাউন্টে {1}টি চ্যাট · {2}টি পুরোনো এন্ট্রি এখনও কোনো অ্যাকাউন্টে যুক্ত নয়',
           'এই অ্যাকাউন্টে {1}টি চ্যাট',
           '{1}-এর অনুরোধ জমা হয়েছে',
           'কাজটি উপলভ্য নয়: {1}',
@@ -4288,7 +4270,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'Persiapan pengindeksan awal gagal: {1}',
           '{1} / {2} · grup {3} / {4}',
           '{1} · {2} percakapan',
-          '{1} percakapan di akun ini · {2} entri indeks lama belum ditetapkan',
           '{1} percakapan di akun ini',
           'Permintaan {1} dikirim',
           'Tugas tidak tersedia: {1}',
@@ -4306,7 +4287,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'Échec de la préparation de l’indexation initiale : {1}',
           '{1} / {2} · groupe {3} / {4}',
           '{1} · {2} conversations',
-          '{1} conversations dans ce compte · {2} anciennes entrées non attribuées',
           '{1} conversations dans ce compte',
           'Demande {1} envoyée',
           'Tâche indisponible : {1}',
@@ -4324,7 +4304,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           'Не удалось подготовить первичную индексацию: {1}',
           '{1} / {2} · группа {3} / {4}',
           '{1} · чатов: {2}',
-          'Чатов в этой учётной записи: {1} · старых непривязанных записей: {2}',
           'Чатов в этой учётной записи: {1}',
           'Запрос «{1}» отправлен',
           'Задача недоступна: {1}',
@@ -4342,7 +4321,6 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
           '初回インデックス作成の準備に失敗しました：{1}',
           '{1} / {2} · グループ {3} / {4}',
           '{1} · チャット {2} 件',
-          'このアカウントのチャット {1} 件 · 未割り当ての旧データ {2} 件',
           'このアカウントのチャット {1} 件',
           '{1} のリクエストを送信しました',
           'タスクを利用できません：{1}',

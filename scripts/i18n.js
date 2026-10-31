@@ -53,7 +53,7 @@
     [/^(\d+) \/ (\d+) · 第 (\d+) \/ (\d+) 组$/, m =>
       `${m[1]} / ${m[2]} · group ${m[3]} / ${m[4]}`],
     [/^(.+?) · (\d+) 条$/, m => `${translateText(m[1])} · ${m[2]} chats`],
-    [/^当前账号 (\d+) 条(?: · 未归属旧索引 (\d+) 条)?$/, m => `${m[1]} account chats${m[2] ? ` · ${m[2]} unassigned legacy entries` : ''}`],
+    [/^当前账号 (\d+) 条$/, m => `${m[1]} account chats`],
     [/^(\d+)\s*\/\s*(\d+) · 成功 (\d+) · 失败 (\d+)(?: · ZIP (\d+) 卷)?$/, m =>
       `${m[1]}/${m[2]} · ${m[3]} succeeded · ${m[4]} failed${m[5] ? ` · ${m[5]} ZIP parts` : ''}`],
     [/^已发起 (\d+) 个分卷下载，请检查浏览器下载提示$/, m => `Started ${m[1]} ZIP part downloads; check browser downloads`],
@@ -66,8 +66,7 @@
     [/^已请求开始索引；请保持 ChatGPT 标签页打开，稍后刷新进度$/, () => t('已请求开始索引；请保持 ChatGPT 标签页打开，稍后刷新进度')],
     [/^完成 · (\d+) 条聊天记录$/, m => `Completed · ${m[1]} chats`],
     [/^(.+) · 已完成后台增量同步$/, m => `${translateText(m[1])} · ${t('已完成后台增量同步')}`],
-    [/^当前账号已索引 (\d+) \/ (\d+) 个 · 未归属旧索引 (\d+) 个$/, m =>
-      `Indexed ${m[1]} / ${m[2]} for this account · ${m[3]} unassigned legacy entries`],
+    [/^当前账号已索引 (\d+) \/ (\d+) 个$/, m => `Indexed ${m[1]} / ${m[2]} for this account`],
     [/^请求受限，(\d+) 秒后继续 · (.+)$/, m => `Rate limited · resume in ${m[1]}s · ${translateText(m[2])}`],
     [/^本组完成，(\d+) 秒后继续 · (.+)$/, m => `Batch complete · continue in ${m[1]}s · ${translateText(m[2])}`],
     [/^请求失败，(\d+) 秒后重试 · (.+)$/, m => `Request failed · retry in ${m[1]}s · ${translateText(m[2])}`],

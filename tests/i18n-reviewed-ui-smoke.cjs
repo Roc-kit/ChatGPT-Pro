@@ -242,7 +242,6 @@ const dynamicIndexTaskStatuses = [
   ['status.failedToPrepareInitialIndex', '首次索引准备失败：network timeout', { 1: 'network timeout' }],
   ['status.group', '3 / 10 · 第 1 / 2 组', { 1: '3', 2: '10', 3: '1', 4: '2' }],
   ['status.chats', 'Label-X · 4 条', { 1: 'Label-X', 2: '4' }],
-  ['status.accountChatsUnassignedLegacyEntries', '当前账号 119 条 · 未归属旧索引 104 条', { 1: '119', 2: '104' }],
   ['status.accountChats', '当前账号 119 条', { 1: '119' }],
   ['status.requestSubmitted', 'Action-X操作已提交', { 1: 'Action-X' }],
   ['status.taskUnavailable', '任务不可用：network unavailable', { 1: 'network unavailable' }],
@@ -283,8 +282,8 @@ for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(loca
 // These six indexing statuses are generated dynamically from Chinese source
 // templates. Confirm the actual runtime translation, not just catalog coverage.
 const indexStatuses = [
-  ['status.indexedForThisAccountUnassignedLegacyEntries',
-    '当前账号已索引 119 / 119 个 · 未归属旧索引 104 个', ['119', '119', '104']],
+  ['status.indexedForThisAccount',
+    '当前账号已索引 119 / 119 个', ['119', '119']],
   ['status.updatingIndex', '正在更新索引 7/12', ['7/12']],
   ['status.addedUpdatedFailed', '新增/更新 7 个，失败 2 个', ['7', '2']],
   ['status.chatsRemainToBeIndexedResumeTo', '首次索引仍有 5 条待补全，可再次继续', ['5']],

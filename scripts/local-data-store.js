@@ -4,10 +4,6 @@ globalThis.ChatGPTProLocalData = (() => {
 
   const DB_NAME = 'ChatGPTProSearch';
   const DB_VERSION = 4;
-  // Version 1 stored full-text results here without an account identifier.
-  // Keep it intact; never infer the owner of these records from the current login.
-  const LEGACY_SEARCH = 'conversations';
-  const UNASSIGNED_ACCOUNT = '__legacy_unassigned__';
   const STORES = Object.freeze({
     accounts: 'accounts',
     directory: 'directory',
@@ -29,12 +25,6 @@ globalThis.ChatGPTProLocalData = (() => {
       request.onupgradeneeded = event => {
         const db = request.result;
         const tx = request.transaction;
-        const legacy = db.objectStoreNames.contains(LEGACY_SEARCH)
-          ? tx.objectStore(LEGACY_SEARCH)
-          : db.createObjectStore(LEGACY_SEARCH, { keyPath: 'id' });
-        ensureIndex(legacy, 'updateTime', 'updateTime');
-        ensureIndex(legacy, 'indexedAt', 'indexedAt');
-
         if (!db.objectStoreNames.contains(STORES.accounts)) {
           db.createObjectStore(STORES.accounts, { keyPath: 'id' });
         }
@@ -64,30 +54,6 @@ globalThis.ChatGPTProLocalData = (() => {
         ensureIndex(logs, 'createdAt', 'createdAt');
         ensureIndex(logs, 'byAccount', 'accountId');
 
-        // Copy before leaving the upgrade transaction. Legacy records remain
-        // readable even if a future migration or consumer fails.
-        // The legacy search copy belongs specifically to v1 -> v2. Later
-        // schema upgrades must not overwrite previously reviewed unassigned
-        // records with another copy of the original legacy search.
-        if (event.oldVersion < 2) {
-          const destination = tx.objectStore(STORES.search);
-          const cursorRequest = legacy.openCursor();
-          cursorRequest.onsuccess = () => {
-            const cursor = cursorRequest.result;
-            if (!cursor) return;
-            const source = cursor.value;
-            if (source?.id) {
-              destination.put({
-                ...source,
-                accountId: UNASSIGNED_ACCOUNT,
-                id: String(source.id),
-                dataVersion: normalizeTime(source.updateTime),
-                origin: 'legacy-unassigned'
-              });
-            }
-            cursor.continue();
-          };
-        }
       };
       request.onsuccess = () => {
         const db = request.result;
@@ -125,9 +91,7 @@ globalThis.ChatGPTProLocalData = (() => {
   }
 
   function validateAccount(accountId) {
-    if (typeof accountId !== 'string' || !accountId.trim() || accountId === UNASSIGNED_ACCOUNT) {
-      throw new Error('必须提供明确的账号 ID；旧索引不能自动归属给当前账号');
-    }
+    if (typeof accountId !== 'string' || !accountId.trim()) throw new Error('必须提供明确的账号 ID');
     return accountId;
   }
 
@@ -554,16 +518,6 @@ globalThis.ChatGPTProLocalData = (() => {
       await requested(accountStore.put(account));
       return { completed: true, remaining: 0, total: directory.length,
         initialCompletedAt: account.initialIndexCompletedAt };
-    });
-  }
-
-  async function getLegacyMetadata() {
-    return transaction([LEGACY_SEARCH, STORES.search], 'readonly', async stores => {
-      const [legacyCount, unassignedCount] = await Promise.all([
-        requested(stores[LEGACY_SEARCH].count()),
-        requested(stores[STORES.search].index('byAccount').count(IDBKeyRange.only(UNASSIGNED_ACCOUNT)))
-      ]);
-      return { legacyCount, unassignedCount };
     });
   }
 
@@ -1071,7 +1025,7 @@ globalThis.ChatGPTProLocalData = (() => {
   return Object.freeze({
     openDb, upsertDirectory, getDirectory, getDirectoryRecord,
     putSearchRecord, getSearchMetadata, getSearchRecords, clearSearchIndex,
-    putConversation, getConversation, getStats, getLegacyMetadata,
+    putConversation, getConversation, getStats,
     getIndexPolicy, setIndexSetupPhase, setAutoIndexEnabled, clearAccountData,
     grantIndexConsent, recordFullDirectoryScan, finishInitialIndex,
     markOfficialGone, hideArchivedConversation, clearLocalOnlyConversation,
@@ -1083,6 +1037,6 @@ globalThis.ChatGPTProLocalData = (() => {
     acquireDetailSlot, heartbeatDetailSlot, releaseDetailSlot, getDetailSlotStatus,
     noteDirectoryRateLimit,
     addLog, listLogs,
-    DB_NAME, DB_VERSION, LEGACY_SEARCH, UNASSIGNED_ACCOUNT, STORES
+    DB_NAME, DB_VERSION, STORES
   });
 })();

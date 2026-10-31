@@ -3396,7 +3396,14 @@
       sessionStorage.removeItem('chatgpt-pro-pending-search-jump');
       return;
     }
-    if (!pending || pending.conversationId !== currentConversationId()) return;
+    const conversationId = currentConversationId();
+    if (!pending || pending.conversationId !== conversationId) {
+      try {
+        const reply = await runtimeMessage({ action: 'pendingSearchJumpTake', conversationId });
+        pending = reply.pending;
+      } catch (_) {}
+    }
+    if (!pending || pending.conversationId !== conversationId) return;
     pendingSearchJumpInFlight = true;
     try {
       if (await jumpToSearchMessage(pending.messageId, pending.snippet)) {
@@ -3408,22 +3415,49 @@
   }
 
   async function openFullTextSearchResult(result) {
-    if (result.origin === 'legacy-unassigned' || result.remoteState === 'local-only') return;
+    if (result.remoteState === 'local-only') return;
     if (result.conversationId === currentConversationId()) {
       if (result.messageId) await jumpToSearchMessage(result.messageId, result.snippet);
       return;
     }
-    if (result.messageId) {
-      sessionStorage.setItem('chatgpt-pro-pending-search-jump', JSON.stringify({
+    const pending = result.messageId ? {
         conversationId: result.conversationId,
         messageId: result.messageId,
         snippet: result.snippet
-      }));
+      } : null;
+    const targetUrl = new URL(result.href || `/c/${result.conversationId}`, location.origin).href;
+    if (S.settings.openInBackground) {
+      if (pending) await runtimeMessage({ action: 'pendingSearchJumpPut', pending });
+      await runtimeMessage({ action: 'openInBackground', url: targetUrl });
+      return;
     }
-    window.location.href = new URL(result.href || `/c/${result.conversationId}`, location.origin).href;
+    if (pending) sessionStorage.setItem('chatgpt-pro-pending-search-jump', JSON.stringify(pending));
+    window.location.href = targetUrl;
   }
 
-  function renderFullTextResults(container, results) {
+  function appendHighlightedSearchText(element, value, query) {
+    const source = String(value || '');
+    const tokens = [...new Set(String(query || '').trim().split(/\s+/).filter(Boolean))]
+      .sort((a, b) => b.length - a.length);
+    if (!tokens.length) {
+      element.textContent = source;
+      return;
+    }
+    const escaped = tokens.map(token => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const matcher = new RegExp(`(${escaped.join('|')})`, 'giu');
+    let offset = 0;
+    for (const match of source.matchAll(matcher)) {
+      if (match.index > offset) element.appendChild(document.createTextNode(source.slice(offset, match.index)));
+      const mark = document.createElement('mark');
+      mark.className = 'chatgpt-pro-search-highlight';
+      mark.textContent = match[0];
+      element.appendChild(mark);
+      offset = match.index + match[0].length;
+    }
+    if (offset < source.length) element.appendChild(document.createTextNode(source.slice(offset)));
+  }
+
+  function renderFullTextResults(container, results, query = '') {
     container.replaceChildren();
     if (!results.length) {
       const empty = document.createElement('p');
@@ -3433,18 +3467,16 @@
       return;
     }
     for (const result of results) {
-      const legacy = result.origin === 'legacy-unassigned';
       const localOnly = result.remoteState === 'local-only';
       const i18n = window.ChatGPTProI18n;
-      const button = document.createElement(legacy || localOnly ? 'div' : 'button');
+      const button = document.createElement(localOnly ? 'div' : 'button');
       button.type = 'button';
       button.className = 'chatgpt-pro-search-result';
       const title = document.createElement('strong');
-      title.textContent = result.title;
+      appendHighlightedSearchText(title, result.title, query);
       const meta = document.createElement('span');
       meta.className = 'chatgpt-pro-search-result-meta';
-      const stateLabel = legacy ? '未归属历史索引 · 不可确认在线链接或完整导出'
-        : localOnly ? '仅本地 · 已确认官方删除'
+      const stateLabel = localOnly ? '仅本地 · 已确认官方删除'
           : result.remoteState === 'unverified' ? '远端状态待核实' : '';
       const roleLabel = result.role === 'user' ? '用户' : (result.role === 'assistant' ? 'ChatGPT' : '');
       const metaParts = [
@@ -3461,7 +3493,7 @@
       }
       const snippet = document.createElement('span');
       snippet.className = 'chatgpt-pro-search-result-snippet';
-      snippet.textContent = result.snippet;
+      appendHighlightedSearchText(snippet, result.snippet, query);
       // This is extension-generated UI copy, unlike a normal message excerpt.
       // Opt only the title-only fallback into translation; preserve all chat text.
       if (!result.messageId && result.snippet === '标题匹配') {
@@ -3539,7 +3571,7 @@
         });
         button.append(clear);
       }
-      if (!legacy && !localOnly) button.addEventListener('click', () => openFullTextSearchResult(result));
+      if (!localOnly) button.addEventListener('click', () => openFullTextSearchResult(result));
       container.appendChild(button);
     }
   }
@@ -3606,14 +3638,14 @@
           <input class="chatgpt-pro-fulltext-input" type="search" autocomplete="off" placeholder="搜索所有聊天内容" aria-label="全文搜索关键词">
           <button type="submit">搜索</button>
         </form>
-        <label class="chatgpt-pro-legacy-search-option">
-          <input type="checkbox" class="chatgpt-pro-legacy-search-toggle">
-          另查未归属的旧版全文索引（不归入当前账号）
-        </label>
         <div class="chatgpt-pro-search-index-bar">
           <span class="chatgpt-pro-search-index-status">正在读取索引状态…</span>
           <button type="button" class="chatgpt-pro-search-index-update">更新索引</button>
         </div>
+        <details class="chatgpt-pro-search-index-detail" hidden>
+          <summary>索引失败日志 <span class="chatgpt-pro-search-index-error-count"></span></summary>
+          <div class="chatgpt-pro-search-index-error-list"></div>
+        </details>
         <div class="chatgpt-pro-search-results" aria-live="polite"></div>
       </section>`;
 
@@ -3635,9 +3667,11 @@
     const searchView = panel.querySelector('[data-panel-content="search"]');
     const fullTextForm = panel.querySelector('.chatgpt-pro-fulltext-form');
     const fullTextInput = panel.querySelector('.chatgpt-pro-fulltext-input');
-    const legacySearchToggle = panel.querySelector('.chatgpt-pro-legacy-search-toggle');
     const searchIndexStatus = panel.querySelector('.chatgpt-pro-search-index-status');
     const searchIndexUpdate = panel.querySelector('.chatgpt-pro-search-index-update');
+    const searchIndexDetail = panel.querySelector('.chatgpt-pro-search-index-detail');
+    const searchIndexErrorCount = panel.querySelector('.chatgpt-pro-search-index-error-count');
+    const searchIndexErrorList = panel.querySelector('.chatgpt-pro-search-index-error-list');
     const searchResults = panel.querySelector('.chatgpt-pro-search-results');
     const list = panel.querySelector('.chatgpt-pro-rows');
     const createdSort = panel.querySelector('.chatgpt-pro-created-sort');
@@ -3722,22 +3756,96 @@
       if (open) window.setTimeout(() => titleFilterInput.focus(), 0);
     };
 
+    const indexFailureHint = text => {
+      if (/\b410\b|\bgone\b/i.test(text)) return '官方已明确返回删除状态。';
+      if (/\b404\b|not found/i.test(text)) return '可能不存在或无权访问，不能据此确认已删除。';
+      if (/\b401\b|\b403\b|登录|权限/.test(text)) return '请确认当前 ChatGPT 账号与访问权限。';
+      if (/更新版本|拒绝覆盖/.test(text)) return '本地已有更新完整 JSON，重建索引时会优先使用新版本。';
+      return '';
+    };
+
+    const renderIndexFailures = (failures, tasks = []) => {
+      const itemById = new Map(currentRecords.map(record => [record.id, record]));
+      for (const task of tasks) for (const item of task.items || []) {
+        if (!itemById.has(item.id)) itemById.set(item.id, item);
+      }
+      const normalized = (failures || []).map(failure => {
+        if (typeof failure !== 'string') return {
+          id: String(failure?.id || ''), message: String(failure?.message || '未知错误')
+        };
+        const match = failure.match(/^([^:：]+)[:：]\s*([\s\S]*)$/);
+        return { id: match?.[1] || '', message: match?.[2] || failure };
+      });
+      const wasHidden = searchIndexDetail.hidden;
+      searchIndexDetail.hidden = normalized.length === 0;
+      if (!normalized.length) {
+        searchIndexErrorList.replaceChildren();
+        return;
+      }
+      if (wasHidden) searchIndexDetail.open = false;
+      searchIndexErrorCount.textContent = `（${normalized.length} 个）`;
+      searchIndexErrorList.replaceChildren();
+      for (const failure of normalized.slice(-10)) {
+        const item = itemById.get(failure.id) || {};
+        const entry = document.createElement('div');
+        entry.className = 'chatgpt-pro-search-index-error';
+        const heading = document.createElement('div');
+        heading.className = 'chatgpt-pro-search-index-error-title';
+        const title = document.createElement('strong');
+        title.textContent = item.title || failure.id || '未知对话';
+        const link = document.createElement('a');
+        link.href = item.href || (failure.id ? `/c/${failure.id}` : '#');
+        link.textContent = '打开对话';
+        if (!failure.id) link.hidden = true;
+        link.addEventListener('click', event => {
+          if (!S.settings.openInBackground || event.button !== 0
+              || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+          event.preventDefault();
+          runtimeMessage({ action: 'openInBackground', url: link.href }).catch(() => {});
+        });
+        const actions = document.createElement('div');
+        actions.className = 'chatgpt-pro-search-index-error-actions';
+        actions.appendChild(link);
+        heading.append(title, actions);
+        const id = document.createElement('div');
+        id.textContent = `ID：${failure.id || '未知'}`;
+        const message = document.createElement('div');
+        message.className = 'chatgpt-pro-search-index-error-message';
+        message.textContent = `错误：${failure.message}`;
+        entry.append(heading, id, message);
+        const hintText = indexFailureHint(failure.message);
+        if (hintText) {
+          const hint = document.createElement('div');
+          hint.className = 'chatgpt-pro-search-index-error-hint';
+          hint.textContent = `判断：${hintText}`;
+          entry.appendChild(hint);
+        }
+        searchIndexErrorList.appendChild(entry);
+      }
+    };
+
     const refreshSearchIndexStatus = async () => {
       try {
         const accountId = await window.APIHandler.getAccountId();
-        const [response, legacy, policy] = await Promise.all([
+        const [response, policy, taskReply] = await Promise.all([
           runtimeMessage({ action: 'searchIndexMetadata', accountId }),
-          runtimeMessage({ action: 'localDataLegacyStats' }),
-          runtimeMessage({ action: 'indexPolicyGet', accountId })
+          runtimeMessage({ action: 'indexPolicyGet', accountId }),
+          runtimeMessage({ action: 'taskList', accountId })
         ]);
+        const indexTasks = (taskReply.result || []).filter(task => task.type === 'index')
+          .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+        const latestFailureTask = indexTasks.find(task => task.errors?.length);
+        const latestFailures = latestFailureTask?.errors || [];
         searchIndexUpdate.textContent = !policy.result?.consentAt
           ? '首次索引（需授权）'
           : policy.result.initialCompletedAt ? '更新索引' : '继续首次索引';
         searchIndexStatus.textContent = !policy.result?.consentAt
           ? `首次建立全文索引需点击授权；不会自动抓取正文。已有索引可搜索 · 当前 ${response.records?.length || 0} 条`
-          : `当前账号已索引 ${response.records?.length || 0} / ${currentRecords.length} 个 · 未归属旧索引 ${legacy.legacyCount || 0} 个`;
+          : `当前账号已索引 ${response.records?.length || 0} / ${currentRecords.length} 个`;
+        renderIndexFailures(latestFailures, indexTasks);
       } catch (error) {
         searchIndexStatus.textContent = `索引状态读取失败：${error.message}`;
+        renderIndexFailures([]);
       }
     };
 
@@ -3789,17 +3897,11 @@
           searchCache.clear();
           searchCacheRevision = revision;
         }
-        const includeLegacy = legacySearchToggle.checked;
-        const cacheKey = JSON.stringify([accountId, query, includeLegacy]);
+        const cacheKey = JSON.stringify([accountId, query]);
         let cached = searchCache.get(cacheKey);
         if (!cached) {
-          const [response, legacy] = await Promise.all([
-            runtimeMessage({ action: 'searchFullText', accountId, query, limit: 200 }),
-            includeLegacy
-              ? runtimeMessage({ action: 'searchUnassignedLegacy', query, limit: 200 })
-              : Promise.resolve({ results: [] })
-          ]);
-          cached = { current: response.results || [], legacy: legacy.results || [] };
+          const response = await runtimeMessage({ action: 'searchFullText', accountId, query, limit: 200 });
+          cached = response.results || [];
           searchCache.set(cacheKey, cached);
           if (searchCache.size > 8) searchCache.delete(searchCache.keys().next().value);
         }
@@ -3808,8 +3910,8 @@
           clearRecentSearches();
           throw new Error('登录账号已切换，请重新搜索');
         }
-        renderFullTextResults(searchResults, [...cached.current, ...cached.legacy]);
-        status.textContent = `当前账号 ${cached.current.length} 条${includeLegacy ? ` · 未归属旧索引 ${cached.legacy.length} 条` : ''}`;
+        renderFullTextResults(searchResults, cached, query);
+        status.textContent = `当前账号 ${cached.length} 条`;
       } catch (error) {
         if (requestId === searchRequestId) status.textContent = `全文搜索失败：${error.message}`;
       }
@@ -3825,10 +3927,6 @@
       window.clearTimeout(searchTimer);
       searchTimer = window.setTimeout(runFullTextSearch, 300);
     });
-    legacySearchToggle.addEventListener('change', () => {
-      window.clearTimeout(searchTimer);
-      runFullTextSearch();
-    });
     searchIndexUpdate.addEventListener('click', async () => {
       if (searchIndexUpdate.disabled) return;
       searchIndexUpdate.disabled = true;
@@ -3838,7 +3936,11 @@
           if (progress.phase === 'initial-directory') {
             searchIndexStatus.textContent = '正在核实完整聊天目录（项目和分页）…';
           } else if (progress.phase === 'paused') {
-            searchIndexStatus.textContent = '索引任务已暂停，请在任务管理中继续';
+            searchIndexStatus.textContent = progress.reason === 'consecutive-failures'
+              ? '索引已自动暂停：连续 3 个对话处理失败；请查看任务日志后手动继续'
+              : progress.reason === 'auth-error'
+                ? '索引已暂停：登录或权限异常；请确认 ChatGPT 登录状态后继续'
+                : '索引已手动暂停，请在任务管理中继续';
           } else if (progress.phase === 'running-elsewhere') {
             searchIndexStatus.textContent = progress.busyReason === 'account-busy'
               ? '同账号已有其他任务在执行，索引任务将排队'
@@ -3854,19 +3956,13 @@
           }
         });
         if (result.consentDeclined) searchIndexStatus.textContent = '未授权，未开始首次全量索引';
-        else if (!result.busy && !result.paused) {
-          searchIndexStatus.textContent = result.failures.length
-            ? `新增/更新 ${result.indexedCount} 个，失败 ${result.failures.length} 个`
-            : result.initialCompleted === false
-              ? `首次索引仍有 ${result.initialRemaining} 条待补全，可再次继续`
-              : `索引已是最新 · 更新 ${result.indexedCount} 个，跳过 ${result.skippedCount} 个`;
-          if (result.initialCompleted) searchIndexUpdate.textContent = '更新索引';
-        }
+        else await refreshSearchIndexStatus();
       } catch (error) {
         searchIndexStatus.textContent = `索引更新失败：${error.message}`;
       } finally {
         clearRecentSearches();
         searchIndexUpdate.disabled = false;
+        refreshSearchIndexStatus().catch(() => {});
       }
     });
 

@@ -1,7 +1,5 @@
 /** ChatGPT Pro - background service worker */
 
-// S1: upgrade the existing IndexedDB in-place. The version-1 search store is
-// deliberately retained until its unassigned records can be reconciled.
 importScripts('local-data-store.js');
 
 const DEFAULT_SETTINGS = {
@@ -15,37 +13,6 @@ const DEFAULT_SETTINGS = {
   panelSize: { width: 580, height: 560 }
 };
 
-const SEARCH_STORE = 'conversations';
-
-function openSearchDb() {
-  return ChatGPTProLocalData.openDb();
-}
-
-function requestResult(request) {
-  return new Promise((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('E_INDEX_REQUEST_FAILED'));
-  });
-}
-
-async function withSearchStore(mode, operation) {
-  const db = await openSearchDb();
-  try {
-    const transaction = db.transaction(SEARCH_STORE, mode);
-    const store = transaction.objectStore(SEARCH_STORE);
-    const done = new Promise((resolve, reject) => {
-      transaction.oncomplete = resolve;
-      transaction.onabort = () => reject(transaction.error || new Error('E_INDEX_TRANSACTION_ABORTED'));
-      transaction.onerror = () => reject(transaction.error || new Error('E_INDEX_TRANSACTION_FAILED'));
-    });
-    const result = await operation(store);
-    await done;
-    return result;
-  } finally {
-    db.close();
-  }
-}
-
 function normalizeSearchText(value) {
   return String(value || '').normalize('NFKC').toLocaleLowerCase('zh-CN');
 }
@@ -58,113 +25,6 @@ function searchSnippet(text, tokens, radius = 70) {
   const start = Math.max(0, position - radius);
   const end = Math.min(source.length, position + Math.max(...tokens.map(token => token.length), 1) + radius);
   return `${start ? '…' : ''}${source.slice(start, end)}${end < source.length ? '…' : ''}`;
-}
-
-async function upsertSearchRecord(record) {
-  const clean = {
-    id: String(record?.id || ''),
-    title: String(record?.title || 'Untitled conversation'),
-    href: String(record?.href || `/c/${record?.id || ''}`),
-    updateTime: Number(record?.updateTime || 0),
-    indexedAt: Date.now(),
-    messages: Array.isArray(record?.messages) ? record.messages.map(message => ({
-      id: String(message?.id || ''),
-      role: String(message?.role || ''),
-      text: String(message?.text || ''),
-      createTime: Number(message?.createTime || 0)
-    })).filter(message => message.text) : []
-  };
-  if (!clean.id) throw new Error('E_INDEX_CONVERSATION_ID_MISSING');
-  await withSearchStore('readwrite', store => requestResult(store.put(clean)));
-  return { success: true, indexedAt: clean.indexedAt };
-}
-
-async function searchIndexMetadata() {
-  return withSearchStore('readonly', store => new Promise((resolve, reject) => {
-    const records = [];
-    const request = store.openCursor();
-    request.onsuccess = () => {
-      const cursor = request.result;
-      if (!cursor) {
-        resolve(records);
-        return;
-      }
-      records.push({ id: cursor.value.id, updateTime: cursor.value.updateTime, indexedAt: cursor.value.indexedAt });
-      cursor.continue();
-    };
-    request.onerror = () => reject(request.error || new Error('无法读取索引状态'));
-  }));
-}
-
-async function pruneSearchIndex(keepIds) {
-  // Absence from a partial/failed remote directory is NOT proof of deletion.
-  // Previous behavior irreversibly removed local full-text results. Until S4
-  // implements verified account-scoped deletion detection, retain them.
-  const keep = new Set((keepIds || []).map(String));
-  const retainedUnverified = await withSearchStore('readonly', store => new Promise((resolve, reject) => {
-    let count = 0;
-    const request = store.openCursor();
-    request.onsuccess = () => {
-      const cursor = request.result;
-      if (!cursor) {
-        resolve(count);
-        return;
-      }
-      if (!keep.has(String(cursor.key))) count++;
-      cursor.continue();
-    };
-    request.onerror = () => reject(request.error || new Error('无法清理旧索引'));
-  }));
-  return { success: true, removed: 0, retainedUnverified };
-}
-
-async function searchFullText(query, limit = 200) {
-  const tokens = normalizeSearchText(query).split(/\s+/).filter(Boolean);
-  if (!tokens.length) return [];
-  const maxResults = Math.max(1, Math.min(500, Number(limit) || 200));
-  return withSearchStore('readonly', store => new Promise((resolve, reject) => {
-    const results = [];
-    const request = store.index('updateTime').openCursor(null, 'prev');
-    request.onsuccess = () => {
-      const cursor = request.result;
-      if (!cursor || results.length >= maxResults) {
-        resolve(results);
-        return;
-      }
-      const record = cursor.value;
-      let conversationMatched = false;
-      for (const message of record.messages || []) {
-        const normalized = normalizeSearchText(message.text);
-        if (!tokens.every(token => normalized.includes(token))) continue;
-        conversationMatched = true;
-        results.push({
-          conversationId: record.id,
-          title: record.title,
-          href: record.href,
-          updateTime: record.updateTime,
-          messageId: message.id,
-          role: message.role,
-          createTime: message.createTime,
-          snippet: searchSnippet(message.text, tokens)
-        });
-        if (results.length >= maxResults) break;
-      }
-      if (!conversationMatched && tokens.every(token => normalizeSearchText(record.title).includes(token))) {
-        results.push({
-          conversationId: record.id,
-          title: record.title,
-          href: record.href,
-          updateTime: record.updateTime,
-          messageId: '',
-          role: '',
-          createTime: 0,
-          snippet: '标题匹配'
-        });
-      }
-      cursor.continue();
-    };
-    request.onerror = () => reject(request.error || new Error('全文搜索失败'));
-  }));
 }
 
 function matchingResults(records, query, limit = 200, origin = 'account') {
@@ -206,18 +66,6 @@ async function searchForAccount(accountId, query, limit) {
   return matchingResults(records, query, limit).map(result => ({
     ...result, remoteState: states.get(result.conversationId) || 'unverified'
   }));
-}
-
-async function searchUnassignedLegacy(query, limit) {
-  // This is deliberately a separate, explicit query. It must never be merged
-  // into a signed-in account's ordinary search result set.
-  const records = await withSearchStore('readonly', store => requestResult(store.getAll()));
-  return matchingResults(records, query, limit, 'legacy-unassigned');
-}
-
-async function clearSearchIndex() {
-  await withSearchStore('readwrite', store => requestResult(store.clear()));
-  return { success: true };
 }
 
 chrome.runtime.onInstalled.addListener((details) => {
@@ -367,12 +215,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
-  if (message.action === 'localDataLegacyStats') {
-    ChatGPTProLocalData.getLegacyMetadata()
-      .then(result => sendResponse({ success: true, ...result }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
-    return true;
-  }
   if (message.action === 'searchIndexUpsert') {
     ChatGPTProLocalData.putSearchRecord(message.accountId, message.record)
       .then(result => sendResponse({ success: true, ...result }))
@@ -385,18 +227,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
-  if (message.action === 'searchIndexPrune') {
-    pruneSearchIndex(message.keepIds).then(sendResponse).catch(error => sendResponse({ success: false, error: error.message }));
-    return true;
-  }
   if (message.action === 'searchFullText') {
     searchForAccount(message.accountId, message.query, message.limit)
-      .then(results => sendResponse({ success: true, results }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
-    return true;
-  }
-  if (message.action === 'searchUnassignedLegacy') {
-    searchUnassignedLegacy(message.query, message.limit)
       .then(results => sendResponse({ success: true, results }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
@@ -429,6 +261,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } catch (error) {
       sendResponse({ success: false, error: error.message });
     }
+    return true;
+  }
+  if (message.action === 'pendingSearchJumpPut') {
+    const pending = message.pending;
+    if (!pending?.conversationId) {
+      sendResponse({ success: false, error: '缺少对话 ID' });
+      return false;
+    }
+    chrome.storage.session.set({ [`pending_search_jump_${pending.conversationId}`]: pending }, () =>
+      sendResponse(chrome.runtime.lastError
+        ? { success: false, error: chrome.runtime.lastError.message }
+        : { success: true }));
+    return true;
+  }
+  if (message.action === 'pendingSearchJumpTake') {
+    const key = `pending_search_jump_${message.conversationId || ''}`;
+    chrome.storage.session.get(key, values => {
+      const pending = values[key] || null;
+      chrome.storage.session.remove(key, () => sendResponse({ success: true, pending }));
+    });
     return true;
   }
 });

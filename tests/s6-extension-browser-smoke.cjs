@@ -722,7 +722,7 @@ async function main() {
     'unindexed directory rendered');
     const controls = await cdp.eval(pageSession, `(() => {
       return ['.chatgpt-pro-select-all input', '.chatgpt-pro-row-checkbox',
-        '.chatgpt-pro-export-check-latest', '.chatgpt-pro-legacy-search-toggle']
+        '.chatgpt-pro-export-check-latest']
         .map(selector => {
           const input = document.querySelector(selector);
           const css = getComputedStyle(input);

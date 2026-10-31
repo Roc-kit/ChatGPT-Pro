@@ -16,41 +16,20 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     request.onerror = () => reject(request.error);
   });
   try {
-    // Simulate a genuine pre-upgrade v1 database with no account association.
-    const request = indexedDB.open('ChatGPTProSearch', 1);
-    request.onupgradeneeded = () => {
-      const legacy = request.result.createObjectStore('conversations', { keyPath: 'id' });
-      legacy.createIndex('updateTime', 'updateTime');
-      legacy.createIndex('indexedAt', 'indexedAt');
-    };
-    const oldDb = await req(request);
-    await new Promise((resolve, reject) => {
-      const tx = oldDb.transaction('conversations', 'readwrite');
-      tx.objectStore('conversations').put({
-        id: 'old-chat', title: 'old index survives', updateTime: 1700000000000,
-        indexedAt: 1700000000000, messages: [{ text: 'legacy text remains searchable' }]
-      });
-      tx.oncomplete = resolve;
-      tx.onabort = () => reject(tx.error);
-    });
-    oldDb.close();
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
       s.src = '/local-data-store.js'; s.onload = resolve; s.onerror = reject;
       document.head.append(s);
     });
     const storage = window.ChatGPTProLocalData;
-    const oldStats = await storage.getLegacyMetadata();
-    check(oldStats.legacyCount === 1 && oldStats.unassignedCount === 1, 'lossless v1 migration');
-    const upgradeDb = await storage.openDb();
-    check(upgradeDb.version === 4 && upgradeDb.objectStoreNames.contains('tasks')
-      && upgradeDb.objectStoreNames.contains('logs') && upgradeDb.objectStoreNames.contains('taskVolumes')
-      && upgradeDb.objectStoreNames.contains('taskVolumeChunks'),
-      'v1 -> v4 upgrade retains legacy and creates ZIP and staging stores');
-    const legacyRecord = await req(upgradeDb.transaction('conversations').objectStore('conversations').get('old-chat'));
-    check(legacyRecord.messages[0].text === 'legacy text remains searchable', 'v1 preserved as-is');
-    upgradeDb.close();
-    // Exercise the actual background search path against the upgraded DB.
+    const currentDb = await storage.openDb();
+    check(currentDb.version === 4 && currentDb.objectStoreNames.contains('tasks')
+      && currentDb.objectStoreNames.contains('logs') && currentDb.objectStoreNames.contains('taskVolumes')
+      && currentDb.objectStoreNames.contains('taskVolumeChunks')
+      && !currentDb.objectStoreNames.contains('conversations'),
+      'current schema contains only account-scoped full-text storage');
+    currentDb.close();
+    // Exercise the actual account-scoped background search path.
     window.importScripts = () => {};
     const callbacks = [];
     const localSettings = {
@@ -81,14 +60,6 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
       s.src = '/background.js'; s.onload = resolve; s.onerror = reject;
       document.head.append(s);
     });
-    const oldMatches = await searchFullText('legacy');
-    check(oldMatches.length === 1 && oldMatches[0].conversationId === 'old-chat', 'legacy search works after v2');
-    const pruneResult = await pruneSearchIndex([]);
-    check(pruneResult.removed === 0 && pruneResult.retainedUnverified === 1, 'unverified deletion never prunes');
-    check((await searchFullText('legacy')).length === 1, 'prune preserved searchable data');
-    check((await searchUnassignedLegacy('legacy', 10))[0].origin === 'legacy-unassigned', 'explicit legacy search');
-    check((await searchForAccount('acct-a', 'legacy', 10)).length === 0, 'legacy not included in account search');
-
     const rawA = { id: 'same-id', title: 'A', mapping: { m: { message: { content: 'A text' } } } };
     const rawB = { id: 'same-id', title: 'B', mapping: { m: { message: { content: 'B text' } } } };
     await storage.putConversation('acct-a', {
@@ -143,8 +114,6 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
       ids: ['same-id', 'missing-id'] });
     check(selectedMetadataMessage.success && selectedMetadataMessage.records.length === 1,
       'background metadata action preserves the optional failed-ID filter');
-    check((await send({ action: 'searchUnassignedLegacy', query: 'legacy' })).results.length === 1,
-      'runtime legacy search requires distinct action');
     const reused = await storage.putSearchRecord('acct-b', {
       id: 'same-id', updateTime: 1700000001000, title: 'bad replacement', messages: []
     });
@@ -161,10 +130,6 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     const newerThanDirectory = await storage.getConversation('acct-a', 'same-id', 1700000000);
     check(newerThanDirectory.hit && newerThanDirectory.dataVersion === 1700000002000,
       'a newer complete local version satisfies a lagging directory timestamp');
-    check((await storage.getLegacyMetadata()).unassignedCount === 1, 'legacy unassigned not reassigned');
-    try { await storage.getConversation(storage.UNASSIGNED_ACCOUNT, 'old-chat'); throw Error('unassigned exposed'); }
-    catch (error) { check(/账号 ID/.test(error.message), 'unassigned account is not active'); }
-
     // Exercise the real page API client and the background message handlers,
     // without network requests to ChatGPT or changing the user's browser data.
     let activeAccount = 'acct-a';
@@ -235,11 +200,10 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     await window.APIHandler.getCachedConversationList(false);
     check(sentUrls.filter(url => url.includes('/api/auth/session')).length === sessionBeforePoll,
       'status polling reuses recent identity without network calls');
-    // Explicit clear must not remove raw JSON, another account, or old legacy data.
+    // Explicit clear must not remove raw JSON or another account.
     const cleared = await send({ action: 'searchIndexClear', accountId: 'acct-a' });
     check(cleared.success && cleared.removed === 0, 'already-invalid A search clear is idempotent');
     check((await storage.getSearchRecords('acct-b')).length === 1, 'clear must not affect B');
-    check((await searchUnassignedLegacy('legacy')).length === 1, 'clear must not touch old index');
     check((await storage.getConversation('acct-a', 'same-id')).hit, 'clear must not touch complete raw');
     check((await send({ action: 'searchIndexClear' })).success === false, 'unscoped clear rejected');
     // A session switch partway through a network sync must not commit its
@@ -746,9 +710,8 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
       !(await storage.getDirectoryRecord('acct-a', 'only-local-to-clean')) &&
       !(await storage.getSearchRecords('acct-a')).some(record => record.id === 'only-local-to-clean'),
       'manual cleanup removes only selected directory/raw/search trio');
-    check((await storage.getConversation('acct-a', 'explicit-tombstone')).hit &&
-      (await storage.getLegacyMetadata()).legacyCount === 1,
-      'other local-only records and unassigned legacy data remain after cleanup');
+    check((await storage.getConversation('acct-a', 'explicit-tombstone')).hit,
+      'other local-only records remain after cleanup');
     // Authenticated HTTP 410 is affirmative Gone evidence; HTTP 404 alone is not.
     activeAccount = 'acct-a';
     simulateGoneId = 'gone-http';
@@ -826,9 +789,8 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
       'automatic reconstruction is blocked after index clear');
     check(!(await send({ action: 'indexPolicyFinishInitial', accountId: consentId })).success,
       'stale full-scan completion cannot be reused after index clearing');
-    check(JSON.stringify(await storage.getStats('acct-a')) === JSON.stringify(otherBefore) &&
-      (await storage.getLegacyMetadata()).legacyCount === 1,
-      'other account data and unassigned legacy index survive both clear operations');
+    check(JSON.stringify(await storage.getStats('acct-a')) === JSON.stringify(otherBefore),
+      'other account data survives both clear operations');
     check(!(await send({ action: 'localDataClearAccount', kind: 'index' })).success,
       'unknown account cannot clear arbitrary local data');
     check(!(await send({ action: 'indexPolicySetAuto', accountId: 'acct-new', enabled: true })).success,
@@ -973,7 +935,7 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }
     catch (error) { check(/账号无法确认/.test(error.message), 'missing user id cannot access cache'); }
-    document.getElementById('result').textContent = 'S1_PASS: upgrade, legacy search, account switching, scoped directory/search, JSON versions';
+    document.getElementById('result').textContent = 'S1_PASS: account switching, scoped directory/search, JSON versions';
   } catch (error) {
     document.getElementById('result').textContent = 'S1_FAIL: ' + (error.stack || error.message);
   }

@@ -29,8 +29,7 @@ window.ChatGPTProDynamicMessageKeys = [
     "default": "status.chats"
   },
   {
-    "full": "status.accountChatsUnassignedLegacyEntries",
-    "short": "status.accountChats"
+    "default": "status.accountChats"
   },
   {
     "full": "status.succeededFailedZIPParts",
@@ -64,7 +63,7 @@ window.ChatGPTProDynamicMessageKeys = [
     "default": "status.backgroundSyncComplete"
   },
   {
-    "default": "status.indexedForThisAccountUnassignedLegacyEntries"
+    "default": "status.indexedForThisAccount"
   },
   {
     "default": "status.rateLimitedResumeInS"
