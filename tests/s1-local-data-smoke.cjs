@@ -173,6 +173,7 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     let changedRemoteAccountA = false;
     let simulateGoneId = null;
     let simulateMissingId = null;
+    let simulateInvalidJsonId = null;
     let detailRequests = 0;
     const sentUrls = [];
     window.fetch = async (input, options) => {
@@ -194,6 +195,10 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
       } else if (url.includes('/backend-api/conversation/')) {
         detailRequests++;
         const id = decodeURIComponent(url.split('/').pop());
+        if (id === simulateInvalidJsonId) {
+          return { ok: true, status: 200, json: async () => { throw new SyntaxError('invalid JSON'); },
+            headers: { get() { return null; } } };
+        }
         if (id === simulateGoneId || id === simulateMissingId) {
           const status = id === simulateGoneId ? 410 : 404;
           return { ok: false, status, json: async () => ({}), headers: { get() { return null; } } };
@@ -394,6 +399,60 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check(completed.result.status === 'completed' && completed.result.nextIndex === 2 &&
       completed.result.successCount === 1 && completed.result.failureCount === 1,
       'completed task retains progress and error counts');
+    const rateLimitTask = await send({ action: 'taskCreate', accountId: 'acct-d', type: 'index',
+      items: [{ id: 'before-rate-limit' }, { id: 'rate-limit-item' }] });
+    let rateClaim = await send({ action: 'taskClaim', accountId: 'acct-d',
+      id: rateLimitTask.result.id, owner: 'rate-limit-owner' });
+    let rateToken = rateClaim.result.token;
+    await send({ action: 'taskCheckpoint', accountId: 'acct-d', id: rateLimitTask.result.id,
+      owner: 'rate-limit-owner', token: rateToken, itemIndex: 0, outcome: 'failed', error: 'temporary network error' });
+    for (let pauseCount = 1; pauseCount <= 4; pauseCount++) {
+      const retryAt = Date.now() + 5000;
+      await send({ action: 'taskPhase', accountId: 'acct-d', id: rateLimitTask.result.id,
+        owner: 'rate-limit-owner', token: rateToken, phase: 'rate-limit', waitUntil: retryAt });
+      await send({ action: 'taskControl', accountId: 'acct-d', id: rateLimitTask.result.id,
+        operation: 'pause', reason: 'rate-limit' });
+      const pausedRateTask = await send({ action: 'taskGet', accountId: 'acct-d', id: rateLimitTask.result.id });
+      check(pausedRateTask.result.status === 'paused' &&
+        pausedRateTask.result.rateLimitPauseCount === pauseCount,
+        'rate-limit pause ' + pauseCount + ' is persisted');
+      check(pausedRateTask.result.phase === (pauseCount <= 3 ? 'rate-limit' : 'rate-limit-exhausted'),
+        'rate-limit pause ' + pauseCount + ' has the correct automatic-recovery state');
+      check(pausedRateTask.result.waitUntil === (pauseCount <= 3 ? retryAt : 0),
+        'only automatically recoverable rate-limit pauses retain a cooldown deadline');
+      if (pauseCount <= 3) {
+        await send({ action: 'taskControl', accountId: 'acct-d', id: rateLimitTask.result.id,
+          operation: 'resume', reason: 'auto-rate-limit' });
+        const resumed = await send({ action: 'taskGet', accountId: 'acct-d', id: rateLimitTask.result.id });
+        check(resumed.result.status === 'pending' && resumed.result.rateLimitPauseCount === pauseCount,
+          'automatic resume preserves the bounded rate-limit retry count');
+        check(resumed.result.consecutiveFailures === 1,
+          'automatic rate-limit resume preserves the consecutive item-failure count');
+        rateClaim = await send({ action: 'taskClaim', accountId: 'acct-d',
+          id: rateLimitTask.result.id, owner: 'rate-limit-owner' });
+        rateToken = rateClaim.result.token;
+      }
+    }
+    await send({ action: 'taskControl', accountId: 'acct-d', id: rateLimitTask.result.id,
+      operation: 'resume' });
+    const manualRateResume = await send({ action: 'taskGet', accountId: 'acct-d', id: rateLimitTask.result.id });
+    check(manualRateResume.result.rateLimitPauseCount === 0 && manualRateResume.result.consecutiveFailures === 0,
+      'manual resume resets exhausted rate-limit and consecutive-failure counters');
+    rateClaim = await send({ action: 'taskClaim', accountId: 'acct-d',
+      id: rateLimitTask.result.id, owner: 'rate-limit-owner' });
+    await send({ action: 'taskCheckpoint', accountId: 'acct-d', id: rateLimitTask.result.id,
+      owner: 'rate-limit-owner', token: rateClaim.result.token, itemIndex: 1, outcome: 'success' });
+    const rateLimitCompleted = await send({ action: 'taskGet', accountId: 'acct-d', id: rateLimitTask.result.id });
+    check(rateLimitCompleted.result.status === 'completed' && rateLimitCompleted.result.failureCount === 1,
+      'rate-limit recovery retries the uncheckpointed item without changing earlier outcomes');
+    const authTask = await send({ action: 'taskCreate', accountId: 'acct-e', type: 'index',
+      items: [{ id: 'auth-error-item' }] });
+    await send({ action: 'taskClaim', accountId: 'acct-e', id: authTask.result.id, owner: 'auth-owner' });
+    await send({ action: 'taskControl', accountId: 'acct-e', id: authTask.result.id,
+      operation: 'pause', reason: 'auth-error' });
+    const authPaused = await send({ action: 'taskGet', accountId: 'acct-e', id: authTask.result.id });
+    check(authPaused.result.status === 'paused' && authPaused.result.phase === 'auth-error',
+      'authentication failures remain paused for manual intervention');
     const cancellable = await send({ action: 'taskCreate', accountId: 'acct-a', type: 'export-json',
       items: [{ id: 'cancel-item' }] });
     await send({ action: 'taskControl', accountId: 'acct-a', id: cancellable.result.id, operation: 'cancel' });
@@ -897,6 +956,19 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     await send({ action: 'indexSetupPhase', accountId: consentId, phase: null });
     check(!(await send({ action: 'indexPolicyGet', accountId: consentId })).result.setupPhase,
       'directory scanning progress clears after completion');
+
+    activeAccount = 'acct-a';
+    await window.APIHandler.getAccountId(true);
+    simulateInvalidJsonId = 'invalid-json-detail';
+    const beforeInvalidJson = detailRequests;
+    let invalidJsonError = null;
+    try { await window.APIHandler.getConversation(simulateInvalidJsonId); }
+    catch (error) { invalidJsonError = error; }
+    check(invalidJsonError?.code === 'E_API_RESPONSE_INVALID_JSON',
+      'malformed HTTP 200 response is classified as a permanent JSON format error');
+    check(detailRequests === beforeInvalidJson + 1,
+      'malformed JSON response is not retried as a transient network error');
+    simulateInvalidJsonId = null;
 
     missingIdentity = true;
     try { await window.APIHandler.getCachedConversationList(); throw Error('unverified identity allowed'); }

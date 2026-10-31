@@ -2475,17 +2475,39 @@
     } while (Date.now() < deadline);
   }
 
-  async function fetchConversationForExport(rec, progress, onProgress) {
+  async function fetchConversationForExport(rec, progress, onProgress, options = {}) {
     for (let retry = 0; retry <= EXPORT_MAX_RETRIES; retry++) {
       try {
         onProgress?.({ ...progress, phase: retry ? 'retrying' : 'fetching', retry });
         return await window.APIHandler.getConversation(rec.id, { withSource: true });
       } catch (error) {
+        const status = Number(error?.status || 0);
+        const permanentClientError = status >= 400 && status < 500
+          && ![408, 425, 429].includes(status);
+        const permanentLocalError = /登录账号已切换|仅本地对话没有可导出的完整原始 JSON/.test(
+          String(error?.message || '')
+        );
+        if (error?.code === 'E_API_RESPONSE_INVALID_JSON' || permanentClientError || permanentLocalError) {
+          throw error;
+        }
+        if (status === 429 && options.pauseOnRateLimit === true) throw error;
         if (retry >= EXPORT_MAX_RETRIES) throw error;
-        const rateLimited = error?.status === 429;
-        const waitMs = rateLimited
-          ? Math.max(1000, error.retryAfterMs || EXPORT_RATE_LIMIT_DEFAULT_MS)
-          : EXPORT_RETRY_DELAYS_MS[Math.min(retry, EXPORT_RETRY_DELAYS_MS.length - 1)];
+        const rateLimited = status === 429;
+        let waitMs = EXPORT_RETRY_DELAYS_MS[Math.min(retry, EXPORT_RETRY_DELAYS_MS.length - 1)];
+        if (rateLimited) {
+          try {
+            const accountId = await window.APIHandler.getAccountId();
+            const detailStatus = await runtimeMessage({ action: 'detailStatus', accountId });
+            const cooldownUntil = Number(detailStatus.result?.cooldownUntil || 0);
+            const cooldownRemaining = cooldownUntil - Date.now();
+            const providedRetryAfter = Number(error.retryAfterMs || 0);
+            waitMs = Math.max(Number.isFinite(cooldownRemaining) ? cooldownRemaining : 0,
+              Number.isFinite(providedRetryAfter) && providedRetryAfter > 0 ? providedRetryAfter : 0);
+          } catch (_) {
+            waitMs = 0;
+          }
+          if (!Number.isFinite(waitMs) || waitMs <= 0) waitMs = EXPORT_RATE_LIMIT_DEFAULT_MS;
+        }
         await waitForExport(waitMs, onProgress, {
           ...progress,
           phase: rateLimited ? 'rate-limit' : 'retry-wait',
@@ -2662,7 +2684,7 @@
         if (session && (/任务租约|登录账号已切换/.test(error.message))) throw error;
         if (session && (error.status === 401 || error.status === 403)) {
           await runtimeMessage({ action: 'taskControl', accountId: session.accountId,
-            id: session.taskId, operation: 'pause' });
+            id: session.taskId, operation: 'pause', reason: 'auth-error' });
           throw new Error('登录/权限异常，导出任务已暂停；本地分卷与检查点仍保留');
         }
         const entry = { id: rec.id, title: rec.title || rec.id, status: 'failed',
@@ -2794,6 +2816,12 @@
   }
 
   function buildSearchIndexRecord(data, rec) {
+    if (!data || typeof data !== 'object' || !data.mapping ||
+        typeof data.mapping !== 'object' || Array.isArray(data.mapping)) {
+      const error = new Error('E_INDEX_RESPONSE_INVALID: 缺少有效的对话 mapping');
+      error.code = 'E_INDEX_RESPONSE_INVALID';
+      throw error;
+    }
     const seen = new Set();
     const messages = currentBranchMessages(data)
       .filter(isUserVisibleMessage)
@@ -2868,7 +2896,8 @@
         let outcome = 'success';
         let errorText = '';
         try {
-          const { data, source } = await fetchConversationForExport(rec, progress, onProgress);
+          const { data, source } = await fetchConversationForExport(rec, progress, onProgress,
+            { pauseOnRateLimit: true });
           usedNetwork = source === 'network';
           await indexTaskMessage('taskHeartbeat', accountId, { id: taskId, owner: INDEX_EXECUTOR_ID, token });
           await runtimeMessage({
@@ -2880,10 +2909,35 @@
             }
           });
         } catch (error) {
-          if (/任务租约|登录账号已切换/.test(error.message)) throw error;
+          if (/任务租约|登录账号已切换|E_TASK_LEASE_EXPIRED/.test(error.message)) throw error;
           if (error?.status === 401 || error?.status === 403) {
-            await indexTaskMessage('taskControl', accountId, { id: taskId, operation: 'pause' });
+            await indexTaskMessage('taskControl', accountId, {
+              id: taskId, operation: 'pause', reason: 'auth-error'
+            });
             throw new Error('登录/权限异常，任务已暂停');
+          }
+          if (error?.status === 429) {
+            let cooldownUntil = 0;
+            try {
+              const detailStatus = await runtimeMessage({ action: 'detailStatus', accountId });
+              cooldownUntil = Number(detailStatus.result?.cooldownUntil || 0);
+            } catch (_) {}
+            if (!Number.isFinite(cooldownUntil)) cooldownUntil = 0;
+            const providedRetryAfter = Number(error.retryAfterMs || 0);
+            const retryDelay = Number.isFinite(providedRetryAfter) && providedRetryAfter > 0
+              ? providedRetryAfter : EXPORT_RATE_LIMIT_DEFAULT_MS;
+            const retryAt = Math.max(cooldownUntil, Date.now() + retryDelay);
+            await indexTaskMessage('taskPhase', accountId, {
+              id: taskId, owner: INDEX_EXECUTOR_ID, token, phase: 'rate-limit', waitUntil: retryAt
+            });
+            const paused = await indexTaskMessage('taskControl', accountId, {
+              id: taskId, operation: 'pause', reason: 'rate-limit'
+            });
+            const pauseReason = ['rate-limit', 'rate-limit-exhausted'].includes(paused.task?.phase)
+              ? paused.task.phase : paused.task?.phase || 'paused';
+            onProgress?.({ ...progress, phase: 'paused', reason: pauseReason, retryAt });
+            return { paused: true, pauseReason, retryAt,
+              indexedCount: latest.successCount, failures: latest.errors };
           }
           outcome = 'failed';
           errorText = error.message || String(error);
@@ -2926,8 +2980,12 @@
     const jobs = await indexTaskMessage('taskList', accountId);
     const existing = jobs.find(task => task.type === 'index' && ['pending', 'running', 'paused'].includes(task.status));
     if (existing?.status === 'paused') {
-      onProgress?.({ phase: 'paused' });
-      return { paused: true };
+      const reason = existing.phase === 'consecutive-failures' ? 'consecutive-failures'
+        : existing.phase === 'auth-error' ? 'auth-error'
+          : existing.phase === 'rate-limit' ? 'rate-limit'
+            : existing.phase === 'rate-limit-exhausted' ? 'rate-limit-exhausted' : 'manual';
+      onProgress?.({ phase: 'paused', reason });
+      return { paused: true, pauseReason: reason };
     }
     if (existing) return runIndexTask(accountId, existing.id, onProgress);
 
@@ -3022,8 +3080,24 @@
     try {
       const accountId = await window.APIHandler.getAccountId();
       const tasks = await indexTaskMessage('taskList', accountId);
+      const hasRateLimitPause = tasks.some(task => task.type === 'index'
+        && task.status === 'paused' && task.phase === 'rate-limit');
+      const cooldownUntil = hasRateLimitPause
+        ? Number((await runtimeMessage({ action: 'detailStatus', accountId })).result?.cooldownUntil || 0)
+        : 0;
       for (const task of tasks) {
-        if (task.type !== 'index' || !['running', 'pending'].includes(task.status)) continue;
+        if (task.type !== 'index') continue;
+        if (task.status === 'paused' && task.phase === 'rate-limit') {
+          const retryAt = Math.max(Number(task.waitUntil || 0), cooldownUntil);
+          if (retryAt > Date.now()) continue;
+          await indexTaskMessage('taskControl', accountId, {
+            id: task.id, operation: 'resume', reason: 'auto-rate-limit'
+          });
+          await runIndexTask(accountId, task.id)
+            .catch(error => log('Rate-limit recovery skipped:', error.message));
+          continue;
+        }
+        if (!['running', 'pending'].includes(task.status)) continue;
         if (task.status === 'running' && task.lease?.expiresAt > Date.now()) continue;
         // The lease is acquired atomically. Another active tab wins safely.
         await runIndexTask(accountId, task.id).catch(error => log('Index recovery skipped:', error.message));
@@ -4307,8 +4381,8 @@
     // Resume ordinary incremental indexing automatically only AFTER the user
     // authorized and completed the first full index. Never auto-consent.
     window.setTimeout(() => backgroundSyncConversationList(), 3000);
-    // On tab restart, an expired running lease can be reclaimed. Paused jobs
-    // are intentionally excluded; no long-lived MV3 worker is required.
+    // On tab restart, expired running leases and elapsed rate-limit pauses can
+    // be reclaimed. Manual, authentication, and consecutive-failure pauses stay paused.
     window.setInterval(() => recoverIndexTasks().catch(error => log('Index recovery failed:', error.message)), 15000);
     recoverIndexTasks().catch(error => log('Initial index recovery failed:', error.message));
     window.setInterval(() => recoverExportTasks().catch(error => log('Export recovery failed:', error.message)), 15000);

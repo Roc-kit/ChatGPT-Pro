@@ -52,9 +52,23 @@ document.addEventListener('DOMContentLoaded', () => {
   const taskPhases = {
     fetching: '抓取 / 处理对话', volume: '生成并保存 ZIP 分卷',
     waiting: '请求间隔等待', 'rate-limit': '限流冷却',
-    'consecutive-failures': '连续失败，等待人工继续',
-    paused: '已暂停', pending: '等待执行', completed: '已完成', canceled: '已取消'
+    'rate-limit-exhausted': '连续触发限流，等待人工继续',
+    'consecutive-failures': '连续 3 个对话处理失败，已自动暂停',
+    'auth-error': '登录或权限异常，已暂停',
+    paused: '已手动暂停', pending: '等待执行', completed: '已完成', canceled: '已取消'
   };
+
+  function taskStateLabel(task) {
+    if (task.status === 'paused') {
+      return task.phase === 'consecutive-failures'
+        ? '已自动暂停：连续 3 个对话处理失败'
+        : task.phase === 'auth-error' ? '已暂停：登录或权限异常'
+        : task.phase === 'rate-limit' ? '限流冷却中：到期后自动继续'
+        : task.phase === 'rate-limit-exhausted' ? '已暂停：连续触发限流，请手动继续'
+        : '已手动暂停';
+    }
+    return taskStates[task.status] || task.status;
+  }
 
   function updateTaskCountdowns() {
     const remaining = Math.max(0, Math.ceil((cooldownDeadline - Date.now()) / 1000));
@@ -192,7 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ...retryableTasks.filter(task => !activeTasks.some(active => active.id === task.id))];
     const activeIndexTask = activeTasks.find(task => task.type === 'index');
     taskStatusText.textContent = activeTasks.length
-      ? activeTasks.map(task => `${taskNames[task.type] || '本地任务'} · ${taskStates[task.status]}`).join(' / ')
+      ? activeTasks.map(task => `${taskNames[task.type] || '本地任务'} · ${taskStateLabel(task)}`).join(' / ')
       : retryableTasks.length
         ? `${i18n.t('ui.retryIndexConversation')} · ${retryableTasks.reduce((sum, task) => sum + task.errors.length, 0)}`
         : '当前没有运行中的任务';
@@ -206,7 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const name = document.createElement('strong');
       name.textContent = taskNames[task.type] || '本地任务';
       const state = document.createElement('small');
-      state.textContent = task.recoveryPending ? '等待恢复' : (taskStates[task.status] || task.status);
+      state.textContent = task.recoveryPending ? '等待恢复' : taskStateLabel(task);
       meta.append(name, state);
 
       const progress = document.createElement('div');
@@ -228,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if (task.phase) {
         detail.append(` · ${taskPhases[task.phase] || task.phase}`);
       }
-      if (task.status === 'running' && task.waitUntil > Date.now()) {
+      if (['running', 'paused'].includes(task.status) && task.waitUntil > Date.now()) {
         const waiting = document.createElement('span');
         waiting.className = 'task-waiting-remainder';
         waiting.dataset.until = String(task.waitUntil);

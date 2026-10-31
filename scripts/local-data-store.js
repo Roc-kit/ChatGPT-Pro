@@ -569,6 +569,7 @@ globalThis.ChatGPTProLocalData = (() => {
 
   const TASK_LEASE_MS = 30 * 1000;
   const MAX_CONSECUTIVE_ITEM_FAILURES = 3;
+  const MAX_AUTOMATIC_RATE_LIMIT_RESUMES = 3;
   const TASK_TYPES = new Set(['index', 'export-md', 'export-json']);
 
   function cleanTaskItems(items) {
@@ -595,7 +596,7 @@ globalThis.ChatGPTProLocalData = (() => {
     const task = {
       id: crypto.randomUUID(), accountId, type, items: records,
       status: 'pending', nextIndex: 0, successCount: 0, failureCount: 0,
-      consecutiveFailures: 0,
+      consecutiveFailures: 0, rateLimitPauseCount: 0,
       errors: [], createdAt: now, updatedAt: now, lease: null, generation: 0,
       options: { checkLatest: options.checkLatest === true }
     };
@@ -710,7 +711,11 @@ globalThis.ChatGPTProLocalData = (() => {
       ensureLease(task, owner, token, now);
       if (itemIndex !== task.nextIndex || itemIndex >= task.items.length) throw new Error('E_TASK_CHECKPOINT_ORDER_INVALID');
       task.nextIndex++;
-      if (outcome === 'success') { task.successCount++; task.consecutiveFailures = 0; }
+      if (outcome === 'success') {
+        task.successCount++;
+        task.consecutiveFailures = 0;
+        task.rateLimitPauseCount = 0;
+      }
       else {
         task.failureCount++;
         task.consecutiveFailures = (task.consecutiveFailures || 0) + 1;
@@ -729,22 +734,37 @@ globalThis.ChatGPTProLocalData = (() => {
     });
   }
 
-  async function controlTask(accountId, id, action) {
+  async function controlTask(accountId, id, action, reason = '') {
     if (!['pause', 'resume', 'cancel'].includes(action)) throw new Error('无效的任务操作');
     return mutateTask(accountId, id, task => {
       if (['completed', 'failed', 'canceled'].includes(task.status)) return { changed: false };
       if (action === 'pause' && ['running', 'pending'].includes(task.status)) task.status = 'paused';
       else if (action === 'resume' && task.status === 'paused') {
         task.status = 'pending';
-        task.consecutiveFailures = 0;
+        if (reason !== 'auto-rate-limit') {
+          task.consecutiveFailures = 0;
+          task.rateLimitPauseCount = 0;
+        }
       }
       else if (action === 'cancel') task.status = 'canceled';
       else return { changed: false };
       task.lease = null;
-      task.phase = action === 'pause'
-        ? (task.consecutiveFailures >= MAX_CONSECUTIVE_ITEM_FAILURES ? 'consecutive-failures' : 'paused')
-        : action === 'resume' ? 'pending' : 'canceled';
-      task.waitUntil = 0;
+      if (action === 'pause' && reason === 'rate-limit') {
+        task.rateLimitPauseCount = Number(task.rateLimitPauseCount || 0) + 1;
+        const automaticRecoveryAllowed = task.rateLimitPauseCount <= MAX_AUTOMATIC_RATE_LIMIT_RESUMES;
+        task.phase = automaticRecoveryAllowed ? 'rate-limit' : 'rate-limit-exhausted';
+        if (!automaticRecoveryAllowed) task.waitUntil = 0;
+      } else if (action === 'pause' && reason === 'auth-error') {
+        task.phase = 'auth-error';
+      } else if (action === 'pause') {
+        task.phase = task.consecutiveFailures >= MAX_CONSECUTIVE_ITEM_FAILURES
+          ? 'consecutive-failures' : 'paused';
+      } else {
+        task.phase = action === 'resume' ? 'pending' : 'canceled';
+      }
+      if (!(action === 'pause' && reason === 'rate-limit' && task.phase === 'rate-limit')) {
+        task.waitUntil = 0;
+      }
       task.generation++;
       return { changed: true };
     });

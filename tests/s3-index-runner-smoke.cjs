@@ -20,7 +20,9 @@ const jobs = new Map();
 const fetched = [];
 const indexed = new Map();
 const failOnce = new Set();
+const failWithStatus = new Map();
 let pauseAfterFirst = false;
+let cooldownUntil = 0;
 const accountId = 'account-A';
 let consentApproved = false;
 let policy = { consentAt: null, initialCompletedAt: null };
@@ -51,8 +53,15 @@ const context = {
     clearInterval: () => {}
   },
   timestampValue: v => Number(v || 0),
-  fetchConversationForExport: async record => {
+  fetchConversationForExport: async (record, _progress, _onProgress, options = {}) => {
     fetched.push(record.id);
+    if (failWithStatus.has(record.id)) {
+      const status = failWithStatus.get(record.id);
+      failWithStatus.delete(record.id);
+      if (status === 429) assert.equal(options.pauseOnRateLimit, true,
+        'index runner delegates 429 to durable task recovery');
+      throw Object.assign(Error(`mock HTTP ${status}`), { status, retryAfterMs: 2500 });
+    }
     if (failOnce.delete(record.id)) throw Error('mock temporary failure');
     return { data: { id: record.id, title: record.title, mapping: {},
       ...(record.rawUpdateTime ? { update_time: record.rawUpdateTime } : {}) }, source: 'cache' };
@@ -65,7 +74,7 @@ const context = {
     switch (msg.action) {
       case 'indexPolicyGet': return { success: true, result: { ...policy } };
       case 'logList': return { success: true, result: [] };
-      case 'detailStatus': return { success: true, result: { cooldownUntil: 0 } };
+      case 'detailStatus': return { success: true, result: { cooldownUntil } };
       case 'localDataStats': return { success: true, directory: 0, complete: 0, indexed: indexed.size };
       case 'indexSetupPhase': return { success: true, result: { phase: msg.phase } };
       case 'indexPolicyConsent':
@@ -93,7 +102,8 @@ const context = {
           return { success: true, result: active };
         }
         const task = { id: randomUUID(), type: 'index', accountId, items: msg.items,
-          nextIndex: 0, status: 'pending', successCount: 0, failureCount: 0, errors: [], lease: null,
+          nextIndex: 0, status: 'pending', successCount: 0, failureCount: 0,
+          consecutiveFailures: 0, rateLimitPauseCount: 0, errors: [], lease: null,
           createdAt: Date.now(), updatedAt: Date.now() };
         jobs.set(task.id, task);
         return { success: true, result: task };
@@ -111,6 +121,24 @@ const context = {
         job.phase = msg.phase;
         job.waitUntil = msg.waitUntil || 0;
         return { success: true, result: { task: job } };
+      case 'taskControl':
+        if (msg.operation === 'pause') {
+          job.status = 'paused';
+          job.lease = null;
+          if (msg.reason === 'rate-limit') {
+            job.rateLimitPauseCount = (job.rateLimitPauseCount || 0) + 1;
+            job.phase = job.rateLimitPauseCount > 3 ? 'rate-limit-exhausted' : 'rate-limit';
+          } else job.phase = msg.reason === 'auth-error' ? 'auth-error' : 'paused';
+        } else if (msg.operation === 'resume') {
+          job.status = 'pending';
+          job.phase = 'pending';
+          job.waitUntil = 0;
+          if (msg.reason !== 'auto-rate-limit') {
+            job.consecutiveFailures = 0;
+            job.rateLimitPauseCount = 0;
+          }
+        }
+        return { success: true, result: { task: job } };
       case 'localDataPutConversation':
         if (msg.record.id === 'newer-detail') {
           assert.equal(msg.record.updateTime, 1700000100,
@@ -122,10 +150,20 @@ const context = {
         if (job.status !== 'running' || job.lease?.token !== msg.token) throw Error('任务租约已失效');
         assert.equal(msg.itemIndex, job.nextIndex, 'checkpoint must be monotonic');
         job.nextIndex++;
-        if (msg.outcome === 'success') job.successCount++;
-        else { job.failureCount++; job.errors.push({ id: job.items[msg.itemIndex].id, message: msg.error }); }
+        if (msg.outcome === 'success') {
+          job.successCount++;
+          job.consecutiveFailures = 0;
+          job.rateLimitPauseCount = 0;
+        } else {
+          job.failureCount++;
+          job.consecutiveFailures++;
+          job.errors.push({ id: job.items[msg.itemIndex].id, message: msg.error });
+        }
         if (job.nextIndex === job.items.length) job.status = 'completed';
-        else if (pauseAfterFirst) { job.status = 'paused'; job.lease = null; }
+        else if (pauseAfterFirst || job.consecutiveFailures >= 3) {
+          job.status = 'paused'; job.lease = null;
+          job.phase = job.consecutiveFailures >= 3 ? 'consecutive-failures' : 'paused';
+        }
         return { success: true, result: { task: job } };
       default: throw Error('Unexpected action: ' + msg.action);
     }
@@ -255,7 +293,38 @@ async function main() {
   }), /E_TASK_ALREADY_ACTIVE/,
     'single-item retry refuses to attach to a paused active task');
   jobs.delete(activeBlocker.id);
-  console.log('S3_S4_PASS: checkpoints, pause/resume, first consent, verified full scan, auto incremental, single-item retry');
+
+  const rateLimitedRecord = [{ id: 'rate-limited', title: 'Rate limited', updateTime: 21 }];
+  cooldownUntil = Date.now() + 2500;
+  failWithStatus.set('rate-limited', 429);
+  const beforeRateLimit = fetched.length;
+  const rateLimited = await context.runner.updateFullTextIndex(rateLimitedRecord);
+  const rateTask = [...jobs.values()].find(task => task.items?.some(item => item.id === 'rate-limited'));
+  assert.equal(rateLimited.paused, true, '429 pauses the task instead of consuming the failed item');
+  assert.equal(rateLimited.pauseReason, 'rate-limit');
+  assert.equal(rateTask.status, 'paused');
+  assert.equal(rateTask.phase, 'rate-limit');
+  assert.equal(rateTask.nextIndex, 0, '429 leaves the current conversation checkpoint untouched');
+  assert.ok(rateTask.waitUntil >= cooldownUntil, 'retry time includes the persisted shared cooldown');
+  await context.runner.recoverIndexTasks();
+  assert.equal(fetched.length, beforeRateLimit + 1, 'recovery does not retry before the cooldown expires');
+  cooldownUntil = 0;
+  rateTask.waitUntil = Date.now() - 1;
+  await context.runner.recoverIndexTasks();
+  assert.equal(rateTask.status, 'completed', 'expired rate-limit pause resumes automatically');
+  assert.equal(rateTask.nextIndex, 1);
+  assert.deepEqual(fetched.slice(beforeRateLimit), ['rate-limited', 'rate-limited'],
+    'automatic recovery retries only the uncheckpointed conversation');
+  failWithStatus.set('auth-blocked', 403);
+  await assert.rejects(() => context.runner.updateFullTextIndex([
+    { id: 'auth-blocked', title: 'Permission blocked', updateTime: 22 }
+  ]), /登录\/权限异常，任务已暂停/,
+  '403 pauses the index task immediately for manual intervention');
+  const authTask = [...jobs.values()].find(task => task.items?.some(item => item.id === 'auth-blocked'));
+  assert.equal(authTask.status, 'paused');
+  assert.equal(authTask.phase, 'auth-error');
+  assert.equal(authTask.nextIndex, 0, 'authentication failure does not consume the current item');
+  console.log('S3_S4_PASS: checkpoints, pause/resume, first consent, verified full scan, auto incremental, single-item retry, rate-limit auto recovery, auth pause');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

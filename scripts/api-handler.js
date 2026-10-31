@@ -179,7 +179,14 @@ const APIHandler = (function () {
           }
           throw error;
         }
-        return resp.json();
+        try {
+          return await resp.json();
+        } catch (error) {
+          if (!(error instanceof SyntaxError)) throw error;
+          const invalid = new Error('E_API_RESPONSE_INVALID_JSON');
+          invalid.code = 'E_API_RESPONSE_INVALID_JSON';
+          throw invalid;
+        }
       } finally {
         clearTimeout(timeout);
       }
