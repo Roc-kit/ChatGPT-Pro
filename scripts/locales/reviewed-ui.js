@@ -4930,6 +4930,36 @@ ui.localOnlyStatus`.split('\n'),
       }
     }
   ];
+  const autoContinueKeys = `ui.autoContinue
+ui.autoContinueDisabled
+ui.currentChatNotStarted
+ui.continuationMessage
+ui.continuationMessageHelp
+ui.pollingInterval
+ui.pollingIntervalHelp
+ui.maximumContinuations
+ui.maximumContinuationsHelp
+ui.startCurrentChat
+ui.stop
+ui.waitingForCurrentReply
+ui.sentCount
+ui.runningCountdown
+ui.pausedWithReason
+ui.switchedChat
+ui.reachedContinuationLimit
+ui.composerHasContent
+ui.composerNotFound
+ui.sendButtonUnavailable
+ui.openChatFirst
+ui.unknownAutoContinueOperation`.split('\n');
+  // These translations are authored directly in each locale pack above and
+  // reviewed as one feature set here; keep the overlay aligned with them.
+  blocks.push({
+    keys: autoContinueKeys,
+    translations: Object.fromEntries([
+      'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
+    ].map(locale => [locale, autoContinueKeys.map(key => scope.ChatGPTProLocalePacks[locale][key])]))
+  });
   for (const block of blocks) {
     for (const [locale, translations] of Object.entries(block.translations)) {
       if (translations.length !== block.keys.length) {

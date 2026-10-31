@@ -21,6 +21,7 @@
   const EXPORT_RETRY_DELAYS_MS = [1000, 3000, 8000];
   const MESSAGE_ROUTE_CHECK_MS = 500;
   const MESSAGE_ROUTE_RETRY_DELAYS_MS = [100, 400, 1000, 2200, 5000, 10000];
+  const AUTO_CONTINUE_TASK_STATE_KEY = 'autoContinueTaskState';
 
   const S = {
     ready: false,
@@ -32,6 +33,16 @@
     launcher: null,
     launcherMoved: false,
     currentExportMoved: false,
+    autoContinue: {
+      mode: 'idle',
+      conversationId: null,
+      sentCount: 0,
+      deadline: 0,
+      sentAt: 0,
+      checking: false,
+      assistantText: '',
+      reason: ''
+    },
     messageConversationId: null,
     messageConversation: null,
     messageConversationPromise: null,
@@ -47,6 +58,10 @@
       showSidebarTime: false,
       showMessageTimestamps: false,
       showMinimap: true,
+      autoContinueEnabled: false,
+      autoContinueText: '继续',
+      autoContinueDelaySeconds: 120,
+      autoContinueMaxCount: 20,
       fontSize: 11,
       openInBackground: true,
       closeOnOutsideClick: true,
@@ -1137,10 +1152,12 @@
       ? requestedActionTop
       : actions.getBoundingClientRect().top;
     const actionTop = Math.max(minTop, Math.min(maxTop, currentTop));
-    const dockTop = window.innerHeight - actionTop - actions.offsetHeight - 4;
+    const dockTop = window.innerHeight - actionTop - actions.offsetHeight;
     const actionsOffsetTop = actionTop - dockTop;
     dock.style.setProperty('top', `${dockTop}px`, 'important');
-    dock.style.setProperty('height', `${Math.max(0, actionsOffsetTop + actions.offsetHeight + 4)}px`, 'important');
+    // The dock and the last action share the same bottom edge; only the
+    // minimap keeps its small inset at the top.
+    dock.style.setProperty('height', `${Math.max(0, actionsOffsetTop + actions.offsetHeight)}px`, 'important');
     actions.style.setProperty('top', `${actionsOffsetTop}px`, 'important');
     const panelHeight = Math.max(0, actionsOffsetTop - 6);
     if (panel) panel.style.setProperty('height', `${panelHeight}px`, 'important');
@@ -1203,6 +1220,53 @@
     button.addEventListener('pointercancel', finish);
   }
 
+  function closeToolPopovers(except = null) {
+    document.querySelectorAll('.chatgpt-pro-tool-popover').forEach(element => {
+      if (element !== except) element.hidden = true;
+    });
+  }
+
+  function ensureDownloadPopover() {
+    const dock = ensureCurrentChatToolDock();
+    let popover = dock.querySelector('[data-chatgpt-pro-download-popover]');
+    if (popover) return popover;
+    popover = document.createElement('div');
+    popover.className = 'chatgpt-pro-tool-popover chatgpt-pro-download-popover';
+    popover.setAttribute('data-chatgpt-pro-download-popover', '1');
+    popover.hidden = true;
+
+    const markdown = document.createElement('button');
+    markdown.type = 'button';
+    markdown.className = 'chatgpt-pro-download-action';
+    markdown.title = window.ChatGPTProI18n.t('ui.exportEntireChatMarkdown');
+    markdown.setAttribute('aria-label', markdown.title);
+    markdown.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 15h8M8 18h6"/></svg>';
+    markdown.addEventListener('click', async () => {
+      const rec = currentConversationRecord();
+      if (!rec) return;
+      markdown.disabled = true;
+      try { await exportConversationMarkdown(rec); }
+      finally { markdown.disabled = false; popover.hidden = true; }
+    });
+
+    const images = document.createElement('button');
+    images.type = 'button';
+    images.className = 'chatgpt-pro-download-action';
+    images.title = window.ChatGPTProI18n.t('ui.downloadAllConversationImagesZIP');
+    images.setAttribute('aria-label', images.title);
+    images.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.5"/><path d="m3 17 5-5 4 4 3-3 6 5"/></svg>';
+    images.addEventListener('click', async () => {
+      const rec = currentConversationRecord();
+      if (!rec) return;
+      images.disabled = true;
+      try { await exportConversationImages(rec, text => { images.title = text; }); }
+      finally { images.disabled = false; popover.hidden = true; }
+    });
+    popover.append(markdown, images);
+    dock.appendChild(popover);
+    return popover;
+  }
+
   function ensureCurrentChatExportButton() {
     const id = currentConversationId();
     const existing = document.querySelector('[data-chatgpt-pro-current-export]');
@@ -1213,6 +1277,7 @@
     if (existing) {
       ensureCurrentChatToolActions().appendChild(existing);
       ensureCurrentChatImageButton();
+      ensureAutoContinueButton();
       placeCurrentChatExportButton();
       return;
     }
@@ -1221,8 +1286,8 @@
     button.type = 'button';
     button.className = 'chatgpt-pro-current-export';
     button.setAttribute('data-chatgpt-pro-current-export', '1');
-    button.setAttribute('aria-label', '导出整个对话（Markdown）');
-    button.title = '导出整个对话（Markdown）';
+    button.setAttribute('aria-label', '\u4e0b\u8f7d\u5f53\u524d\u5bf9\u8bdd');
+    button.title = '\u4e0b\u8f7d\u5f53\u524d\u5bf9\u8bdd';
     button.innerHTML = `
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -1230,74 +1295,339 @@
         <path d="M12 11v6"></path>
         <path d="m9.5 14.5 2.5 2.5 2.5-2.5"></path>
       </svg>`;
-    button.addEventListener('click', async () => {
+    button.addEventListener('click', () => {
       if (S.currentExportMoved) {
         S.currentExportMoved = false;
         return;
       }
-      if (button.disabled) return;
-      const rec = currentConversationRecord();
-      if (!rec) return;
-      button.disabled = true;
-      button.title = '正在导出整个对话…';
-      try {
-        await exportConversationMarkdown(rec);
-        button.title = '已导出整个对话';
-        window.setTimeout(() => {
-          if (button.isConnected) button.title = '导出整个对话（Markdown）';
-        }, 1000);
-      } catch (error) {
-        button.title = `导出失败：${error.message}`;
-        window.setTimeout(() => {
-          if (button.isConnected) {
-            button.title = '导出整个对话（Markdown）';
-          }
-        }, 1600);
-      } finally {
-        button.disabled = false;
-      }
+      const popover = ensureDownloadPopover();
+      const willOpen = popover.hidden;
+      closeToolPopovers(popover);
+      popover.hidden = !willOpen;
     });
     ensureCurrentChatToolActions().appendChild(button);
     window.ChatGPTProI18n?.watch(button);
     placeCurrentChatExportButton(button);
     setupCurrentChatExportDrag(button);
-    ensureCurrentChatImageButton();
+    ensureAutoContinueButton();
+    // Keep the primary download action at the bottom of the minimap dock.
+    ensureCurrentChatToolActions().appendChild(button);
   }
 
   function ensureCurrentChatImageButton() {
-    if (!currentConversationId()) return;
-    const existing = document.querySelector('[data-chatgpt-pro-current-images]');
-    if (existing) {
-      ensureCurrentChatToolActions().appendChild(existing);
+    document.querySelector('[data-chatgpt-pro-current-images]')?.remove();
+  }
+
+  function autoContinueSnapshot() {
+    const task = S.autoContinue;
+    return {
+      enabled: S.settings.autoContinueEnabled,
+      mode: task.mode,
+      conversationId: task.conversationId,
+      sentCount: task.sentCount,
+      deadline: task.deadline,
+      reason: task.reason,
+      text: S.settings.autoContinueText,
+      delaySeconds: S.settings.autoContinueDelaySeconds,
+      maxCount: S.settings.autoContinueMaxCount
+    };
+  }
+
+  function persistAutoContinueTask() {
+    const task = S.autoContinue;
+    if (!task.conversationId || task.sentCount <= 0) {
+      chrome.storage.local.remove(AUTO_CONTINUE_TASK_STATE_KEY);
       return;
     }
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'chatgpt-pro-current-export chatgpt-pro-current-images';
-    button.setAttribute('data-chatgpt-pro-current-images', '1');
-    button.setAttribute('aria-label', '下载当前对话所有图片 ZIP');
-    button.title = '下载当前对话所有图片 ZIP';
-    button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.5"/><path d="m3 17 5-5 4 4 3-3 6 5"/></svg>';
-    button.addEventListener('click', async () => {
-      if (S.currentExportMoved) {
-        S.currentExportMoved = false;
-        return;
+    chrome.storage.local.set({
+      [AUTO_CONTINUE_TASK_STATE_KEY]: {
+        conversationId: task.conversationId,
+        sentCount: task.sentCount,
+        sentAt: task.sentAt,
+        reason: task.reason,
+        text: S.settings.autoContinueText,
+        maxCount: S.settings.autoContinueMaxCount
       }
-      if (button.disabled) return;
-      const rec = currentConversationRecord();
-      if (!rec) return;
-      button.disabled = true;
-      try {
-        const result = await exportConversationImages(rec, text => { button.title = text; });
-        button.title = `图片 ZIP 已生成：成功 ${result.success}，失败 ${result.failures}；共 ${result.volumes} 卷`;
-      } catch (error) {
-        button.title = `图片下载失败：${error.message}`;
-      } finally { button.disabled = false; }
     });
-    ensureCurrentChatToolActions().appendChild(button);
-    window.ChatGPTProI18n?.watch(button);
-    setupCurrentChatExportDrag(button);
-    placeCurrentChatExportButton();
+  }
+
+  async function restoreAutoContinueTask() {
+    const values = await new Promise(resolve => {
+      chrome.storage.local.get(AUTO_CONTINUE_TASK_STATE_KEY, data => resolve(data || {}));
+    });
+    const saved = values[AUTO_CONTINUE_TASK_STATE_KEY];
+    if (!saved || saved.conversationId !== currentConversationId() || Number(saved.sentCount) <= 0) return;
+    Object.assign(S.autoContinue, {
+      mode: 'paused',
+      conversationId: saved.conversationId,
+      sentCount: Number(saved.sentCount),
+      deadline: 0,
+      sentAt: Number(saved.sentAt) || 0,
+      checking: false,
+      assistantText: window.ChatGPTDomAdapter.lastAssistantText(),
+      reason: typeof saved.reason === 'string' ? saved.reason : ''
+    });
+  }
+
+  function autoContinueStatusText() {
+    const task = S.autoContinue;
+    const i18n = window.ChatGPTProI18n;
+    if (!S.settings.autoContinueEnabled) return i18n.t('ui.autoContinueDisabled');
+    if (task.mode === 'waiting') {
+      if (window.ChatGPTDomAdapter.isGenerating()) return i18n.t('ui.waitingForCurrentReply');
+      const seconds = Math.max(0, Math.ceil((task.deadline - Date.now()) / 1000));
+      const time = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+      return i18n.format('ui.runningCountdown', { time });
+    }
+    if (task.mode === 'paused') {
+      const reason = task.reason ? i18n.t(task.reason) : '';
+      return reason ? i18n.format('ui.pausedWithReason', { reason }) : i18n.t('ui.paused');
+    }
+    return i18n.t('ui.currentChatNotStarted');
+  }
+
+  function renderAutoContinueUi() {
+    const button = document.querySelector('[data-chatgpt-pro-auto-continue]');
+    if (button) {
+      button.dataset.mode = S.autoContinue.mode;
+      button.title = autoContinueStatusText();
+      button.hidden = !S.settings.autoContinueEnabled;
+      const badge = button.querySelector('.chatgpt-pro-auto-badge');
+      if (badge) {
+        const seconds = Math.max(0, Math.ceil((S.autoContinue.deadline - Date.now()) / 1000));
+        badge.textContent = S.autoContinue.mode === 'waiting' && seconds
+          ? (seconds > 99 ? `${Math.ceil(seconds / 60)}m` : String(seconds)) : '';
+        badge.hidden = !badge.textContent;
+      }
+    }
+    const popover = document.querySelector('[data-chatgpt-pro-auto-popover]');
+    if (!popover) return;
+    const status = popover.querySelector('[data-auto-status]');
+    const count = popover.querySelector('[data-auto-count]');
+    const start = popover.querySelector('[data-auto-start]');
+    const pause = popover.querySelector('[data-auto-pause]');
+    if (status) status.textContent = autoContinueStatusText();
+    if (count) count.textContent = window.ChatGPTProI18n.format('ui.sentCount', {
+      count: S.autoContinue.sentCount, max: S.settings.autoContinueMaxCount
+    });
+    if (start) start.textContent = S.autoContinue.mode === 'paused'
+      ? window.ChatGPTProI18n.t('ui.resume') : window.ChatGPTProI18n.t('ui.startCurrentChat');
+    if (start) start.hidden = S.autoContinue.mode === 'waiting';
+    if (pause) pause.hidden = S.autoContinue.mode !== 'waiting';
+  }
+
+  function writeComposerText(text) {
+    const composer = window.ChatGPTDomAdapter.composer();
+    if (!composer) throw new Error('ui.composerNotFound');
+    if ('value' in composer) {
+      const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(composer), 'value')?.set;
+      if (setter) setter.call(composer, text);
+      else composer.value = text;
+      composer.dispatchEvent(new InputEvent('input', {
+        bubbles: true, inputType: 'insertText', data: text
+      }));
+    } else {
+      composer.focus();
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(composer);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      document.execCommand(text ? 'insertText' : 'delete', false, text);
+      selection.removeAllRanges();
+    }
+  }
+
+  async function sendAutoContinueMessage(continueTask = true) {
+    if (window.ChatGPTDomAdapter.isGenerating()) throw new Error('ui.waitingForCurrentReply');
+    const existingText = window.ChatGPTDomAdapter.composerText();
+    if (existingText && existingText !== S.settings.autoContinueText) throw new Error('ui.composerHasContent');
+    if (!existingText) writeComposerText(S.settings.autoContinueText);
+    let button = null;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await new Promise(resolve => window.setTimeout(resolve, 100));
+      if (window.ChatGPTDomAdapter.isGenerating()) break;
+      const candidate = window.ChatGPTDomAdapter.sendButton();
+      if (candidate && !candidate.disabled) {
+        button = candidate;
+        break;
+      }
+    }
+    if (!button) {
+      if (window.ChatGPTDomAdapter.composerText() === S.settings.autoContinueText) writeComposerText('');
+      throw new Error(window.ChatGPTDomAdapter.isGenerating()
+        ? 'ui.waitingForCurrentReply' : 'ui.sendButtonUnavailable');
+    }
+    button.click();
+    S.autoContinue.sentCount++;
+    S.autoContinue.mode = continueTask ? 'waiting' : 'idle';
+    S.autoContinue.deadline = continueTask
+      ? Date.now() + S.settings.autoContinueDelaySeconds * 1000 : 0;
+    S.autoContinue.sentAt = Date.now();
+    S.autoContinue.assistantText = window.ChatGPTDomAdapter.lastAssistantText();
+    S.autoContinue.reason = '';
+    persistAutoContinueTask();
+    renderAutoContinueUi();
+  }
+
+  async function startAutoContinue() {
+    const id = currentConversationId();
+    if (!id) throw new Error('ui.openChatFirst');
+    const resumePrevious = S.autoContinue.mode === 'paused'
+      && S.autoContinue.conversationId === id
+      && S.autoContinue.reason !== 'ui.reachedContinuationLimit'
+      && S.autoContinue.sentCount < S.settings.autoContinueMaxCount;
+    S.autoContinue.conversationId = id;
+    S.autoContinue.reason = '';
+    if (!resumePrevious) S.autoContinue.sentCount = 0;
+    S.autoContinue.assistantText = window.ChatGPTDomAdapter.lastAssistantText();
+    S.autoContinue.mode = 'waiting';
+    S.autoContinue.deadline = 0;
+    await pollAutoContinue();
+    renderAutoContinueUi();
+  }
+
+  function pauseAutoContinue(reason = '') {
+    if (S.autoContinue.mode === 'idle') return;
+    S.autoContinue.mode = 'paused';
+    S.autoContinue.reason = reason;
+    S.autoContinue.deadline = 0;
+    persistAutoContinueTask();
+    renderAutoContinueUi();
+  }
+
+  function stopAutoContinue() {
+    Object.assign(S.autoContinue, {
+      mode: 'idle', conversationId: null, sentCount: 0, deadline: 0,
+      sentAt: 0, checking: false, assistantText: '', reason: ''
+    });
+    chrome.storage.local.remove(AUTO_CONTINUE_TASK_STATE_KEY);
+    renderAutoContinueUi();
+  }
+
+  async function pollAutoContinue() {
+    const task = S.autoContinue;
+    if (task.checking || task.mode !== 'waiting') return;
+    task.checking = true;
+    try {
+      await sendAutoContinueMessage(true);
+    } catch (error) {
+      if (['ui.waitingForCurrentReply', 'ui.sendButtonUnavailable'].includes(error.message)) {
+        task.mode = 'waiting';
+        task.deadline = Date.now() + S.settings.autoContinueDelaySeconds * 1000;
+        task.reason = '';
+      } else {
+        pauseAutoContinue(error.message);
+      }
+    } finally {
+      task.checking = false;
+      renderAutoContinueUi();
+    }
+  }
+
+  function tickAutoContinue() {
+    const task = S.autoContinue;
+    if (!S.settings.autoContinueEnabled || task.mode === 'idle' || task.mode === 'paused') {
+      renderAutoContinueUi();
+      return;
+    }
+    if (currentConversationId() !== task.conversationId) {
+      pauseAutoContinue('ui.switchedChat');
+      return;
+    }
+    if (task.sentCount >= S.settings.autoContinueMaxCount) {
+      pauseAutoContinue('ui.reachedContinuationLimit');
+      return;
+    }
+    if (task.mode === 'waiting' && Date.now() >= task.deadline) pollAutoContinue();
+    renderAutoContinueUi();
+  }
+
+  function ensureAutoContinuePopover() {
+    const dock = ensureCurrentChatToolDock();
+    let popover = dock.querySelector('[data-chatgpt-pro-auto-popover]');
+    if (popover) return popover;
+    popover = document.createElement('div');
+    popover.className = 'chatgpt-pro-tool-popover chatgpt-pro-auto-popover';
+    popover.setAttribute('data-chatgpt-pro-auto-popover', '1');
+    popover.hidden = true;
+    const t = key => window.ChatGPTProI18n.t(key);
+    popover.innerHTML = `
+      <strong>${t('ui.autoContinue')}</strong>
+      <div class="chatgpt-pro-auto-status" data-auto-status></div>
+      <div class="chatgpt-pro-auto-count" data-auto-count></div>
+      <label class="chatgpt-pro-auto-field">
+        <span>${t('ui.continuationMessage')}</span>
+        <input type="text" data-auto-text>
+        <small>${t('ui.continuationMessageHelp')}</small>
+      </label>
+      <label class="chatgpt-pro-auto-field">
+        <span>${t('ui.pollingInterval')}</span>
+        <input type="number" min="1" max="86400" data-auto-delay>
+        <small>${t('ui.pollingIntervalHelp')}</small>
+      </label>
+      <label class="chatgpt-pro-auto-field">
+        <span>${t('ui.maximumContinuations')}</span>
+        <input type="number" min="1" max="999" data-auto-max>
+        <small>${t('ui.maximumContinuationsHelp')}</small>
+      </label>
+      <div class="chatgpt-pro-auto-actions">
+        <button type="button" data-auto-start>${t('ui.startCurrentChat')}</button>
+        <button type="button" data-auto-pause hidden>${t('ui.pause')}</button>
+        <button type="button" data-auto-stop>${t('ui.stop')}</button>
+      </div>`;
+    const textInput = popover.querySelector('[data-auto-text]');
+    const delayInput = popover.querySelector('[data-auto-delay]');
+    const maxInput = popover.querySelector('[data-auto-max]');
+    textInput.value = S.settings.autoContinueText;
+    delayInput.value = S.settings.autoContinueDelaySeconds;
+    maxInput.value = S.settings.autoContinueMaxCount;
+    const saveSettings = () => {
+      S.settings.autoContinueText = textInput.value.trim() || t('ui.resume');
+      S.settings.autoContinueDelaySeconds = Math.max(1, Math.min(86400, Number(delayInput.value) || 120));
+      S.settings.autoContinueMaxCount = Math.max(1, Math.min(999, Number(maxInput.value) || 20));
+      textInput.value = S.settings.autoContinueText;
+      delayInput.value = S.settings.autoContinueDelaySeconds;
+      maxInput.value = S.settings.autoContinueMaxCount;
+      chrome.storage.local.set({
+        autoContinueText: S.settings.autoContinueText,
+        autoContinueDelaySeconds: S.settings.autoContinueDelaySeconds,
+        autoContinueMaxCount: S.settings.autoContinueMaxCount
+      });
+      renderAutoContinueUi();
+    };
+    [textInput, delayInput, maxInput].forEach(input => input.addEventListener('change', saveSettings));
+    popover.querySelector('[data-auto-start]').addEventListener('click', async () => {
+      saveSettings();
+      try { await startAutoContinue(); } catch (error) { pauseAutoContinue(error.message); }
+    });
+    popover.querySelector('[data-auto-pause]').addEventListener('click', () => pauseAutoContinue());
+    popover.querySelector('[data-auto-stop]').addEventListener('click', stopAutoContinue);
+    dock.appendChild(popover);
+    renderAutoContinueUi();
+    return popover;
+  }
+
+  function ensureAutoContinueButton() {
+    const actions = ensureCurrentChatToolActions();
+    let button = actions.querySelector('[data-chatgpt-pro-auto-continue]');
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'chatgpt-pro-current-export chatgpt-pro-auto-continue';
+      button.setAttribute('data-chatgpt-pro-auto-continue', '1');
+      button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg><span class="chatgpt-pro-auto-badge" hidden></span>';
+      button.addEventListener('click', () => {
+        const popover = ensureAutoContinuePopover();
+        const willOpen = popover.hidden;
+        closeToolPopovers(popover);
+        popover.hidden = !willOpen;
+        renderAutoContinueUi();
+      });
+      actions.appendChild(button);
+    }
+    renderAutoContinueUi();
+    return button;
   }
 
   function removeFloatingButton() {
@@ -3572,7 +3902,7 @@
   async function loadSettings() {
     const values = await new Promise(resolve => {
       chrome.storage.local.get(
-        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'currentExportPositionY', 'panelSize', 'uiLanguage'],
+        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'currentExportPositionY', 'panelSize', 'uiLanguage', 'autoContinueEnabled', 'autoContinueText', 'autoContinueDelaySeconds', 'autoContinueMaxCount'],
         data => resolve(data || {})
       );
     });
@@ -3580,6 +3910,10 @@
     if (values.showSidebarTime !== undefined) S.settings.showSidebarTime = values.showSidebarTime;
     if (values.showMessageTimestamps !== undefined) S.settings.showMessageTimestamps = values.showMessageTimestamps;
     S.settings.showMinimap = values.showMinimap !== false;
+    S.settings.autoContinueEnabled = values.autoContinueEnabled === true;
+    if (values.autoContinueText) S.settings.autoContinueText = values.autoContinueText;
+    if (values.autoContinueDelaySeconds) S.settings.autoContinueDelaySeconds = Number(values.autoContinueDelaySeconds) || 120;
+    if (values.autoContinueMaxCount) S.settings.autoContinueMaxCount = Number(values.autoContinueMaxCount) || 20;
     applyTimestampFontSize(values.fontSize);
     if (values.openInBackground !== undefined) S.settings.openInBackground = values.openInBackground;
     if (values.closeOnOutsideClick !== undefined) S.settings.closeOnOutsideClick = values.closeOnOutsideClick;
@@ -3615,7 +3949,8 @@
             badgeCount: document.querySelectorAll('[data-chatgpt-pro]').length,
             enabled: S.settings.enabled,
             apiLoaded: S.apiLoaded,
-            apiSize: S.apiData.size
+            apiSize: S.apiData.size,
+            autoContinue: autoContinueSnapshot()
           });
         })().catch(() => respond({
           platform: 'chatgpt',
@@ -3661,6 +3996,20 @@
           .catch(error => respond({ success: false, error: error.message }));
         return true;
       }
+      if (msg.action === 'autoContinueControl') {
+        (async () => {
+          if (typeof msg.text === 'string' && msg.text.trim()) S.settings.autoContinueText = msg.text.trim();
+          if (Number(msg.delaySeconds) > 0) S.settings.autoContinueDelaySeconds = Number(msg.delaySeconds);
+          if (Number(msg.maxCount) > 0) S.settings.autoContinueMaxCount = Number(msg.maxCount);
+          if (msg.operation === 'start') await startAutoContinue();
+          else if (msg.operation === 'pause') pauseAutoContinue();
+          else if (msg.operation === 'stop') stopAutoContinue();
+          else throw new Error('ui.unknownAutoContinueOperation');
+          respond({ success: true, autoContinue: autoContinueSnapshot() });
+        })().catch(error => respond({ success: false,
+          error: window.ChatGPTProI18n.t(error.message), autoContinue: autoContinueSnapshot() }));
+        return true;
+      }
       if (msg.action === 'taskClearVolumes') {
         clearManagedTaskVolumes(msg.id)
           .then(result => respond({ success: true, ...result }))
@@ -3689,6 +4038,7 @@
           ensureFloatingButton();
           restamp = true;
         } else {
+          stopAutoContinue();
           clearMessageRouteRetryTimers();
           removeAllBadges();
           removeMessageTimestamps();
@@ -3718,11 +4068,23 @@
         S.settings.showMinimap = changes.showMinimap.newValue !== false;
         syncConversationMinimap();
       }
+      if (changes.autoContinueEnabled) {
+        S.settings.autoContinueEnabled = changes.autoContinueEnabled.newValue === true;
+        if (!S.settings.autoContinueEnabled) stopAutoContinue();
+        if (S.settings.enabled) ensureAutoContinueButton();
+        renderAutoContinueUi();
+        placeCurrentChatExportButton();
+      }
+      if (changes.autoContinueText) S.settings.autoContinueText = changes.autoContinueText.newValue || '继续';
+      if (changes.autoContinueDelaySeconds) S.settings.autoContinueDelaySeconds = Number(changes.autoContinueDelaySeconds.newValue) || 120;
+      if (changes.autoContinueMaxCount) S.settings.autoContinueMaxCount = Number(changes.autoContinueMaxCount.newValue) || 20;
       if (changes.openInBackground) S.settings.openInBackground = changes.openInBackground.newValue;
       if (changes.closeOnOutsideClick) S.settings.closeOnOutsideClick = changes.closeOnOutsideClick.newValue;
       if (changes.exportFilenameTemplate) S.settings.exportFilenameTemplate = changes.exportFilenameTemplate.newValue || '{created_datetime}_{title}';
       if (changes.uiLanguage) {
         window.ChatGPTProI18n?.setLanguage(changes.uiLanguage.newValue || 'auto');
+        document.querySelector('[data-chatgpt-pro-auto-popover]')?.remove();
+        document.querySelector('[data-chatgpt-pro-download-popover]')?.remove();
         window.ChatGPTProI18n?.setDirection(S.timeline);
         window.ChatGPTProI18n?.apply(S.timeline);
         S.timeline?.querySelectorAll('.chatgpt-pro-project-filter option[data-project-type]').forEach(option => {
@@ -3736,6 +4098,7 @@
         window.ChatGPTProI18n?.apply(document.querySelector('[data-chatgpt-pro-current-export]'));
         window.ChatGPTProI18n?.apply(document.querySelector('[data-chatgpt-pro-current-images]'));
         window.ChatGPTProI18n?.apply(document.querySelector('[data-chatgpt-pro-minimap]'));
+        renderAutoContinueUi();
       }
       if (changes.panelSize?.newValue) S.settings.panelSize = changes.panelSize.newValue;
       if (restamp && S.settings.enabled) {
@@ -3747,19 +4110,19 @@
 
   async function init() {
     await loadSettings();
-    if (!S.settings.enabled) { S.ready = true; return; }
-    ensureFloatingButton();
+    await restoreAutoContinueTask();
     setupOutsideClose();
     setupObserver();
     setupConversationRouteTracking();
-    if (S.settings.showSidebarTime) {
+    if (S.settings.enabled) ensureFloatingButton();
+    if (S.settings.enabled && S.settings.showSidebarTime) {
       try {
         await reloadTimestampMap(false);
       } catch (e) {
         log('Initial timestamp load failed:', e.message);
       }
     }
-    if (S.settings.showMessageTimestamps) {
+    if (S.settings.enabled && S.settings.showMessageTimestamps) {
       refreshMessageTimestampsForRoute(true);
     } else {
       S.observedConversationId = currentConversationId();
@@ -3774,6 +4137,7 @@
       }
     }, RECHECK_MS);
     setInterval(backgroundSyncConversationList, BACKGROUND_SYNC_MS);
+    window.setInterval(tickAutoContinue, 1000);
     // Resume ordinary incremental indexing automatically only AFTER the user
     // authorized and completed the first full index. Never auto-consent.
     window.setTimeout(() => backgroundSyncConversationList(), 3000);

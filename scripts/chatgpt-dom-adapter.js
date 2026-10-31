@@ -169,6 +169,51 @@
     return messageElements().find(element => messageIds(element).includes(messageId)) || null;
   }
 
+  function composer() {
+    return document.querySelector('#prompt-textarea')
+      || document.querySelector('textarea[data-testid="prompt-textarea"]')
+      || document.querySelector('form textarea')
+      || document.querySelector('[contenteditable="true"][role="textbox"]')
+      || document.querySelector('main [contenteditable="true"]');
+  }
+
+  function sendButton() {
+    const candidates = [
+      document.querySelector('button[data-testid="send-button"]'),
+      document.querySelector('#composer-submit-button'),
+      document.querySelector('form button[aria-label*="Send" i], form button[aria-label*="发送"]'),
+      document.querySelector('button[aria-label*="Send" i], button[aria-label*="发送"]')
+    ].filter(Boolean);
+    return candidates.find(button => {
+      const label = `${button.getAttribute('aria-label') || ''} ${button.title || ''} ${button.dataset.testid || ''}`;
+      return !/(?:stop|停止)/i.test(label);
+    }) || null;
+  }
+
+  function stopButton() {
+    return document.querySelector('button[data-testid="stop-button"]')
+      || document.querySelector('[data-testid="stop-button"]')
+      || document.querySelector('button[aria-label*="Stop" i], button[aria-label*="停止"]')
+      || document.querySelector('button[title*="Stop" i], button[title*="停止"]');
+  }
+
+  function isGenerating() {
+    const button = stopButton();
+    return Boolean(button && button.getClientRects().length);
+  }
+
+  function composerText() {
+    const element = composer();
+    if (!element) return '';
+    return String('value' in element ? element.value : element.innerText || element.textContent || '').trim();
+  }
+
+  function lastAssistantText() {
+    const messages = messageElements().filter(element => messageRole(element) === 'assistant');
+    const element = messages[messages.length - 1];
+    return String(element?.innerText || element?.textContent || '').trim();
+  }
+
   window.ChatGPTDomAdapter = Object.freeze({
     MESSAGE_SELECTOR,
     conversationRoot,
@@ -181,6 +226,12 @@
     messageRole,
     timestampTarget,
     containsMessageNode,
-    findMessage
+    findMessage,
+    composer,
+    sendButton,
+    stopButton,
+    isGenerating,
+    composerText,
+    lastAssistantText
   });
 })();

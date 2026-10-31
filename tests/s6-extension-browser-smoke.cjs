@@ -541,25 +541,25 @@ async function main() {
       const panel = dock.querySelector('.chatgpt-pro-minimap');
       const actions = dock.querySelector('[data-chatgpt-pro-tool-actions]');
       const exportButton = actions.querySelector('[data-chatgpt-pro-current-export]');
-      const imageButton = actions.querySelector('[data-chatgpt-pro-current-images]');
+      const autoButton = actions.querySelector('[data-chatgpt-pro-auto-continue]');
       const first = panel.querySelector('.chatgpt-pro-minimap-first');
       return { actionTop: actions.getBoundingClientRect().top,
         dockTop: dockRect.top, dockBottom: dockRect.bottom,
         dockCenter: (dockRect.top + dockRect.bottom) / 2,
         dockRadius: parseFloat(getComputedStyle(dock).borderTopLeftRadius),
         exportCursor: getComputedStyle(exportButton).cursor,
-        imageCursor: getComputedStyle(imageButton).cursor,
+        autoCursor: getComputedStyle(autoButton).cursor,
         exportWidth: exportButton.getBoundingClientRect().width,
-        imageWidth: imageButton.getBoundingClientRect().width,
+        autoWidth: autoButton.getBoundingClientRect().width,
         exportHeight: exportButton.getBoundingClientRect().height,
-        imageHeight: imageButton.getBoundingClientRect().height,
+        autoHeight: autoButton.getBoundingClientRect().height,
         actionWidth: actions.getBoundingClientRect().width,
         panelHeight: panel.getBoundingClientRect().height,
         dockHeight: dock.getBoundingClientRect().height,
         firstHitHeight: first.getBoundingClientRect().height,
         firstMarkHeight: parseFloat(getComputedStyle(first, '::before').height),
-        actionsCount: actions.querySelectorAll('button').length,
-        imageAfterChat: actions.children[1]?.hasAttribute('data-chatgpt-pro-current-images') };
+        actionsCount: actions.querySelectorAll(':scope > button:not([hidden])').length,
+        autoHidden: autoButton.hidden };
     })()`);
     assert(beforeDrag.firstHitHeight >= 9 && beforeDrag.firstMarkHeight >= 9,
       'first and last minimap messages have enlarged visible marks and click targets');
@@ -567,15 +567,11 @@ async function main() {
       'outer toolbar is vertically centered in the viewport');
     assert(beforeDrag.dockRadius >= 12, 'outer toolbar uses a rounded rectangle');
     assert.equal(beforeDrag.exportCursor, 'pointer', 'export icons use the pointer cursor when hovered');
-    assert.equal(beforeDrag.imageCursor, 'pointer', 'image export uses the pointer cursor when hovered');
-    assert.equal(beforeDrag.exportWidth, beforeDrag.imageWidth,
-      `conversation and image export buttons have identical widths: ${JSON.stringify(beforeDrag)}`);
-    assert.equal(beforeDrag.exportHeight, beforeDrag.imageHeight,
-      `conversation and image export buttons have identical heights: ${JSON.stringify(beforeDrag)}`);
+    assert.equal(beforeDrag.autoCursor, 'pointer', 'auto continuation control uses the pointer cursor');
+    assert.equal(beforeDrag.autoHidden, true, 'auto continuation control stays hidden until enabled');
     assert.equal(beforeDrag.exportWidth, beforeDrag.actionWidth,
       'export buttons fill the same available toolbar width without overflowing');
-    assert.equal(beforeDrag.actionsCount, 2, 'both export actions share the same movable toolbar group');
-    assert.equal(beforeDrag.imageAfterChat, true, 'image export follows conversation export at the bottom');
+    assert.equal(beforeDrag.actionsCount, 1, 'downloads share one compact movable toolbar action');
     const dragPoint = await cdp.eval(pageSession, `(() => {
       const button = document.querySelector('[data-chatgpt-pro-current-export]');
       const r = button.getBoundingClientRect();
@@ -647,18 +643,15 @@ async function main() {
       const select = document.querySelector('#languageSelect');
       select.value = 'en'; select.dispatchEvent(new Event('change', { bubbles: true }));
     })()`);
-    await eventually(async () => cdp.eval(pageSession,
-      `document.querySelector('[data-chatgpt-pro-current-images]')?.title === 'Download all conversation images (ZIP)'`),
-    'image download hover text translated outside panel');
-    assert.equal(await cdp.eval(pageSession,
-      `document.querySelector('[data-chatgpt-pro-current-export]').title`),
-      'Export entire chat (Markdown)');
-    await cdp.eval(pageSession, `(() => {
-      document.querySelector('[data-chatgpt-pro-current-images]').title = '正在下载图片 2 / 10';
-    })()`);
-    await eventually(async () => cdp.eval(pageSession,
-      `document.querySelector('[data-chatgpt-pro-current-images]').title === 'Downloading images 2 / 10'`),
-    'dynamic image download tooltip translated after attribute change');
+    await cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-current-export]').click()`);
+    await eventually(async () => cdp.eval(pageSession, `(() => {
+      const buttons = [...document.querySelectorAll('[data-chatgpt-pro-download-popover] button')];
+      return buttons.length === 2 && buttons[0].title === 'Export entire chat (Markdown)' &&
+        buttons[1].title === 'Download all conversation images (ZIP)' &&
+        buttons.every(button => button.querySelector('svg') &&
+          Math.abs(button.getBoundingClientRect().width - button.getBoundingClientRect().height) <= 1);
+    })()`), 'combined download menu exposes both translated actions');
     await cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-minimap-user')?.dispatchEvent(new Event('pointerenter'))`);
     await eventually(async () => cdp.eval(pageSession,

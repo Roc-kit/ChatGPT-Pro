@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const minimapToggle = document.getElementById('minimapToggle');
   const openInBackgroundToggle = document.getElementById('openInBackgroundToggle');
   const outsideCloseToggle = document.getElementById('outsideCloseToggle');
+  const autoContinueToggle = document.getElementById('autoContinueToggle');
   const size = document.getElementById('size');
   const filenamePreset = document.getElementById('filenamePreset');
   const customTemplateWrap = document.getElementById('customTemplateWrap');
@@ -373,7 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
     filenamePreview.textContent = previewFilename(value);
   }
 
-  chrome.storage.local.get(['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'openInBackground', 'closeOnOutsideClick', 'fontSize', 'exportFilenameTemplate', 'uiLanguage'], values => {
+  chrome.storage.local.get(['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'openInBackground', 'closeOnOutsideClick', 'fontSize', 'exportFilenameTemplate', 'uiLanguage', 'autoContinueEnabled', 'autoContinueText', 'autoContinueDelaySeconds', 'autoContinueMaxCount'], values => {
     languageSelect.value = values.uiLanguage || 'auto';
     i18n.setLanguage(languageSelect.value);
     i18n.setDirection(document.documentElement);
@@ -385,6 +386,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setToggle(minimapToggle, values.showMinimap !== false);
     setToggle(openInBackgroundToggle, values.openInBackground !== false);
     setToggle(outsideCloseToggle, values.closeOnOutsideClick !== false);
+    const autoEnabled = values.autoContinueEnabled === true;
+    setToggle(autoContinueToggle, autoEnabled);
     size.value = normalizeTimestampFontSize(values.fontSize);
     updateFilenameUi(values.exportFilenameTemplate || '{created_datetime}_{title}');
   });
@@ -449,6 +452,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeOnOutsideClick = !outsideCloseToggle.classList.contains('active');
     setToggle(outsideCloseToggle, closeOnOutsideClick);
     chrome.storage.local.set({ closeOnOutsideClick });
+  });
+  autoContinueToggle.addEventListener('click', () => {
+    const enabled = !autoContinueToggle.classList.contains('active');
+    setToggle(autoContinueToggle, enabled);
+    chrome.storage.local.set({ autoContinueEnabled: enabled });
+    if (!enabled) sendToActiveChatGPT({ action: 'autoContinueControl', operation: 'stop' }).catch(() => {});
+  });
+  autoContinueToggle.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      autoContinueToggle.click();
+    }
   });
   function normalizeTimestampFontSize(value) {
     const legacy = { small: 11, medium: 12, large: 13 };

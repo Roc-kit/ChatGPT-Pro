@@ -654,13 +654,13 @@
 .chatgpt-pro-tool-dock {
   position: fixed !important;
   top: 0 !important;
-  right: 10px !important;
-  width: 48px !important;
+  right: 15px !important;
+  width: 38px !important;
   height: 0 !important;
   box-sizing: border-box !important;
   z-index: 2147483645 !important;
   border: 1px solid rgba(127, 127, 127, 0.24) !important;
-  border-radius: 999px !important;
+  border-radius: 12px !important;
   background: rgba(255, 255, 255, 0.9) !important;
   box-shadow: 0 5px 18px rgba(0, 0, 0, 0.1) !important;
   pointer-events: none !important;
@@ -682,7 +682,7 @@
   display: flex !important;
   flex-direction: column !important;
   align-items: stretch !important;
-  gap: 4px !important;
+  gap: 0 !important;
   pointer-events: auto !important;
 }
 
@@ -701,7 +701,7 @@
   align-items: center !important;
   justify-content: center !important;
   border: 1px solid rgba(127, 127, 127, 0.28) !important;
-  border-radius: 9px !important;
+  border-radius: 12px !important;
   background: rgba(255, 255, 255, 0.96) !important;
   color: #374151 !important;
   box-shadow: none !important;
@@ -750,6 +750,151 @@
   width: 18px !important;
   height: 18px !important;
 }
+
+.chatgpt-pro-current-export[hidden],
+.chatgpt-pro-tool-popover[hidden] {
+  display: none !important;
+}
+
+.chatgpt-pro-auto-continue[data-mode="waiting"],
+.chatgpt-pro-auto-continue[data-mode="countdown"] {
+  color: #0d9373 !important;
+  border-color: rgba(16, 163, 127, 0.55) !important;
+}
+
+.chatgpt-pro-auto-continue[data-mode="paused"] {
+  color: #64748b !important;
+  border-color: rgba(100, 116, 139, 0.45) !important;
+}
+
+/* The continuation and download actions form one stacked control. Collapse
+   their shared border and keep rounding only on the outside corners. */
+.chatgpt-pro-auto-continue:not([hidden]) {
+  border-radius: 12px 12px 0 0 !important;
+}
+
+.chatgpt-pro-auto-continue:not([hidden]) + .chatgpt-pro-current-export {
+  margin-top: -1px !important;
+  border-radius: 0 0 12px 12px !important;
+}
+
+.chatgpt-pro-auto-continue[hidden] + .chatgpt-pro-current-export {
+  border-radius: 12px !important;
+}
+
+.chatgpt-pro-auto-badge {
+  position: absolute !important;
+  top: -5px !important;
+  right: -5px !important;
+  min-width: 18px !important;
+  height: 18px !important;
+  padding: 0 4px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 9px !important;
+  background: #0d9373 !important;
+  color: #fff !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  pointer-events: none !important;
+}
+
+.chatgpt-pro-auto-badge[hidden] { display: none !important; }
+
+.chatgpt-pro-tool-popover {
+  position: absolute !important;
+  right: 46px !important;
+  bottom: 0 !important;
+  box-sizing: border-box !important;
+  width: 280px !important;
+  padding: 12px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  border: 1px solid rgba(127, 127, 127, 0.28) !important;
+  border-radius: 10px !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  color: #1f2937 !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18) !important;
+  font: 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  pointer-events: auto !important;
+}
+
+.chatgpt-pro-download-popover {
+  width: auto !important;
+  padding: 7px !important;
+  flex-direction: row !important;
+  gap: 6px !important;
+}
+
+.chatgpt-pro-download-popover .chatgpt-pro-download-action {
+  box-sizing: border-box !important;
+  width: 38px !important;
+  min-width: 38px !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 9px !important;
+}
+
+.chatgpt-pro-download-action svg {
+  width: 19px !important;
+  height: 19px !important;
+  fill: none !important;
+  stroke: currentColor !important;
+  stroke-width: 1.8 !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  pointer-events: none !important;
+}
+
+.chatgpt-pro-tool-popover > button,
+.chatgpt-pro-auto-actions button {
+  min-height: 32px !important;
+  padding: 6px 9px !important;
+  border: 1px solid rgba(127, 127, 127, 0.28) !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: inherit !important;
+  font: inherit !important;
+  cursor: pointer !important;
+}
+
+.chatgpt-pro-tool-popover > button:hover,
+.chatgpt-pro-auto-actions button:hover {
+  color: #0d9373 !important;
+  border-color: rgba(16, 163, 127, 0.45) !important;
+}
+
+.chatgpt-pro-auto-status { font-weight: 600 !important; }
+.chatgpt-pro-auto-count { color: #6b7280 !important; }
+.chatgpt-pro-auto-field {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  color: inherit !important;
+  font: inherit !important;
+}
+.chatgpt-pro-auto-field > span { font-weight: 600 !important; }
+.chatgpt-pro-auto-field > small { color: #6b7280 !important; font-size: 10px !important; line-height: 1.35 !important; }
+.chatgpt-pro-auto-field > input {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-height: 34px !important;
+  padding: 7px 9px !important;
+  border: 1px solid rgba(127, 127, 127, 0.3) !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: inherit !important;
+  font: inherit !important;
+}
+.chatgpt-pro-auto-actions { display: grid !important; grid-template-columns: repeat(2, 1fr) !important; gap: 6px !important; }
+.chatgpt-pro-auto-actions button[hidden] { display: none !important; }
 
 .chatgpt-pro-minimap {
   position: absolute !important;
@@ -875,6 +1020,13 @@ html.dark .chatgpt-pro-current-export,
 html.dark .chatgpt-pro-current-export:hover:not(:disabled),
 [data-theme="dark"] .chatgpt-pro-current-export:hover:not(:disabled) {
   background: rgba(13, 147, 115, 0.2) !important;
+}
+
+html.dark .chatgpt-pro-tool-popover,
+[data-theme="dark"] .chatgpt-pro-tool-popover {
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  background: rgba(37, 39, 44, 0.98) !important;
+  color: #f3f4f6 !important;
 }
 
 html.dark .chatgpt-pro-minimap-preview,
