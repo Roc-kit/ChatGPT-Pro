@@ -134,14 +134,17 @@
     S.messageRouteRetryTimers = [];
   }
 
-  function createMessageTimestamp(value, role = '') {
+  function createMessageTimestamp(value, role = '', target = null) {
     const text = formatMessageTime(value);
     if (!text) return null;
     const span = document.createElement('span');
+    const placementClass = target?.matches?.('.turn-action-controls')
+      ? 'chatgpt-pro-message-timestamp-controls'
+      : role === 'assistant' ? 'chatgpt-pro-message-timestamp-assistant'
+        : role === 'user' ? 'chatgpt-pro-message-timestamp-user' : '';
     span.className = [
       'chatgpt-pro-message-timestamp',
-      role === 'assistant' ? 'chatgpt-pro-message-timestamp-assistant' : '',
-      role === 'user' ? 'chatgpt-pro-message-timestamp-user' : ''
+      placementClass
     ].filter(Boolean).join(' ');
     span.setAttribute('data-chatgpt-pro-message-timestamp', '1');
     span.textContent = text;
@@ -166,7 +169,9 @@
     if (!target || target.querySelector(':scope > [data-chatgpt-pro-message-timestamp]')) return false;
     const message = conversationMessageForElement(S.messageConversation, messageEl);
     if (!message?.create_time) return false;
-    const timestamp = createMessageTimestamp(message.create_time, window.ChatGPTDomAdapter.messageRole(messageEl));
+    const timestamp = createMessageTimestamp(
+      message.create_time, window.ChatGPTDomAdapter.messageRole(messageEl), target
+    );
     if (!timestamp) return false;
     target.insertBefore(timestamp, target.firstChild);
     return true;

@@ -23,6 +23,9 @@ const BODY = '<!doctype html><html><head><meta charset="utf-8"><title>S6 isolate
   `<body><main><h1>Isolated ChatGPT fixture</h1><a href="/c/${CHAT_ID}">Fixture chat</a>` +
   `<section data-message-id="question" data-message-author-role="user"><p>s6 acceptance unique phrase</p></section>` +
   `<section data-message-id="answer" data-message-author-role="assistant"><p>hello from controlled fixture</p></section>` +
+  `<div id="fallback-assistant-wrapper" style="display:none">` +
+  `<div data-chatgpt-selection-message-id="fallback-assistant" data-message-author-role="assistant"><p>legacy assistant fixture</p></div>` +
+  `<div class="turn-action-controls"><button type="button">Copy</button></div></div>` +
   `</main></body></html>`;
 const CHAT = { id: CHAT_ID, title: 'Offline acceptance test', update_time: 1770000000,
   current_node: 'answer', mapping: {
@@ -30,7 +33,10 @@ const CHAT = { id: CHAT_ID, title: 'Offline acceptance test', update_time: 17700
     question: { id: 'question', parent: 'root', children: ['answer'],
       message: { id: 'question', author: { role: 'user' }, content: { content_type: 'text', parts: ['s6 acceptance unique phrase'] }, create_time: 1770000000 } },
     answer: { id: 'answer', parent: 'question', children: [],
-      message: { id: 'answer', author: { role: 'assistant' }, content: { content_type: 'text', parts: ['hello from controlled fixture'] }, create_time: 1770000001 } }
+      message: { id: 'answer', author: { role: 'assistant' }, content: { content_type: 'text', parts: ['hello from controlled fixture'] }, create_time: 1770000001 } },
+    'fallback-assistant': { id: 'fallback-assistant', parent: 'answer', children: [],
+      message: { id: 'fallback-assistant', author: { role: 'assistant' },
+        content: { content_type: 'text', parts: ['legacy assistant fixture'] }, create_time: 1770000002 } }
   }
 };
 let detailResponse = CHAT;
@@ -781,10 +787,31 @@ async function main() {
 
     // R8 original settings: switches propagate to the real content script and
     // the message timestamp decoration uses cached full JSON, not a re-fetch.
+    await cdp.eval(pageSession, `(() => {
+      for (const [id, key] of [
+        ['question', 'fallback-turn-0:0:user'],
+        ['answer', 'fallback-turn-0:2:assistant']
+      ]) {
+        const message = document.querySelector('[data-message-id="' + id + '"]');
+        const unit = document.createElement('div');
+        unit.setAttribute('data-chatgpt-search-unit-key', key);
+        message.parentNode.insertBefore(unit, message);
+        unit.appendChild(message);
+      }
+    })()`);
     await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').length === 2`),
     'user + assistant timestamps render from persisted JSON');
+    assert.deepEqual(await cdp.eval(pageSession, `(() => {
+      const unit = document.querySelector('[data-chatgpt-search-unit-key$=":assistant"]');
+      const timestamp = unit?.querySelector(':scope > [data-chatgpt-pro-message-timestamp]');
+      const answer = unit?.querySelector('[data-message-id="answer"]');
+      return { directChild: timestamp?.parentElement === unit,
+        aboveResponse: timestamp?.nextElementSibling === answer,
+        placementClass: timestamp?.classList.contains('chatgpt-pro-message-timestamp-assistant') };
+    })()`), { directChild: true, aboveResponse: true, placementClass: true },
+    'assistant timestamp is inserted at the top of its stable response unit, before the answer body');
     await cdp.eval(popupSession, `(() => {
       const size = document.querySelector('#size');
       size.value = '17'; size.dispatchEvent(new Event('change', { bubbles: true }));
@@ -809,6 +836,12 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').length === 0`),
     'disabling message timestamps removes decorations');
+    await cdp.eval(pageSession, `(() => {
+      document.querySelectorAll('[data-chatgpt-search-unit-key]').forEach(unit => {
+        const message = unit.querySelector('[data-message-id]');
+        if (message) unit.replaceWith(message);
+      });
+    })()`);
     await cdp.eval(popupSession, `(() => {
       const preset = document.querySelector('#filenamePreset');
       preset.value = 'date_title';
@@ -977,6 +1010,25 @@ async function main() {
       document.querySelector('[data-message-id="question"]')?.removeAttribute('data-chatgpt-search-unit-key');
       document.querySelector('[data-message-id="answer"]')?.removeAttribute('data-chatgpt-search-unit-key');
     })()`);
+
+    await cdp.eval(pageSession,
+      `document.querySelector('#fallback-assistant-wrapper').style.display = 'block'`);
+    await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
+    await eventually(async () => cdp.eval(pageSession, `(() => {
+      const controls = document.querySelector('#fallback-assistant-wrapper .turn-action-controls');
+      const timestamp = controls?.querySelector(':scope > [data-chatgpt-pro-message-timestamp]');
+      return Boolean(timestamp && timestamp.classList.contains('chatgpt-pro-message-timestamp-controls')
+        && timestamp.nextElementSibling === controls.querySelector('button')
+        && getComputedStyle(timestamp).display === 'inline-flex');
+    })()`), 'legacy assistant timestamp uses compact inline styling inside its action-controls fallback');
+    assert.equal(requests.details, 2,
+      'legacy timestamp placement reuses the already cached conversation JSON');
+    await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').length === 0`),
+    'legacy assistant timestamp is removed when message timestamps are disabled');
+    await cdp.eval(pageSession,
+      `document.querySelector('#fallback-assistant-wrapper').remove()`);
 
     // Input searches are debounced and still work while indexing is only
     // partial; a confirmed local-only result never fetches an online detail.

@@ -154,6 +154,26 @@
 
   function timestampTarget(element) {
     if (!(element instanceof Element)) return null;
+    const unit = element.matches(UNIT_SELECTOR) ? element : element.closest(UNIT_SELECTOR);
+    if (unit && messageRole(element) === 'assistant') {
+      // The unit is the stable boundary for one rendered assistant reply.
+      // Inserting before its first child places the timestamp above the
+      // response body instead of below it in the action-controls row.
+      return unit;
+    }
+    const selection = element.matches('[data-chatgpt-selection-message-id]')
+      ? element
+      : element.querySelector('[data-chatgpt-selection-message-id]');
+    if (selection && messageRole(element) === 'assistant') {
+      const main = selection.closest('main');
+      for (let parent = selection.parentElement; parent && parent !== main; parent = parent.parentElement) {
+        const controls = parent.querySelector(':scope > .turn-action-controls');
+        if (controls) return controls;
+      }
+      // Do not decorate React-managed assistant content while its stable
+      // action-controls sibling is still being mounted.
+      if (element.closest(UNIT_SELECTOR) || element.matches(UNIT_SELECTOR)) return null;
+    }
     return element.matches('[data-chatgpt-selection-message-id], [data-message-id]')
       ? element
       : element.querySelector('[data-chatgpt-selection-message-id], [data-message-id]') || element;
