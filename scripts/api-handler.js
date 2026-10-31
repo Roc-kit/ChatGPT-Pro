@@ -33,6 +33,7 @@ const APIHandler = (function () {
   let _sessionPromise = null;
   let _syncPromise = null;
   let _syncAccountId = null;
+  let _syncCheckLatest = false;
   const _conversationPromises = new Map();
 
   // Revalidate when a previously backgrounded tab comes back into focus.
@@ -568,9 +569,15 @@ const APIHandler = (function () {
         await _syncPromise.catch(() => {});
         return syncConversationList(forceFull, options);
       }
+      const joinedCheckLatest = _syncCheckLatest;
       const result = await _syncPromise;
       if (await getAccountId(true) !== expectedAccountId) throw new Error('登录账号已切换，请重新同步');
       if (options.requireComplete === true) return syncConversationList(true, options);
+      // An event-triggered latest check must not silently join an older
+      // maintenance sync that began before the new conversation appeared.
+      if (options.checkLatest === true && !joinedCheckLatest) {
+        return syncConversationList(forceFull, options);
+      }
       return result;
     }
     if (!forceFull && options.checkLatest !== true) {
@@ -585,12 +592,14 @@ const APIHandler = (function () {
       }
     }
     _syncAccountId = expectedAccountId;
+    _syncCheckLatest = options.checkLatest === true;
     _syncPromise = runSync(forceFull, expectedAccountId, options.requireComplete === true);
     try {
       return await _syncPromise;
     } finally {
       _syncPromise = null;
       _syncAccountId = null;
+      _syncCheckLatest = false;
     }
   }
 

@@ -316,16 +316,19 @@
     removeMessageTimestamps();
     if (S.settings.enabled) ensureCurrentChatExportButton();
 
-    if (!S.settings.enabled || !S.settings.showMessageTimestamps || !conversationId) return true;
+    if (!S.settings.enabled || !conversationId) return true;
     for (const delay of MESSAGE_ROUTE_RETRY_DELAYS_MS) {
       const timer = window.setTimeout(() => {
         S.messageRouteRetryTimers = S.messageRouteRetryTimers.filter(item => item !== timer);
         if (currentConversationId() !== conversationId) return;
-        stampMessageTimestamps().catch(error => log('Message timestamp route refresh failed:', error.message));
+        if (S.settings.showMessageTimestamps) {
+          stampMessageTimestamps().catch(error => log('Message timestamp route refresh failed:', error.message));
+        }
         resumePendingSearchJump().catch(error => log('Search result jump failed:', error.message));
       }, delay);
       S.messageRouteRetryTimers.push(timer);
     }
+    scheduleAutomaticIndexRefresh(12000);
     return true;
   }
 
@@ -990,8 +993,8 @@
     }
   }
 
-  async function incrementalSyncConversationList(statusText = '已完成增量同步') {
-    const records = await window.APIHandler.syncConversationList(false);
+  async function incrementalSyncConversationList(statusText = '已完成增量同步', options = {}) {
+    const records = await window.APIHandler.syncConversationList(false, options);
     applySyncedConversationRecords(records, statusText);
     return records;
   }
@@ -1004,6 +1007,33 @@
     } catch (error) {
       log('Background sync failed:', error.message);
     }
+  }
+
+  const AUTO_INDEX_GENERATION_RECHECK_MS = 2000;
+  let automaticIndexRefreshTimer = null;
+  function scheduleAutomaticIndexRefresh(delay = 1500) {
+    if (!S.settings.enabled || document.hidden) return;
+    window.clearTimeout(automaticIndexRefreshTimer);
+    automaticIndexRefreshTimer = window.setTimeout(async () => {
+      automaticIndexRefreshTimer = null;
+      if (!S.settings.enabled || document.hidden) return;
+      // The first DOM event often arrives while ChatGPT is still streaming.
+      // Wait for its stop control to disappear before saving the final reply.
+      if (window.ChatGPTDomAdapter.isGenerating()) {
+        scheduleAutomaticIndexRefresh(AUTO_INDEX_GENERATION_RECHECK_MS);
+        return;
+      }
+      try {
+        // A newly created conversation or a freshly completed response must
+        // not wait for the five-minute maintenance poll. Revalidate the first
+        // directory page, then bypass only the in-page auto-check throttle;
+        // updateFullTextIndex still fetches details solely for changed IDs.
+        const records = await incrementalSyncConversationList('已完成新对话同步', { checkLatest: true });
+        await maybeAutoIncrementalIndex(records, { force: true });
+      } catch (error) {
+        log('Event-driven automatic index refresh failed:', error.message);
+      }
+    }, delay);
   }
 
   function closeTimeline() {
@@ -2950,10 +2980,10 @@
 
   const autoIndexLastCheckedByAccount = new Map();
   const AUTO_INDEX_MIN_CHECK_MS = 5 * 60 * 1000;
-  async function maybeAutoIncrementalIndex(records) {
+  async function maybeAutoIncrementalIndex(records, options = {}) {
     if (!S.settings.enabled || document.hidden || !records?.length) return { skipped: 'inactive' };
     const accountId = await window.APIHandler.getAccountId();
-    if (Date.now() - (autoIndexLastCheckedByAccount.get(accountId) || 0) < AUTO_INDEX_MIN_CHECK_MS) {
+    if (!options.force && Date.now() - (autoIndexLastCheckedByAccount.get(accountId) || 0) < AUTO_INDEX_MIN_CHECK_MS) {
       return { skipped: 'recent' };
     }
     const policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
@@ -3912,29 +3942,30 @@
         }, 300);
       }
 
-      if (S.settings.showMessageTimestamps) {
-        const messageRelevant = mutations.some(mutation =>
-          (mutation.type === 'attributes' && [
-            'data-chatgpt-selection-message-id',
-            'data-chatgpt-search-message-ids',
-            'data-message-id',
-            'data-chatgpt-search-unit-key',
-            'data-content-search-unit-key'
-          ].includes(mutation.attributeName)) ||
-          Array.from(mutation.addedNodes).some(node =>
-            node.nodeType === 1 && (
-              window.ChatGPTDomAdapter.containsMessageNode(node) ||
-              window.ChatGPTDomAdapter.containsMessageDecorationTarget?.(node)
-            )
+      const messageRelevant = mutations.some(mutation =>
+        (mutation.type === 'attributes' && [
+          'data-chatgpt-selection-message-id',
+          'data-chatgpt-search-message-ids',
+          'data-message-id',
+          'data-chatgpt-search-unit-key',
+          'data-content-search-unit-key'
+        ].includes(mutation.attributeName)) ||
+        Array.from(mutation.addedNodes).some(node =>
+          node.nodeType === 1 && (
+            window.ChatGPTDomAdapter.containsMessageNode(node) ||
+            window.ChatGPTDomAdapter.containsMessageDecorationTarget?.(node)
           )
-        );
-        if (messageRelevant) {
-          clearTimeout(messageTimer);
-          messageTimer = setTimeout(() => {
+        )
+      );
+      if (messageRelevant) {
+        clearTimeout(messageTimer);
+        messageTimer = setTimeout(() => {
+          if (S.settings.showMessageTimestamps) {
             stampMessageTimestamps().catch(error => log('Message timestamp refresh failed:', error.message));
-            resumePendingSearchJump().catch(error => log('Search result jump failed:', error.message));
-          }, 100);
-        }
+          }
+          resumePendingSearchJump().catch(error => log('Search result jump failed:', error.message));
+        }, 100);
+        scheduleAutomaticIndexRefresh(12000);
       }
     });
     S.observer.observe(document.body, {
@@ -4189,6 +4220,9 @@
       }
     }, RECHECK_MS);
     setInterval(backgroundSyncConversationList, BACKGROUND_SYNC_MS);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) scheduleAutomaticIndexRefresh(1200);
+    });
     window.setInterval(tickAutoContinue, 1000);
     // Resume ordinary incremental indexing automatically only AFTER the user
     // authorized and completed the first full index. Never auto-consent.

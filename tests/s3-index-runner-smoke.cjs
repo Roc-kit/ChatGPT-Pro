@@ -168,6 +168,20 @@ async function main() {
   assert.equal(automatic.automatic, true);
   assert.equal(automatic.indexedCount, 1);
   assert.equal(fetched.at(-1), 'post-consent');
+  const throttled = await context.runner.maybeAutoIncrementalIndex([
+    { id: 'event-driven', title: 'Event driven item', updateTime: 13 }
+  ]);
+  assert.equal(throttled.skipped, 'recent');
+  const eventDriven = await context.runner.maybeAutoIncrementalIndex([
+    { id: 'event-driven', title: 'Event driven item', updateTime: 13 }
+  ], { force: true });
+  assert.equal(eventDriven.indexedCount, 1,
+    'conversation/message events can bypass the maintenance poll throttle');
+  assert.equal(fetched.at(-1), 'event-driven');
+  const newerDetail = await context.runner.maybeAutoIncrementalIndex([
+    { id: 'newer-detail', title: 'Newer detail', updateTime: 14, rawUpdateTime: 1700000100 }
+  ], { force: true });
+  assert.equal(newerDetail.indexedCount, 1);
   assert.equal(strictFullScans, 1, 'automatic incremental indexing never repeats first full scan');
   console.log('S3_S4_PASS: checkpoints, pause/resume, first consent, verified full scan, auto incremental');
 }
