@@ -186,12 +186,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // jobs and their events remain in persistent task storage, not this UI.
     const activeTasks = (data.tasks || []).filter(task =>
       ['pending', 'running', 'paused'].includes(task.status));
+    const retryableTasks = (data.tasks || []).filter(task => task.type === 'index'
+      && ['completed', 'failed'].includes(task.status) && task.errors?.length);
+    const displayTasks = [...activeTasks,
+      ...retryableTasks.filter(task => !activeTasks.some(active => active.id === task.id))];
+    const activeIndexTask = activeTasks.find(task => task.type === 'index');
     taskStatusText.textContent = activeTasks.length
       ? activeTasks.map(task => `${taskNames[task.type] || '本地任务'} · ${taskStates[task.status]}`).join(' / ')
-      : '当前没有运行中的任务';
-    taskOverview.hidden = activeTasks.length === 0 && cooldownDeadline <= Date.now();
+      : retryableTasks.length
+        ? `${i18n.t('ui.retryIndexConversation')} · ${retryableTasks.reduce((sum, task) => sum + task.errors.length, 0)}`
+        : '当前没有运行中的任务';
+    taskOverview.hidden = displayTasks.length === 0 && cooldownDeadline <= Date.now();
     taskList.replaceChildren();
-    for (const task of activeTasks) {
+    for (const task of displayTasks) {
       const card = document.createElement('div');
       card.className = 'task-card';
       const meta = document.createElement('div');
@@ -241,6 +248,42 @@ document.addEventListener('DOMContentLoaded', () => {
         addTaskButton(actions, '下载分卷', () => sendToActiveChatGPT({ action: 'taskDownloadVolumes', id: task.id }));
       }
       card.append(meta, progress, detail, actions);
+      if (task.type === 'index' && ['completed', 'failed'].includes(task.status) && task.errors?.length) {
+        const failureList = document.createElement('div');
+        failureList.className = 'task-failure-list';
+        for (const failure of task.errors.slice(-5)) {
+          const row = document.createElement('div');
+          row.className = 'task-failure-row';
+          const description = document.createElement('span');
+          description.textContent = `${failure.title || failure.id} · ${failure.message}`;
+          const retry = document.createElement('button');
+          retry.type = 'button';
+          retry.textContent = i18n.t('ui.retryIndexConversation');
+          retry.disabled = Boolean(activeIndexTask);
+          retry.addEventListener('click', async () => {
+            retry.disabled = true;
+            try {
+              await sendToActiveChatGPT({ action: 'taskRetryIndexItem',
+                id: task.id, conversationId: failure.id });
+            } catch (error) {
+              const detail = error.message === 'E_TASK_ALREADY_ACTIVE'
+                ? i18n.t('ui.retryRequiresIdleIndex') : error.message;
+              taskFeedback.textContent = detail;
+            } finally {
+              await loadTaskDashboard(true);
+              retry.disabled = false;
+            }
+          });
+          row.append(description, retry);
+          failureList.appendChild(row);
+        }
+        if (task.errors.length > 5) {
+          const remainder = document.createElement('small');
+          remainder.textContent = `+${task.errors.length - 5}`;
+          failureList.appendChild(remainder);
+        }
+        card.appendChild(failureList);
+      }
       taskList.appendChild(card);
     }
     updateTaskCountdowns();

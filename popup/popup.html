@@ -63,6 +63,11 @@
     .task-progress > span { display:block; height:100%; background:#10a37f; }
     .task-actions { display:flex; gap:6px; margin-top:7px; }
     .task-actions button { flex:0 0 auto; width:auto; padding:5px 8px; font-size:11px; }
+    .task-failure-list { display:flex; flex-direction:column; gap:5px; max-height:105px; overflow-y:auto; margin-top:7px; padding-top:6px; border-top:1px solid #f1f5f9; }
+    .task-failure-row { display:flex; align-items:flex-start; gap:8px; font-size:10px; color:#6b7280; }
+    .task-failure-row span { flex:1 1 auto; min-width:0; line-height:1.4; overflow-wrap:anywhere; }
+    .task-failure-row button { flex:0 0 auto; width:auto; padding:3px 6px; font-size:10px; }
+    .task-failure-list small { color:#6b7280; }
     .task-list { max-height:175px; overflow-y:auto; padding:0 16px; }
     .task-list:empty { display:none; }
     .task-overview { border-top:1px solid #edf1ef; }
@@ -102,6 +107,7 @@
       .template-preview strong { color:#f3f4f6; }
       .task-card { border-color:#374151; }
       .task-progress { background:#374151; }
+      .task-failure-list { border-color:#374151; }
     }
   </style>
 </head>

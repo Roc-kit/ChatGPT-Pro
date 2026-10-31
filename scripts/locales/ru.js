@@ -80,6 +80,8 @@ window.ChatGPTProLocalePacks["ru"] = {
   "ui.searchAllConversations": "Искать по чатам",
   "ui.search": "Поиск",
   "ui.updateIndex": "Обновить индекс",
+  "ui.retryIndexConversation": "Повторить",
+  "ui.retryRequiresIdleIndex": "Задача индексации уже выполняется. Повторите попытку после её завершения.",
   "ui.localFullTextSearch": "Локальный поиск",
   "ui.noMatchingResults": "Нет результатов",
   "ui.openChatGPT_cea77b8": "Открытый ChatGPT",

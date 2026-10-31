@@ -80,6 +80,8 @@ window.ChatGPTProLocalePacks["hi"] = {
   "ui.searchAllConversations": "सभी चैट खोजें",
   "ui.search": "खोजें",
   "ui.updateIndex": "इंडेक्स अपडेट",
+  "ui.retryIndexConversation": "पुनः प्रयास करें",
+  "ui.retryRequiresIdleIndex": "एक इंडेक्स कार्य पहले से चल रहा है। इसके पूरा होने के बाद फिर प्रयास करें।",
   "ui.localFullTextSearch": "लोकल खोज",
   "ui.noMatchingResults": "कोई परिणाम नहीं",
   "ui.openChatGPT_cea77b8": "Open ChatGPT",

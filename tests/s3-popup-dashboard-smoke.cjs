@@ -16,7 +16,10 @@ const mock = `<script>
     { id: 'm', type: 'export-md', status: 'paused', done: 50, total: 55,
       successes: 50, failures: 0, savedVolumes: 1 },
     { id: 'j', type: 'export-json', status: 'completed', done: 5, total: 5,
-      successes: 5, failures: 0, savedVolumes: 1 }
+      successes: 5, failures: 0, savedVolumes: 1 },
+    { id: 'f', type: 'index', status: 'completed', done: 2, total: 2,
+      successes: 1, failures: 1, savedVolumes: 0,
+      errors: [{ id: 'failed-chat', title: 'Failed conversation', message: 'HTTP 500' }] }
   ];
   const indexPolicy = { consentAt: null, initialCompletedAt: null, autoEnabled: false };
   const stats = { directory: 120, complete: 71, indexed: 43 };
@@ -62,6 +65,8 @@ const mock = `<script>
           else if (msg.operation === 'resume') job.status = 'pending';
           else if (msg.operation === 'cancel') job.status = 'canceled';
           callback({ success: true, status: job.status });
+        } else if (msg.action === 'taskRetryIndexItem') {
+          callback({ success: true, queued: true });
         } else if (msg.action === 'taskDownloadVolumes') {
           callback({ success: true, initiated: 1 });
         } else if (msg.action === 'taskClearVolumes') {
@@ -149,8 +154,8 @@ server.listen(0, '127.0.0.1', async () => {
     }
     const result = await evaluate(`(async () => {
       const check = (ok, desc) => { if (!ok) throw Error(desc); };
-      check(document.querySelectorAll('.task-card').length === 2,
-        'only running and paused jobs displayed, completed history hidden');
+      check(document.querySelectorAll('.task-card').length === 3,
+        'running and paused jobs plus a completed index task with retryable failures are displayed');
       check(document.querySelector('[role="progressbar"]').getAttribute('aria-valuenow') === '20',
         'accessible progress shows cursor');
       check(!document.querySelector('#taskLogList') && !document.querySelector('#taskLogsWrap'),
@@ -179,13 +184,29 @@ server.listen(0, '127.0.0.1', async () => {
       check(window.__testState.calls.some(msg => msg.action === 'taskDownloadVolumes' && msg.id === 'm'),
         'download targets the specific persisted task');
       check(document.querySelector('#taskFeedback').textContent.includes('下载'), 'download feedback visible');
+      const failureCard = [...document.querySelectorAll('.task-card')]
+        .find(card => card.textContent.includes('Failed conversation'));
+      const retryFailure = [...failureCard.querySelectorAll('button')]
+        .find(button => button.textContent === '重试');
+      check(retryFailure?.disabled, 'single-item retry is blocked while another index task is active');
       check(!document.querySelector('.task-card').textContent.includes('5/5'),
         'completed JSON task never creates an extra history progress bar');
       window.__testState.tasks[0].status = 'completed';
       document.querySelector('#taskRefresh').click();
       await new Promise(resolve => setTimeout(resolve, 50));
-      check(document.querySelectorAll('.task-card').length === 1,
-        'completed index task disappears while paused export remains actionable');
+      check(document.querySelectorAll('.task-card').length === 2,
+        'completed index task disappears while paused export and retryable failures remain actionable');
+      const retryableCard = [...document.querySelectorAll('.task-card')]
+        .find(card => card.textContent.includes('Failed conversation'));
+      const retryableButton = [...retryableCard.querySelectorAll('button')]
+        .find(button => button.textContent === '重试');
+      check(retryableButton && !retryableButton.disabled,
+        'single-item retry becomes available after the active index task finishes');
+      retryableButton.click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(window.__testState.calls.some(msg => msg.action === 'taskRetryIndexItem' &&
+        msg.id === 'f' && msg.conversationId === 'failed-chat'),
+        'retry action targets exactly the failed conversation from its source task');
       check(!document.querySelector('#indexStart').disabled &&
         document.querySelector('#indexStart').textContent.includes('需授权'),
         'first index CTA requires consent and no active index job');

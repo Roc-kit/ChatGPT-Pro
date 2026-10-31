@@ -102,6 +102,8 @@ window.ChatGPTProLocalePacks["en"] = {
   "ui.search": "Search",
   "ui.loadingIndexStatus": "Loading index status…",
   "ui.updateIndex": "Update index",
+  "ui.retryIndexConversation": "Retry",
+  "ui.retryRequiresIdleIndex": "An index task is already active. Retry after it finishes.",
   "ui.includeUnassignedLegacyIndexNotLinkedToThis": "Include unassigned legacy index (not linked to this account)",
   "ui.selectAllCurrentFilteredConversations": "Select all current filtered conversations",
   "ui.sortByCreationTime": "Sort by creation time",

@@ -21,6 +21,10 @@ for (const language of languages) {
   assert.equal(i18n.language, language);
   assert.notEqual(i18n.t('聊天目录'), '', `conversation UI label exists for ${language}`);
   assert.notEqual(i18n.t('打开 ChatGPT ↗'), '', `open action label exists for ${language}`);
+  assert.notEqual(i18n.t('ui.retryIndexConversation'), 'ui.retryIndexConversation',
+    `failed-index retry label exists for ${language}`);
+  assert.notEqual(i18n.t('ui.retryRequiresIdleIndex'), 'ui.retryRequiresIdleIndex',
+    `active-task retry guard exists for ${language}`);
   if (language !== 'zh-CN') {
     assert.notEqual(i18n.t('扩展已就绪'), '扩展已就绪', `ready text translated for ${language}`);
     for (const value of [

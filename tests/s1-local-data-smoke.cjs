@@ -121,13 +121,28 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check((await searchForAccount('acct-b', 'A text')).length === 0, 'A search never crosses account');
     check((await searchForAccount('acct-b', 'B text')).length === 1, 'B scoped search match');
     check((await storage.getSearchMetadata('acct-a')).length === 1, 'scoped index metadata');
+    const selectedMetadata = await storage.getSearchMetadata('acct-a', ['same-id', 'missing-id']);
+    check(selectedMetadata.length === 1 && selectedMetadata[0].id === 'same-id',
+      'failure dashboard can query index metadata only for failed conversation IDs');
     const send = message => new Promise(resolve => chrome.runtime.sendMessage(message, resolve));
+    const retryGuardTask = await storage.createTask('retry-guard', 'index', [{ id: 'first' }]);
+    let activeRetryRejected = false;
+    try {
+      await storage.createTask('retry-guard', 'index', [{ id: 'second' }], { rejectIfActive: true });
+    } catch (error) { activeRetryRejected = /E_TASK_ALREADY_ACTIVE/.test(error.message); }
+    check(activeRetryRejected, 'single-item retry cannot attach itself to an existing active index task');
+    check((await storage.createTask('retry-guard', 'index', [{ id: 'second' }])).id === retryGuardTask.id,
+      'ordinary index task creation retains the existing per-account singleton behavior');
     check((await send({ action: 'searchFullText', accountId: 'acct-a', query: 'A text' })).results.length === 1,
       'runtime search action is scoped');
     check((await send({ action: 'searchFullText', accountId: 'acct-b', query: 'A text' })).results.length === 0,
       'runtime search cannot return another account');
     check((await send({ action: 'searchFullText', query: 'A text' })).success === false,
       'runtime search without account is rejected');
+    const selectedMetadataMessage = await send({ action: 'searchIndexMetadata', accountId: 'acct-a',
+      ids: ['same-id', 'missing-id'] });
+    check(selectedMetadataMessage.success && selectedMetadataMessage.records.length === 1,
+      'background metadata action preserves the optional failed-ID filter');
     check((await send({ action: 'searchUnassignedLegacy', query: 'legacy' })).results.length === 1,
       'runtime legacy search requires distinct action');
     const reused = await storage.putSearchRecord('acct-b', {

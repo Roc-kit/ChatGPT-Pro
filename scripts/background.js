@@ -380,7 +380,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message.action === 'searchIndexMetadata') {
-    ChatGPTProLocalData.getSearchMetadata(message.accountId)
+    ChatGPTProLocalData.getSearchMetadata(message.accountId, message.ids)
       .then(records => sendResponse({ success: true, records }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;

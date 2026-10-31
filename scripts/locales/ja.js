@@ -80,6 +80,8 @@ window.ChatGPTProLocalePacks["ja"] = {
   "ui.searchAllConversations": "全チャットを検索",
   "ui.search": "検索",
   "ui.updateIndex": "索引を更新",
+  "ui.retryIndexConversation": "再試行",
+  "ui.retryRequiresIdleIndex": "インデックス作成タスクが実行中です。完了後に再試行してください。",
   "ui.localFullTextSearch": "ローカル全文検索",
   "ui.noMatchingResults": "一致する内容なし",
   "ui.openChatGPT_cea77b8": "ChatGPTを開く",

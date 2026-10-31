@@ -80,6 +80,8 @@ window.ChatGPTProLocalePacks["ar"] = {
   "ui.searchAllConversations": "بحث في المحادثات",
   "ui.search": "بحث",
   "ui.updateIndex": "تحديث الفهرس",
+  "ui.retryIndexConversation": "إعادة المحاولة",
+  "ui.retryRequiresIdleIndex": "توجد مهمة فهرسة نشطة بالفعل. أعد المحاولة بعد اكتمالها.",
   "ui.localFullTextSearch": "بحث محلي",
   "ui.noMatchingResults": "لا توجد نتائج",
   "ui.openChatGPT_cea77b8": "Open ChatGP",

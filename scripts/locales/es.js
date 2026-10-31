@@ -82,6 +82,8 @@ window.ChatGPTProLocalePacks["es"] = {
   "ui.searchAllConversations": "Buscar en conversaciones",
   "ui.search": "Buscar",
   "ui.updateIndex": "Actualizar índice",
+  "ui.retryIndexConversation": "Reintentar",
+  "ui.retryRequiresIdleIndex": "Ya hay una tarea de indexación activa. Vuelve a intentarlo cuando termine.",
   "ui.localFullTextSearch": "Búsqueda local",
   "ui.noMatchingResults": "Sin resultados",
   "ui.fullLocalPreview": "Vista local completa",

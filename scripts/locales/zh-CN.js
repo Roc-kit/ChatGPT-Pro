@@ -102,6 +102,8 @@ window.ChatGPTProLocalePacks["zh-CN"] = {
   "ui.search": "搜索",
   "ui.loadingIndexStatus": "正在读取索引状态…",
   "ui.updateIndex": "更新索引",
+  "ui.retryIndexConversation": "重试",
+  "ui.retryRequiresIdleIndex": "已有索引任务正在执行，请完成后再重试。",
   "ui.includeUnassignedLegacyIndexNotLinkedToThis": "另查未归属的旧版全文索引（不归入当前账号）",
   "ui.selectAllCurrentFilteredConversations": "全选当前筛选结果",
   "ui.sortByCreationTime": "按创建时间排序",

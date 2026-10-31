@@ -2945,6 +2945,27 @@
     if (task.status === 'paused') return { paused: true };
     return runIndexTask(accountId, task.id, onProgress);
   }
+  async function retryIndexConversation(record, onProgress) {
+    if (!record?.id) throw new Error('E_INDEX_RETRY_RECORD_INVALID');
+    const accountId = await window.APIHandler.getAccountId(true);
+    const policy = await runtimeMessage({ action: 'indexPolicyGet', accountId });
+    if (policy.result?.skippedIndexIds?.includes(record.id)) return { skipped: true };
+    const metadata = await runtimeMessage({ action: 'searchIndexMetadata', accountId, ids: [record.id] });
+    const existing = (metadata.records || []).find(item => item.id === record.id);
+    if (existing && existing.schemaVersion === SEARCH_INDEX_SCHEMA_VERSION
+        && Number(existing.updateTime || 0) >= timestampValue(record.updateTime)) {
+      return { indexedCount: 0, skippedCount: 1, failures: [], alreadyIndexed: true };
+    }
+    // Unlike ordinary task creation, a per-item retry must never silently
+    // attach itself to another active queue returned by the singleton guard.
+    const task = await indexTaskMessage('taskCreate', accountId, {
+      type: 'index', items: [record], options: { rejectIfActive: true }
+    });
+    if (task.items?.length !== 1 || task.items[0].id !== record.id) {
+      throw new Error('E_INDEX_RETRY_TASK_MISMATCH');
+    }
+    return runIndexTask(accountId, task.id, onProgress);
+  }
 
   async function updateIndexWithConsent(records, onProgress, consentConfirmedInPopup = false) {
     const accountId = await window.APIHandler.getAccountId(true);
@@ -3023,14 +3044,53 @@
       runtimeMessage({ action: 'indexPolicyGet', accountId }),
       runtimeMessage({ action: 'localDataStats', accountId })
     ]);
+    const allTasks = tasksResult.result || [];
+    const visibleTasks = allTasks.slice(0, 15);
+    const failureIds = [];
+    const seenFailureIds = new Set();
+    for (const task of visibleTasks) {
+      if (task.type !== 'index') continue;
+      for (const error of task.errors || []) {
+        if (error?.id && !seenFailureIds.has(error.id) && failureIds.length < 100) {
+          seenFailureIds.add(error.id);
+          failureIds.push(error.id);
+        }
+      }
+    }
+    const indexMetadataResult = failureIds.length
+      ? await runtimeMessage({ action: 'searchIndexMetadata', accountId, ids: failureIds })
+      : { records: [] };
     if (await window.APIHandler.getAccountId() !== accountId) {
       throw new Error('登录账号已切换，请重新打开任务管理');
     }
+    const indexedById = new Map((indexMetadataResult.records || []).map(record => [record.id, record]));
+    const skippedIds = new Set(indexPolicyResult.result?.skippedIndexIds || []);
+    const latestFailureIds = new Set();
+    const failuresByTask = new Map();
+    for (const task of visibleTasks) {
+      if (task.type !== 'index') continue;
+      for (const error of task.errors || []) {
+        const id = String(error?.id || '');
+        if (!id || latestFailureIds.has(id)) continue;
+        latestFailureIds.add(id);
+        if (skippedIds.has(id)) continue;
+        const item = (task.items || []).find(record => record.id === id);
+        const indexed = indexedById.get(id);
+        if (indexed && indexed.schemaVersion === SEARCH_INDEX_SCHEMA_VERSION
+            && Number(indexed.updateTime || 0) >= timestampValue(item?.updateTime)) continue;
+        if (!failuresByTask.has(task.id)) failuresByTask.set(task.id, []);
+        failuresByTask.get(task.id).push({
+          id, title: item?.title || id, message: String(error.message || '未知错误'),
+          updateTime: item?.updateTime ?? null, href: item?.href || `/c/${id}`
+        });
+      }
+    }
     return {
-      tasks: (tasksResult.result || []).slice(0, 15).map(task => ({
+      tasks: visibleTasks.map(task => ({
         id: task.id, type: task.type, status: task.status,
         total: task.items?.length || 0, done: task.nextIndex || 0,
         successes: task.successCount || 0, failures: task.failureCount || 0,
+        errors: failuresByTask.get(task.id) || [],
         savedVolumes: task.volumesClearedAt ? 0 : (task.volumeCount || 0),
         phase: task.phase || null, waitUntil: task.waitUntil || 0,
         updatedAt: task.updatedAt, createdAt: task.createdAt,
@@ -3096,6 +3156,20 @@
       }, 0);
     }
     return { status: reply.result.task.status, done: reply.result.task.nextIndex };
+  }
+  async function retryManagedIndexItem(taskId, conversationId) {
+    const accountId = await window.APIHandler.getAccountId(true);
+    const reply = await runtimeMessage({ action: 'taskGet', accountId, id: taskId });
+    const task = reply.result;
+    if (!task || task.type !== 'index' || !['completed', 'failed'].includes(task.status)) {
+      throw new Error('E_INDEX_RETRY_TASK_NOT_FINISHED');
+    }
+    if (!(task.errors || []).some(error => error?.id === conversationId)) {
+      throw new Error('E_INDEX_RETRY_FAILURE_NOT_FOUND');
+    }
+    const record = (task.items || []).find(item => item.id === conversationId);
+    if (!record) throw new Error('E_INDEX_RETRY_RECORD_NOT_FOUND');
+    return retryIndexConversation(record);
   }
 
   async function downloadManagedTaskVolumes(taskId) {
@@ -4069,6 +4143,12 @@
       }
       if (msg.action === 'taskManage') {
         controlManagedTask(msg.id, msg.operation)
+          .then(result => respond({ success: true, ...result }))
+          .catch(error => respond({ success: false, error: error.message }));
+        return true;
+      }
+      if (msg.action === 'taskRetryIndexItem') {
+        retryManagedIndexItem(msg.id, msg.conversationId)
           .then(result => respond({ success: true, ...result }))
           .catch(error => respond({ success: false, error: error.message }));
         return true;

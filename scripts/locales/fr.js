@@ -80,6 +80,8 @@ window.ChatGPTProLocalePacks["fr"] = {
   "ui.searchAllConversations": "Chercher dans les conversations",
   "ui.search": "Chercher",
   "ui.updateIndex": "Actualiser l’index",
+  "ui.retryIndexConversation": "Réessayer",
+  "ui.retryRequiresIdleIndex": "Une tâche d’indexation est déjà en cours. Réessayez lorsqu’elle sera terminée.",
   "ui.localFullTextSearch": "Recherche locale",
   "ui.noMatchingResults": "Aucun résultat",
   "ui.openChatGPT_cea77b8": "Ouvrir le chatGPT",

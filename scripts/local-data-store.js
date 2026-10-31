@@ -294,8 +294,18 @@ globalThis.ChatGPTProLocalData = (() => {
     });
   }
 
-  async function getSearchMetadata(accountId) {
+  async function getSearchMetadata(accountId, ids = null) {
     validateAccount(accountId);
+    if (Array.isArray(ids)) {
+      const selectedIds = [...new Set(ids.map(validateId))].slice(0, 100);
+      const selected = await transaction([STORES.search], 'readonly', stores => Promise.all(
+        selectedIds.map(id => requested(stores[STORES.search].get([accountId, id])))
+      ));
+      return selected.filter(Boolean).map(record => ({
+        id: record.id, updateTime: record.updateTime,
+        indexedAt: record.indexedAt, schemaVersion: Number(record.schemaVersion || 0)
+      }));
+    }
     const records = await transaction([STORES.search], 'readonly', stores =>
       requested(stores[STORES.search].index('byAccount').getAll(IDBKeyRange.only(accountId))));
     return records.map(record => ({
@@ -602,7 +612,10 @@ globalThis.ChatGPTProLocalData = (() => {
       const existing = await requested(store.index('byAccount').getAll(IDBKeyRange.only(accountId)));
       const current = existing.find(item => item.type === type &&
         ['pending', 'running', 'paused'].includes(item.status));
-      if (current) return current;
+      if (current) {
+        if (options.rejectIfActive === true) throw new Error('E_TASK_ALREADY_ACTIVE');
+        return current;
+      }
       await requested(store.add(task));
       return task;
     });

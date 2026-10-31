@@ -83,6 +83,8 @@ window.ChatGPTProLocalePacks["zh-TW"] = {
   "ui.searchAllConversations": "搜尋所有聊天內容",
   "ui.search": "搜尋",
   "ui.updateIndex": "更新索引",
+  "ui.retryIndexConversation": "重試",
+  "ui.retryRequiresIdleIndex": "已有索引工作正在執行，請完成後再重試。",
   "ui.localFullTextSearch": "本機全文搜尋",
   "ui.noMatchingResults": "找不到符合的內容",
   "ui.fullLocalPreview": "本機完整預覽",

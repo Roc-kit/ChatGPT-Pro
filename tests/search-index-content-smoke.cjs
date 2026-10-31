@@ -148,7 +148,7 @@ const cleanSearchRecord = extract(storageSource,
   '  function cleanSearchRecord(accountId, record, origin = \'text-only\') {',
   '  async function putSearchRecord(');
 const getSearchMetadata = extract(storageSource,
-  '  async function getSearchMetadata(accountId) {', '  async function getSearchRecords(');
+  '  async function getSearchMetadata(accountId, ids = null) {', '  async function getSearchRecords(');
 const storageContext = {
   STORES: { search: 'search' },
   IDBKeyRange: { only: value => value },
@@ -161,7 +161,10 @@ const storageContext = {
     { id: 'legacy', updateTime: 10000, indexedAt: 100, schemaVersion: undefined }
   ],
   transaction: async (_stores, _mode, callback) => callback({
-    search: { index: () => ({ getAll: () => Promise.resolve(storageContext.storedRecords) }) }
+    search: {
+      index: () => ({ getAll: () => Promise.resolve(storageContext.storedRecords) }),
+      get: key => Promise.resolve(storageContext.storedRecords.find(record => record.id === key[1]) || null)
+    }
   })
 };
 vm.createContext(storageContext);
@@ -180,6 +183,9 @@ async function checkStorageMetadata() {
   assert.equal(metadata.find(item => item.id === 'chat-1').schemaVersion, 2);
   assert.equal(metadata.find(item => item.id === 'legacy').schemaVersion, 0,
     'existing records without a schema version are recognized as outdated');
+  const selected = await storageContext.metadata('account-A', ['legacy', 'missing']);
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].id, 'legacy', 'failure dashboard can read metadata for selected IDs only');
 }
 
 (async () => {

@@ -19,6 +19,7 @@ assert(start >= 0 && end > start, 'production task runner functions are present'
 const jobs = new Map();
 const fetched = [];
 const indexed = new Map();
+const failOnce = new Set();
 let pauseAfterFirst = false;
 const accountId = 'account-A';
 let consentApproved = false;
@@ -52,6 +53,7 @@ const context = {
   timestampValue: v => Number(v || 0),
   fetchConversationForExport: async record => {
     fetched.push(record.id);
+    if (failOnce.delete(record.id)) throw Error('mock temporary failure');
     return { data: { id: record.id, title: record.title, mapping: {},
       ...(record.rawUpdateTime ? { update_time: record.rawUpdateTime } : {}) }, source: 'cache' };
   },
@@ -62,6 +64,9 @@ const context = {
     const job = jobs.get(msg.id);
     switch (msg.action) {
       case 'indexPolicyGet': return { success: true, result: { ...policy } };
+      case 'logList': return { success: true, result: [] };
+      case 'detailStatus': return { success: true, result: { cooldownUntil: 0 } };
+      case 'localDataStats': return { success: true, directory: 0, complete: 0, indexed: indexed.size };
       case 'indexSetupPhase': return { success: true, result: { phase: msg.phase } };
       case 'indexPolicyConsent':
         policy.consentAt ||= Date.now();
@@ -78,9 +83,18 @@ const context = {
         })) };
       case 'taskList':
         return { success: true, result: [...jobs.values()] };
+      case 'taskGet':
+        return { success: true, result: job || null };
       case 'taskCreate': {
+        const active = [...jobs.values()].find(task => task.type === 'index'
+          && ['pending', 'running', 'paused'].includes(task.status));
+        if (active) {
+          if (msg.options?.rejectIfActive) throw Error('E_TASK_ALREADY_ACTIVE');
+          return { success: true, result: active };
+        }
         const task = { id: randomUUID(), type: 'index', accountId, items: msg.items,
-          nextIndex: 0, status: 'pending', successCount: 0, failureCount: 0, errors: [], lease: null };
+          nextIndex: 0, status: 'pending', successCount: 0, failureCount: 0, errors: [], lease: null,
+          createdAt: Date.now(), updatedAt: Date.now() };
         jobs.set(task.id, task);
         return { success: true, result: task };
       }
@@ -121,6 +135,18 @@ vm.createContext(context);
 vm.runInContext(`${schemaVersionSource}\n${source.slice(start, end)}\nglobalThis.runner = {
   updateFullTextIndex, runIndexTask, recoverIndexTasks, updateIndexWithConsent, maybeAutoIncrementalIndex
 };`, context);
+vm.runInContext('globalThis.runner.retryIndexConversation = retryIndexConversation;', context);
+const managedRetryStart = source.indexOf('  async function retryManagedIndexItem(');
+const managedRetryEnd = source.indexOf('\n  async function downloadManagedTaskVolumes', managedRetryStart);
+assert(managedRetryStart >= 0 && managedRetryEnd > managedRetryStart,
+  'Popup single-item retry handler is present');
+vm.runInContext(`${source.slice(managedRetryStart, managedRetryEnd)}\n`
+  + 'globalThis.retryManagedIndexItem = retryManagedIndexItem;', context);
+const dashboardStart = source.indexOf('  async function getTaskDashboard() {');
+const dashboardEnd = source.indexOf('\n  async function manageAccountLocalData', dashboardStart);
+assert(dashboardStart >= 0 && dashboardEnd > dashboardStart, 'task dashboard summary is present');
+vm.runInContext(`${source.slice(dashboardStart, dashboardEnd)}\n`
+  + 'globalThis.getTaskDashboard = getTaskDashboard;', context);
 
 async function main() {
   const records = ['a', 'b', 'c'].map((id, i) => ({ id, title: id, updateTime: i + 1 }));
@@ -183,7 +209,53 @@ async function main() {
   ], { force: true });
   assert.equal(newerDetail.indexedCount, 1);
   assert.equal(strictFullScans, 1, 'automatic incremental indexing never repeats first full scan');
-  console.log('S3_S4_PASS: checkpoints, pause/resume, first consent, verified full scan, auto incremental');
+
+  const retryRecords = [
+    { id: 'retry-success', title: 'Keep success', updateTime: 17 },
+    { id: 'retry-once', title: 'Retry once', updateTime: 18 }
+  ];
+  failOnce.add('retry-once');
+  const beforeFirstAttempt = fetched.length;
+  const firstAttempt = await context.runner.updateFullTextIndex(retryRecords);
+  assert.equal(firstAttempt.failures.length, 1, 'first task records the failed conversation');
+  assert.match(firstAttempt.failures[0], /^retry-once：/);
+  assert.deepEqual(fetched.slice(beforeFirstAttempt), ['retry-success', 'retry-once']);
+  const failedTask = [...jobs.values()].find(task => task.items?.some(item => item.id === 'retry-once')
+    && task.errors?.some(error => error.id === 'retry-once'));
+  await assert.rejects(() => context.retryManagedIndexItem(failedTask.id, 'not-a-failure'),
+    /E_INDEX_RETRY_FAILURE_NOT_FOUND/, 'Popup retry rejects IDs that are not failed items in the selected task');
+
+  const beforeSingleRetry = fetched.length;
+  const retried = await context.retryManagedIndexItem(failedTask.id, 'retry-once');
+  assert.equal(retried.indexedCount, 1, 'single-item retry creates and completes a one-record task');
+  assert.deepEqual(fetched.slice(beforeSingleRetry), ['retry-once'],
+    'single-item retry does not refetch any previously successful conversation');
+  const dashboardAfterRetry = await context.getTaskDashboard();
+  assert.equal(dashboardAfterRetry.tasks.find(task => task.id === failedTask.id).errors.length, 0,
+    'dashboard hides the original failure after the retried conversation has a current index');
+  const beforeAlreadyIndexedRetry = fetched.length;
+  const alreadyIndexed = await context.runner.retryIndexConversation(retryRecords[0]);
+  assert.equal(alreadyIndexed.alreadyIndexed, true, 'already indexed item is treated as a no-op');
+  assert.equal(fetched.length, beforeAlreadyIndexedRetry,
+    'already indexed item retry makes no detail request');
+  policy.skippedIndexIds = ['skipped-retry'];
+  const beforeSkippedRetry = fetched.length;
+  const skippedRetry = await context.runner.retryIndexConversation({
+    id: 'skipped-retry', title: 'Skipped retry', updateTime: 20
+  });
+  assert.equal(skippedRetry.skipped, true, 'permanently skipped conversations cannot be retried');
+  assert.equal(fetched.length, beforeSkippedRetry, 'skipped conversation retry makes no detail request');
+  policy.skippedIndexIds = [];
+
+  const activeBlocker = { id: randomUUID(), accountId, type: 'index',
+    items: [{ id: 'active-blocker' }], nextIndex: 0, status: 'paused', lease: null };
+  jobs.set(activeBlocker.id, activeBlocker);
+  await assert.rejects(() => context.runner.retryIndexConversation({
+    id: 'blocked-retry', title: 'Blocked retry', updateTime: 19
+  }), /E_TASK_ALREADY_ACTIVE/,
+    'single-item retry refuses to attach to a paused active task');
+  jobs.delete(activeBlocker.id);
+  console.log('S3_S4_PASS: checkpoints, pause/resume, first consent, verified full scan, auto incremental, single-item retry');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

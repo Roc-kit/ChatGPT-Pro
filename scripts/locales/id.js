@@ -80,6 +80,8 @@ window.ChatGPTProLocalePacks["id"] = {
   "ui.searchAllConversations": "Cari percakapan",
   "ui.search": "Cari",
   "ui.updateIndex": "Perbarui indeks",
+  "ui.retryIndexConversation": "Coba lagi",
+  "ui.retryRequiresIdleIndex": "Tugas pengindeksan sedang berjalan. Coba lagi setelah selesai.",
   "ui.localFullTextSearch": "Pencarian lokal",
   "ui.noMatchingResults": "Tidak ada hasil",
   "ui.openChatGPT_cea77b8": "Buka ChatGPT",

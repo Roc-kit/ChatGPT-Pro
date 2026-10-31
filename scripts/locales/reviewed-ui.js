@@ -4960,6 +4960,14 @@ ui.unknownAutoContinueOperation`.split('\n');
       'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
     ].map(locale => [locale, autoContinueKeys.map(key => scope.ChatGPTProLocalePacks[locale][key])]))
   });
+  const retryIndexKeys = `ui.retryIndexConversation
+ui.retryRequiresIdleIndex`.split('\n');
+  blocks.push({
+    keys: retryIndexKeys,
+    translations: Object.fromEntries([
+      'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
+    ].map(locale => [locale, retryIndexKeys.map(key => scope.ChatGPTProLocalePacks[locale][key])]))
+  });
   for (const block of blocks) {
     for (const [locale, translations] of Object.entries(block.translations)) {
       if (translations.length !== block.keys.length) {
