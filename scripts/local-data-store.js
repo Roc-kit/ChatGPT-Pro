@@ -368,7 +368,11 @@ globalThis.ChatGPTProLocalData = (() => {
     const item = await transaction([STORES.conversations], 'readonly', stores =>
       requested(stores[STORES.conversations].get([accountId, id])));
     const expected = normalizeTime(expectedUpdateTime);
-    const versionMatches = expectedUpdateTime === undefined || (expected !== null && item?.dataVersion === expected);
+    // The directory may lag a detail response already cached locally. A newer
+    // complete JSON is still valid for that older directory snapshot; only a
+    // cache version behind the directory must be treated as stale.
+    const versionMatches = expectedUpdateTime === undefined
+      || (expected !== null && Number.isFinite(item?.dataVersion) && item.dataVersion >= expected);
     if (!item?.complete || !versionMatches) {
       return { hit: false, stale: Boolean(item), dataVersion: item?.dataVersion ?? null };
     }
@@ -522,7 +526,10 @@ globalThis.ChatGPTProLocalData = (() => {
       const byId = new Map(indexed.map(entry => [entry.id, entry]));
       const missing = directory.filter(record => {
         const entry = byId.get(record.id);
-        return !entry || entry.dataVersion !== normalizeTime(record.updateTime);
+        const directoryVersion = normalizeTime(record.updateTime);
+        return !entry || (directoryVersion === null
+          ? entry.dataVersion !== null
+          : !Number.isFinite(entry.dataVersion) || entry.dataVersion < directoryVersion);
       });
       const openTasks = await requested(stores[STORES.tasks].index('byAccount').getAll(IDBKeyRange.only(accountId)));
       if (openTasks.some(task => task.type === 'index' && ['pending', 'running', 'paused'].includes(task.status))) {

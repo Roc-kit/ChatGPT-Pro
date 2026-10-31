@@ -143,7 +143,9 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     await storage.putConversation('acct-a', { id: 'same-id', raw: rawA, updateTime: 1700000002000 });
     const countAfter = await storage.getStats('acct-a');
     check(countAfter.indexed === 0 && countAfter.complete === 1, 'invalidation prevents version mismatch');
-    check(!(await storage.getConversation('acct-a', 'same-id', 1700000000)).hit, 'old revision no longer matches');
+    const newerThanDirectory = await storage.getConversation('acct-a', 'same-id', 1700000000);
+    check(newerThanDirectory.hit && newerThanDirectory.dataVersion === 1700000002000,
+      'a newer complete local version satisfies a lagging directory timestamp');
     check((await storage.getLegacyMetadata()).unassignedCount === 1, 'legacy unassigned not reassigned');
     try { await storage.getConversation(storage.UNASSIGNED_ACCOUNT, 'old-chat'); throw Error('unassigned exposed'); }
     catch (error) { check(/账号 ID/.test(error.message), 'unassigned account is not active'); }
