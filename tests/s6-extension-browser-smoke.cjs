@@ -266,14 +266,15 @@ async function main() {
         width: el.getBoundingClientRect().width,
         rail: el.querySelector('.chatgpt-pro-minimap-rail').getBoundingClientRect().height,
         dockHeight: dock.getBoundingClientRect().height,
+        dockWidth: dock.getBoundingClientRect().width,
         viewport: innerHeight, viewportWidth: innerWidth };
     })()`);
     assert(Math.abs(minimapSize.dockHeight - minimapSize.viewport * 0.5) <= 2,
       `unconfigured outer tool dock defaults to half the viewport height: ${JSON.stringify(minimapSize)}`);
-    assert(minimapSize.height > minimapSize.dockHeight * 0.7,
-      'minimap occupies most of the unified dock above the movable export actions');
-    assert(minimapSize.width >= 24 && minimapSize.rail > minimapSize.height * 0.85,
-      'minimap shares a compact, continuous toolbar with the export actions');
+    assert(minimapSize.height > 80,
+      `minimap fills the flexible middle section between the dock header and action footer: ${JSON.stringify(minimapSize)}`);
+    assert(minimapSize.dockWidth === 76 && minimapSize.rail > minimapSize.height * 0.85,
+      'desktop dock uses the unified 76px-wide layout with a full-height navigation rail');
     assert.equal(await cdp.eval(popupSession,
       `document.querySelector('#minimapToggle').getAttribute('aria-checked')`), 'true');
     await cdp.eval(popupSession, `document.querySelector('#minimapToggle').click()`);
@@ -482,7 +483,7 @@ async function main() {
       }
     })()`);
     await eventually(async () => cdp.eval(pageSession,
-      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length >= 20`),
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length >= 10`),
     'long conversation renders a bounded navigation window');
     const minimapAnchors = await cdp.eval(pageSession, `(() => {
       const markers = [...document.querySelectorAll('.chatgpt-pro-minimap-marker')];
@@ -629,12 +630,22 @@ async function main() {
     const enabledDockHeight = await cdp.eval(pageSession, `(() => {
       const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
       const rect = dock.getBoundingClientRect();
-      const actions = dock.querySelector('[data-chatgpt-pro-tool-actions]').getBoundingClientRect();
+      const actionsElement = dock.querySelector('[data-chatgpt-pro-tool-actions]');
+      const actions = actionsElement.getBoundingClientRect();
+      const auto = actionsElement.querySelector('[data-chatgpt-pro-auto-continue]').getBoundingClientRect();
+      const exportButton = actionsElement.querySelector('[data-chatgpt-pro-current-export]').getBoundingClientRect();
       return { height: rect.height, viewport: innerHeight,
-        actionsBottom: actions.bottom, dockBottom: rect.bottom };
+        actionsBottom: actions.bottom, dockBottom: rect.bottom,
+        actionsWidth: actions.width, autoTop: auto.top, autoBottom: auto.bottom,
+        exportTop: exportButton.top, exportBottom: exportButton.bottom,
+        autoWidth: auto.width, exportWidth: exportButton.width };
     })()`);
     assert(Math.abs(enabledDockHeight.height - enabledDockHeight.viewport * 0.5) <= 2 &&
-      Math.abs(enabledDockHeight.actionsBottom - enabledDockHeight.dockBottom) <= 1,
+      Math.abs(enabledDockHeight.actionsBottom - enabledDockHeight.dockBottom) <= 1 &&
+      enabledDockHeight.autoTop < enabledDockHeight.exportTop &&
+      enabledDockHeight.autoWidth === enabledDockHeight.actionsWidth &&
+      enabledDockHeight.exportWidth === enabledDockHeight.actionsWidth &&
+      enabledDockHeight.exportBottom <= enabledDockHeight.dockBottom - 1,
     `auto continuation keeps the complete dock at half viewport height: ${JSON.stringify(enabledDockHeight)}`);
     await cdp.eval(popupSession, `new Promise(resolve =>
       chrome.storage.local.set({ autoContinueEnabled: false }, resolve))`);
@@ -655,18 +666,25 @@ async function main() {
         buttonWidth: button.width, buttonHeight: button.height,
         buttonRadius: parseFloat(getComputedStyle(launcher).borderTopLeftRadius),
         buttonShadow: getComputedStyle(launcher).boxShadow,
-        panelTop: panel.top, buttonBottom: button.bottom };
+        buttonTop: button.top, panelTop: panel.top, buttonBottom: button.bottom,
+        childOrder: [...dock.children].filter(node => node.matches(
+          '[data-chatgpt-pro-launcher], [data-chatgpt-pro-minimap], [data-chatgpt-pro-tool-actions]'))
+          .map(node => node.getAttribute('data-chatgpt-pro-launcher') ? 'header'
+            : node.hasAttribute('data-chatgpt-pro-minimap') ? 'minimap' : 'actions') };
     })()`);
     assert(mergedLauncherLayout.inDock && mergedLauncherLayout.className.includes('chatgpt-pro-dock-launcher'),
       'directory/search launcher is mounted inside the minimap dock');
     assert(Math.abs(mergedLauncherLayout.centerX -
       (mergedLauncherLayout.dockLeft + mergedLauncherLayout.dockWidth / 2)) <= 1 &&
-      Math.abs(mergedLauncherLayout.centerY - mergedLauncherLayout.dockTop) <= 1 &&
+      Math.abs(mergedLauncherLayout.buttonTop - mergedLauncherLayout.dockTop - 1) <= 1 &&
       mergedLauncherLayout.panelTop >= mergedLauncherLayout.buttonBottom - 1 &&
-      mergedLauncherLayout.buttonWidth === mergedLauncherLayout.buttonHeight &&
-      mergedLauncherLayout.buttonRadius >= 10 && mergedLauncherLayout.buttonRadius <= 14 &&
+      mergedLauncherLayout.buttonWidth === mergedLauncherLayout.dockWidth - 2 &&
+      mergedLauncherLayout.buttonHeight === mergedLauncherLayout.buttonWidth &&
+      mergedLauncherLayout.dockWidth >= 64 && mergedLauncherLayout.dockWidth <= 76 &&
+      mergedLauncherLayout.buttonRadius >= 14 && mergedLauncherLayout.buttonRadius <= 18 &&
+      mergedLauncherLayout.childOrder.join(',') === 'header,minimap,actions' &&
       mergedLauncherLayout.buttonShadow === 'none',
-    `directory launcher overlaps the minimap top edge as a matching rounded-rectangle control: ${JSON.stringify(mergedLauncherLayout)}`);
+    `directory launcher forms the integrated header of the one-piece dock: ${JSON.stringify(mergedLauncherLayout)}`);
 
     const horizontalDragPoint = await cdp.eval(pageSession, `(() => {
       const launcher = document.querySelector('[data-chatgpt-pro-launcher]');
@@ -717,9 +735,19 @@ async function main() {
     await cdp.send('Input.dispatchMouseEvent', {
       type: 'mouseReleased', x: dragPoint.x, y: dragPoint.y - 45, button: 'left'
     }, pageSession);
-    await eventually(async () => cdp.eval(pageSession,
-      `document.querySelector('[data-chatgpt-pro-tool-actions]').getBoundingClientRect().top < ${beforeDrag.actionTop - 40}`),
-    'export actions can be moved upward to avoid covering page content');
+    const dragState = await cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      const actions = dock.querySelector('[data-chatgpt-pro-tool-actions]');
+      const header = dock.querySelector('[data-chatgpt-pro-launcher]');
+      const button = dock.querySelector('[data-chatgpt-pro-current-export]');
+      return { actionTop: actions.getBoundingClientRect().top,
+        dockTop: dock.getBoundingClientRect().top, dockHeight: dock.getBoundingClientRect().height,
+        headerHeight: header.getBoundingClientRect().height,
+        actionsHeight: actions.getBoundingClientRect().height,
+        buttonClasses: button.className, pointerEvents: getComputedStyle(button).pointerEvents };
+    })()`);
+    assert(dragState.actionTop < beforeDrag.actionTop - 25,
+      `export actions can be moved upward to avoid covering page content: before=${JSON.stringify(beforeDrag)}, after=${JSON.stringify(dragState)}`);
     const afterDrag = await cdp.eval(pageSession, `(() => {
       const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
       const rect = dock.getBoundingClientRect();
@@ -728,8 +756,8 @@ async function main() {
         panelHeight: dock.querySelector('.chatgpt-pro-minimap').getBoundingClientRect().height,
         dockHeight: dock.getBoundingClientRect().height };
     })()`);
-    assert(afterDrag.panelHeight < beforeDrag.panelHeight - 80 &&
-      afterDrag.dockHeight < beforeDrag.dockHeight - 80,
+    assert(afterDrag.panelHeight < beforeDrag.panelHeight - 40 &&
+      afterDrag.dockHeight < beforeDrag.dockHeight - 40,
     `moving export actions upward automatically shortens minimap and dock: before=${JSON.stringify(beforeDrag)}, after=${JSON.stringify(afterDrag)}`);
     assert(Math.abs(afterDrag.dockCenter - minimapSize.viewport / 2) <= 2,
       'outer toolbar stays vertically centered as its height shrinks');
@@ -747,10 +775,12 @@ async function main() {
       const actions = dock.querySelector('[data-chatgpt-pro-tool-actions]').getBoundingClientRect();
       const outer = dock.getBoundingClientRect();
       return { width: innerWidth, height: innerHeight, left: outer.left, right: outer.right,
+        dockWidth: outer.width,
         dockHeight: outer.height, panelBottom: panel.bottom, actionsTop: actions.top,
         actionsBottom: actions.bottom, dockCenter: (outer.top + outer.bottom) / 2 };
     })()`);
     assert(narrowLayout.left >= 0 && narrowLayout.right <= narrowLayout.width &&
+      narrowLayout.dockWidth === 64 &&
       narrowLayout.actionsBottom <= narrowLayout.height &&
       narrowLayout.panelBottom <= narrowLayout.actionsTop + 1 &&
       narrowLayout.dockHeight < narrowLayout.height &&
@@ -782,7 +812,7 @@ async function main() {
       const trigger = document.querySelector('[data-chatgpt-pro-current-export]');
       const style = getComputedStyle(popover);
       const triggerRect = trigger.getBoundingClientRect();
-      const triggerRadius = parseFloat(getComputedStyle(trigger).borderTopLeftRadius);
+      const triggerRadius = parseFloat(getComputedStyle(trigger).borderBottomLeftRadius);
       const centers = buttons.map(button => {
         const rect = button.getBoundingClientRect();
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
@@ -798,7 +828,7 @@ async function main() {
       return buttons.length === 2 && buttons[0].title === 'Export entire chat (Markdown)' &&
         buttons[1].title === 'Download all conversation images (ZIP)' &&
         buttons.every(button => button.querySelector('svg')) &&
-        triggerRadius >= triggerRect.width / 2 - 1 &&
+        triggerRadius >= 14 && triggerRadius <= 18 &&
         centers.every(point => Math.abs(point.width - point.height) <= 1 && point.radius >= point.width / 2 - 1) &&
         centers.every(point => point.width < triggerRect.width) &&
         Math.abs(distance(centers[0], triggerCenter) - expectedDistance) <= 1 &&

@@ -897,14 +897,16 @@
     });
     panel.append(rail, preview);
     previous?.remove();
-    dock.insertBefore(panel, dock.firstChild);
+    const actions = dock.querySelector('[data-chatgpt-pro-tool-actions]');
+    dock.insertBefore(panel, actions || null);
     window.ChatGPTProI18n?.watch(panel);
     S.minimap.id = id;
     S.minimap.signature = signature;
     S.minimap.entries = entries;
     S.minimap.active = null;
     S.minimap.layoutSlots = minimapSlotCount();
-    updateMinimapDockLayout();
+    if (previous) updateMinimapDockLayout();
+    else placeCurrentChatExportButton();
     updateMinimapActive();
   }
 
@@ -1312,17 +1314,17 @@
   }
 
   function toolActionPositionBounds(actions) {
-    const height = actions.offsetHeight;
+    const dock = actions.closest('[data-chatgpt-pro-tool-dock]');
+    const header = dock?.querySelector('[data-chatgpt-pro-launcher]');
+    const actionHeight = actions.offsetHeight;
+    const headerHeight = header?.offsetHeight || 76;
     const maxTop = Math.max(VIEWPORT_MARGIN,
-      window.innerHeight - height - VIEWPORT_MARGIN - 19);
-    // Reserve room for the overlapping directory button and a usable minimap
-    // rail. The bottom export action remains the vertical resize handle.
-    const maxPanelHeight = Math.max(0,
-      window.innerHeight - height - VIEWPORT_MARGIN * 2 - 38 - 26);
-    const minPanelHeight = Math.min(60, maxPanelHeight);
-    const minOffsetTop = 26 + minPanelHeight;
+      window.innerHeight - actionHeight - VIEWPORT_MARGIN);
+    const availablePanelHeight = Math.max(0,
+      window.innerHeight - actionHeight - headerHeight - VIEWPORT_MARGIN * 2);
+    const minPanelHeight = Math.min(48, availablePanelHeight);
     const minTop = Math.min(maxTop, Math.max(VIEWPORT_MARGIN,
-      Math.ceil((window.innerHeight - height + minOffsetTop) / 2)));
+      Math.ceil((window.innerHeight - actionHeight + headerHeight + minPanelHeight) / 2)));
     return { minTop, maxTop };
   }
 
@@ -1331,20 +1333,30 @@
     const actions = dock?.querySelector('[data-chatgpt-pro-tool-actions]');
     const panel = dock?.querySelector('[data-chatgpt-pro-minimap]');
     if (!dock || !actions) return;
+    const header = dock.querySelector('[data-chatgpt-pro-launcher]');
+    const headerHeight = header?.offsetHeight || 0;
+    const actionHeight = actions.offsetHeight;
+    actions.style.removeProperty('top');
+    panel?.style.removeProperty('height');
+
+    if (!panel || dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden')) {
+      const compactHeight = headerHeight + actionHeight;
+      dock.style.setProperty('top', `${Math.max(VIEWPORT_MARGIN,
+        Math.round((window.innerHeight - compactHeight) / 2))}px`, 'important');
+      dock.style.setProperty('height', `${compactHeight}px`, 'important');
+      return;
+    }
+
     const { minTop, maxTop } = toolActionPositionBounds(actions);
     const currentTop = Number.isFinite(requestedActionTop)
       ? requestedActionTop
       : actions.getBoundingClientRect().top;
     const actionTop = Math.max(minTop, Math.min(maxTop, currentTop));
-    const dockTop = window.innerHeight - actionTop - actions.offsetHeight;
-    const actionsOffsetTop = actionTop - dockTop;
+    const dockBottom = actionTop + actionHeight;
+    const dockTop = window.innerHeight - dockBottom;
+    const dockHeight = dockBottom - dockTop;
     dock.style.setProperty('top', `${dockTop}px`, 'important');
-    // The dock and the last action share the same bottom edge. The directory
-    // button overlaps the dock's top edge; the minimap rail starts beneath it.
-    dock.style.setProperty('height', `${Math.max(0, actionsOffsetTop + actions.offsetHeight)}px`, 'important');
-    actions.style.setProperty('top', `${actionsOffsetTop}px`, 'important');
-    const panelHeight = Math.max(0, actionsOffsetTop - 26);
-    if (panel) panel.style.setProperty('height', `${panelHeight}px`, 'important');
+    dock.style.setProperty('height', `${Math.max(headerHeight + actionHeight, dockHeight)}px`, 'important');
     const downloadPopover = dock.querySelector('[data-chatgpt-pro-download-popover]');
     if (downloadPopover && !downloadPopover.hidden) positionDownloadPopover(downloadPopover);
   }
@@ -1356,7 +1368,8 @@
     const { minTop, maxTop } = toolActionPositionBounds(actions);
     const savedY = S.settings.currentExportPositionY;
     const hasSavedPosition = savedY != null && Number.isFinite(Number(savedY));
-    const defaultDockHeight = window.innerHeight * 0.5;
+    const defaultDockHeight = Math.min(window.innerHeight * 0.5,
+      window.innerHeight - VIEWPORT_MARGIN * 2);
     const defaultActionTop = (window.innerHeight + defaultDockHeight) / 2 - actions.offsetHeight;
     const top = hasSavedPosition
       ? Math.round(minTop + (maxTop - minTop) * Math.max(0, Math.min(1, Number(savedY))))
