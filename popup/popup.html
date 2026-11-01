@@ -90,6 +90,7 @@
     .task-overview { border-top:0; }
     .task-list { padding:0; }
     #taskFeedback { min-height:15px; }
+    [data-popup-internal] { display:none !important; }
     @media (prefers-color-scheme: dark) {
       body { background:#202123; color:#f3f4f6; }
       .section { border-color:#374151; }
@@ -114,7 +115,7 @@
 <body>
   <div class="header">
     <div class="header-top">
-      <strong>ChatGPT Pro <span id="extensionVersion">v3.0.0</span></strong>
+      <strong>ChatGPT Pro <span id="extensionVersion">v3.0.2</span></strong>
       <div class="api-status ok" id="apiStatus"><span id="apiStatusText">正在初始化</span></div>
     </div>
     <button id="openChatGPT" type="button">打开 ChatGPT ↗</button>
@@ -169,24 +170,24 @@
     </div>
   </details>
   <details id="taskManager" class="management">
-    <summary class="management-summary"><span class="summary-copy"><strong>索引与数据管理</strong><span class="summary-hint" id="taskStatusText">当前没有运行中的任务</span></span></summary>
+    <summary class="management-summary"><span class="summary-copy"><strong>索引与数据管理</strong><span class="summary-hint" id="taskStatusText" data-popup-internal>当前没有运行中的任务</span></span></summary>
     <div class="management-body">
-    <div class="task-overview" id="taskOverview">
+    <div class="task-overview" id="taskOverview" data-popup-internal hidden>
     <div class="hint" id="taskCooldownText" role="status" hidden></div>
     <div class="task-list" id="taskList"></div>
     </div>
-      <div class="row task-header"><strong>全文索引与缓存</strong><button id="taskRefresh" type="button">刷新状态</button></div>
-    <div id="indexStartArea" style="margin-bottom:9px" hidden>
+      <div class="row task-header" data-popup-internal><strong>全文索引与缓存</strong><button id="taskRefresh" type="button">刷新状态</button></div>
+    <div id="indexStartArea" data-popup-internal style="margin-bottom:9px" hidden>
       <button type="button" id="indexStart">建立全文索引（需授权）</button>
       <div class="hint" id="indexConsentStatus">首次需要授权扫描当前账号全部可读取的聊天；完成后自动增量更新。</div>
-      <div class="row" style="margin-top:9px">
-        <span>自动更新全文索引</span>
-        <button type="button" class="toggle" id="autoIndexToggle" role="switch" aria-checked="false" aria-label="自动更新全文索引" disabled></button>
-      </div>
-      <div class="data-actions">
-        <button type="button" id="clearIndex">清除索引</button>
-        <button type="button" id="clearRaw">清除完整 JSON</button>
-      </div>
+    </div>
+    <div class="row" style="margin-top:9px">
+      <span>自动更新全文索引</span>
+      <button type="button" class="toggle" id="autoIndexToggle" role="switch" aria-checked="false" aria-label="自动更新全文索引" disabled></button>
+    </div>
+    <div class="data-actions">
+      <button type="button" id="clearIndex">清除索引</button>
+      <button type="button" id="clearRaw">清除完整 JSON</button>
     </div>
     <div class="hint" id="taskFeedback" aria-live="polite">正在读取任务…</div>
     <button id="refresh"><span id="refreshText">完整刷新 / 重建缓存</span></button>

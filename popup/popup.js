@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ? filenameTemplate.value || '{created_datetime}_{title}'
       : filenamePresets[filenamePreset.value] || '{created_datetime}_{title}';
     updateFilenameUi(currentTemplate);
+    pollStatus();
   });
   const toggle = document.getElementById('toggle');
   const sidebarTimeToggle = document.getElementById('sidebarTimeToggle');
@@ -84,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  document.getElementById('extensionVersion').textContent = `v${chrome.runtime.getManifest?.().version || '3.0.0'}`;
+  document.getElementById('extensionVersion').textContent = `v${chrome.runtime.getManifest?.().version || '3.0.2'}`;
 
   function findChatGPTTab() {
     return new Promise(resolve => {
@@ -189,16 +190,28 @@ document.addEventListener('DOMContentLoaded', () => {
     clearIndex.disabled = clearRaw.disabled = false;
     const unfinishedIndexTask = (data.tasks || []).find(task => task.type === 'index' &&
       ['pending', 'running', 'paused'].includes(task.status));
+    const remainingIndexCount = Number.isInteger(data.stats?.directory) && Number.isInteger(data.stats?.indexed)
+      ? Math.max(0, data.stats.directory - data.stats.indexed) : null;
     indexStartArea.hidden = false;
     indexStart.disabled = Boolean(unfinishedIndexTask);
     indexStart.textContent = !policy.consentAt ? '建立全文索引（需授权）'
-      : initialDone ? '立即检查新增聊天' : '继续首次全文索引';
+      : unfinishedIndexTask
+        ? `全文索引执行中${remainingIndexCount ? `（剩余 ${remainingIndexCount} 个）` : ''}`
+        : remainingIndexCount
+          ? `补齐剩余 ${remainingIndexCount} 个对话`
+          : initialDone ? '立即检查新增聊天' : '继续首次全文索引';
     indexConsentStatus.textContent = policy.setupPhase === 'scanning'
       ? '正在扫描完整聊天目录，包括项目与分页；索引任务准备中'
       : unfinishedIndexTask
-      ? '索引任务已创建，请使用下方任务控制和进度查看'
-      : initialDone ? (policy.autoEnabled === false ? '首次索引已完成，自动更新已关闭' : '首次索引已完成，之后自动检查增量变化')
-        : policy.consentAt ? '已授权，首次完整索引尚未完成' : '首次扫描需确认授权；原始 JSON 仅保存在本机';
+      ? `索引任务${unfinishedIndexTask.status === 'paused' ? '已暂停' : '已继续执行'}；恢复后“继续”会变为“暂停”，请查看下方进度`
+      : initialDone ? (remainingIndexCount
+        ? `当前有 ${remainingIndexCount} 个对话尚未索引；点击上方按钮补齐`
+        : policy.autoEnabled === false ? '首次索引已完成，自动更新已关闭' : '首次索引已完成，之后自动检查增量变化')
+        : policy.consentAt
+          ? remainingIndexCount
+            ? `首次索引尚未完成：还剩 ${remainingIndexCount} 个对话；点击上方按钮重试`
+            : '已授权，首次完整索引尚未完成'
+          : '首次扫描需确认授权；原始 JSON 仅保存在本机';
     // Only unfinished work belongs in the small Popup. Completed/canceled
     // jobs and their events remain in persistent task storage, not this UI.
     const activeTasks = (data.tasks || []).filter(task =>
@@ -469,16 +482,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function syncOnPopupOpen() {
-    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-      const tab = tabs[0];
-      if (!tab?.id || !tab.url?.includes('chatgpt.com')) return;
-      chrome.tabs.sendMessage(tab.id, { action: 'incrementalSync' }, response => {
-        if (chrome.runtime.lastError || !response?.success) return;
-        count.textContent = response.count ?? count.textContent;
-      });
-    });
-  }
 
   toggle.addEventListener('click', () => {
     const enabled = !toggle.classList.contains('active');
@@ -570,7 +573,6 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshText.textContent = '完整刷新 / 重建缓存';
   }
 
-  syncOnPopupOpen();
   pollStatus();
   setInterval(pollStatus, 3000);
   loadTaskDashboard();

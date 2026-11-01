@@ -223,8 +223,9 @@ server.listen(0, '127.0.0.1', async () => {
       await new Promise(resolve => setTimeout(resolve, 50));
       check(window.__testState.calls.some(msg => msg.action === 'indexBegin' && msg.userConfirmedConsent),
         'explicitly approved popup consent is passed to signed-in tab');
-      check(document.querySelector('#indexStart').textContent === '继续首次全文索引',
-        'after consent popup offers to continue incomplete initial indexing');
+      check(document.querySelector('#indexStart').textContent === '补齐剩余 77 个对话' &&
+        document.querySelector('#indexConsentStatus').textContent.includes('还剩 77 个对话'),
+        'after consent popup exposes the exact incomplete count and retry action');
       window.__testState.currentUrl = 'https://example.org/';
       document.querySelector('#taskRefresh').click();
       await new Promise(resolve => setTimeout(resolve, 50));
