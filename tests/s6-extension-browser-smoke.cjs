@@ -473,6 +473,10 @@ async function main() {
     'short fixture restored after logical-turn grouping test');
     await cdp.eval(pageSession, `(() => {
       const main = document.querySelector('main');
+      const topSpacer = document.createElement('div');
+      topSpacer.dataset.lazyWindowSpacer = 'top';
+      topSpacer.style.height = '1400px';
+      main.insertBefore(topSpacer, main.firstChild);
       for (let index = 0; index < 120; index++) {
         const section = document.createElement('section');
         section.setAttribute('data-message-id', 'minimap-test-' + index);
@@ -481,6 +485,10 @@ async function main() {
         section.textContent = 'Message number ' + index;
         main.append(section);
       }
+      const bottomSpacer = document.createElement('div');
+      bottomSpacer.dataset.lazyWindowSpacer = 'bottom';
+      bottomSpacer.style.height = '1400px';
+      main.append(bottomSpacer);
     })()`);
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelectorAll('.chatgpt-pro-minimap-marker').length >= 10`),
@@ -492,6 +500,60 @@ async function main() {
     })()`);
     assert(minimapAnchors.count <= 49 && minimapAnchors.first.startsWith('1/122') &&
       minimapAnchors.last.startsWith('122/122'), 'first and last chat messages remain pinned on a long rail');
+    assert.equal(requests.details, 0,
+      'lazy-window edge regression runs without a full conversation JSON cache');
+    for (const edge of ['first', 'last']) {
+      const delayedWindowEdge = await cdp.eval(pageSession, `(() => {
+        const marker = document.querySelector('.chatgpt-pro-minimap-${edge}');
+        const expectedId = marker?.dataset.chatgptProMinimapMessageId;
+        const target = document.querySelector('[data-message-id="' + expectedId + '"]');
+        if (!target) throw Error('lazy-window edge marker must identify a rendered message');
+        const parent = target.parentNode;
+        const removed = '${edge}' === 'first'
+          ? [...document.querySelectorAll('main [data-message-id]')]
+          : [target];
+        const anchor = '${edge}' === 'first'
+          ? document.querySelector('[data-lazy-window-spacer="bottom"]')
+          : target.nextSibling;
+        const scroller = document.scrollingElement;
+        const nativeScrollTo = scroller.scrollTo.bind(scroller);
+        window.__restoreLazyWindowScrollTo = nativeScrollTo;
+        window.__lazyWindowBoundaryScrolls = [];
+        scroller.scrollTo = options => {
+          const top = typeof options === 'number' ? options : options?.top;
+          window.__lazyWindowBoundaryScrolls.push({ top,
+            max: Math.max(0, scroller.scrollHeight - scroller.clientHeight) });
+          return nativeScrollTo(options);
+        };
+        removed.forEach(node => node.remove());
+        marker.click();
+        window.setTimeout(() => {
+          const fragment = document.createDocumentFragment();
+          removed.forEach(node => fragment.append(node));
+          parent.insertBefore(fragment, anchor);
+        }, 5000);
+        return { expectedId };
+      })()`);
+      await eventually(async () => cdp.eval(pageSession, `(() => {
+        const target = document.querySelector('[data-message-id="' + ${JSON.stringify(delayedWindowEdge.expectedId)} + '"]');
+        const preferred = Math.max(64, Math.min(150, innerHeight * 0.22));
+        return Boolean(target && Math.abs(target.getBoundingClientRect().top - preferred) <= 12);
+      })()`), `${edge} marker in a partial DOM window waits for its exact lazy-loaded target`, 15000);
+      const boundaryScrolls = await cdp.eval(pageSession, `(() => {
+        const calls = window.__lazyWindowBoundaryScrolls || [];
+        document.scrollingElement.scrollTo = window.__restoreLazyWindowScrollTo;
+        delete window.__lazyWindowBoundaryScrolls;
+        delete window.__restoreLazyWindowScrollTo;
+        return calls;
+      })()`);
+      const hitGlobalBoundary = boundaryScrolls.some(call => edge === 'first'
+        ? call.top <= 1 : call.top >= call.max - 1);
+      assert(!hitGlobalBoundary,
+        `${edge} marker from a partial DOM window must not jump to the global document boundary: ${JSON.stringify(boundaryScrolls)}`);
+      await eventually(async () => cdp.eval(pageSession,
+        `document.querySelectorAll('.chatgpt-pro-minimap-marker').length >= 10`),
+      `${edge} lazy-load fixture restored before the next navigation case`, 6000);
+    }
     const delayedMiddleTarget = await cdp.eval(pageSession, `(() => {
       const main = document.querySelector('main');
       const nodes = [...document.querySelectorAll('[data-minimap-test]')];
@@ -795,7 +857,9 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `innerWidth === ${minimapSize.viewportWidth} && innerHeight === ${minimapSize.viewport}`),
     'original viewport restored');
-    await cdp.eval(pageSession, `document.querySelectorAll('[data-minimap-test]').forEach(item => item.remove())`);
+    await cdp.eval(pageSession, `(() => {
+      document.querySelectorAll('[data-minimap-test], [data-lazy-window-spacer]').forEach(item => item.remove());
+    })()`);
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
     'minimap restores compact message count after DOM changes');

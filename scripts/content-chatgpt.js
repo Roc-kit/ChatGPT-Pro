@@ -620,6 +620,11 @@
     const isCurrentJump = () => jumpToken === S.minimap.jumpToken
       && conversationId === currentConversationId();
     const expectedId = preferredMessageId || entry.startId || entry.id;
+    // Without a complete local conversation record, the DOM adapter exposes
+    // only ChatGPT's currently rendered lazy-load window. Its first/last
+    // entries are not necessarily the real conversation boundaries.
+    const hasCompleteConversation = S.minimap.cachedId === conversationId
+      && Boolean(S.minimap.cachedMessages?.mapping);
     const resolveTarget = () => {
       // Reuse the DOM adapter's complete ID lookup. Modern ChatGPT layouts
       // can expose message IDs only through data-chatgpt-search-message-ids.
@@ -664,7 +669,8 @@
     };
     let target = resolveTarget();
     if (target) return alignTarget(target);
-    const isEdge = entry.index === 0 || entry.index === total - 1;
+    const isEdge = hasCompleteConversation
+      && (entry.index === 0 || entry.index === total - 1);
     if (!isEdge && expectedId) {
       refreshMinimapEntryTargets(navigationEntries);
       // Never guess from preview text when an exact ID is missing. Even if
@@ -693,21 +699,32 @@
         if (needsPosition && nearest) {
           nearest.target.scrollIntoView({ behavior: 'auto', block: 'center' });
           needsPosition = false;
-        } else if (needsPosition) {
+        } else if (needsPosition && hasCompleteConversation) {
           const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
           const fraction = entry.index / Math.max(1, total - 1);
           const top = reversed ? -max * (1 - fraction) : max * fraction;
           scroller.scrollTo?.({ top, behavior: 'auto' });
           needsPosition = false;
+        } else if (needsPosition && Number.isFinite(entry.scrollOffset)) {
+          // If virtualization has detached every known neighbor, return to
+          // the approximate scroll position captured while this DOM-only
+          // marker was rendered. Never interpret a partial window as 0/100%.
+          const top = entry.scrollOffset - scroller.clientHeight * 0.35;
+          scroller.scrollTo?.({ top, behavior: 'auto' });
+          needsPosition = false;
+        } else if (needsPosition) {
+          fallbackStep = true;
+          needsPosition = false;
         } else if (fallbackStep) {
-          const towardEnd = nearest ? (entry.index > nearest.index ? 1 : -1) : 0;
+          const towardEnd = nearest ? (entry.index > nearest.index ? 1 : -1)
+            : (entry.index < total / 2 ? -1 : 1);
           const max = Math.max(1, scroller.scrollHeight - scroller.clientHeight);
           const targetFraction = entry.index / Math.max(1, total - 1);
           const currentFraction = reversed
             ? 1 - Math.min(1, Math.abs(scroller.scrollTop) / max)
             : Math.min(1, Math.max(0, scroller.scrollTop / max));
-          const direction = (nearest ? towardEnd : (targetFraction >= currentFraction ? 1 : -1))
-            * (reversed ? -1 : 1);
+          const direction = (hasCompleteConversation && !nearest
+            ? (targetFraction >= currentFraction ? 1 : -1) : towardEnd) * (reversed ? -1 : 1);
           const distance = Math.max(180, scroller.clientHeight * 0.65);
           if (scroller === document.scrollingElement) window.scrollBy({ top: direction * distance, behavior: 'auto' });
           else scroller.scrollBy?.({ top: direction * distance, behavior: 'auto' });
@@ -799,6 +816,13 @@
       return;
     }
     const allEntries = minimapMessages(S.minimap.cachedId === id ? S.minimap.cachedMessages : null, messages);
+    const scroller = conversationScrollContainer();
+    const scrollTop = scroller === document.scrollingElement ? window.scrollY : (scroller?.scrollTop || 0);
+    const scrollerTop = scroller === document.scrollingElement ? 0 : (scroller?.getBoundingClientRect().top || 0);
+    for (const entry of allEntries) {
+      if (!entry.target?.isConnected) continue;
+      entry.scrollOffset = scrollTop + entry.target.getBoundingClientRect().top - scrollerTop;
+    }
     S.minimap.allEntries = allEntries;
     const seen = messages.findIndex(element => {
       const r = element.getBoundingClientRect();
@@ -3527,8 +3551,19 @@
       const id = entry.startId || entry.id;
       if (!id) continue;
       if (entry.target?.isConnected && window.ChatGPTDomAdapter.messageIds(entry.target).includes(id)) continue;
-      entry.target = byId.get(id) || null;
-      entry.targets = entry.target ? [entry.target] : [];
+      const resolved = byId.get(id);
+      if (resolved) {
+        entry.target = resolved;
+        entry.targets = [resolved];
+      } else if (entry.target?.isConnected) {
+        // A connected node with a changed ID is no longer this message.
+        entry.target = null;
+        entry.targets = [];
+      }
+      // Keep a detached node reference when the exact message is temporarily
+      // virtualized out. React may reattach that same node later, and modern
+      // search-ID-only nodes are not always discoverable through the adapter
+      // while detached. resolveTarget() checks isConnected before using it.
     }
   }
 
