@@ -35,6 +35,16 @@
     'ui.taskStatusChanged',
     'ui.cannotClearLegacyIndex',
     'ui.cannotClearCurrentAccountIndex',
+    'ui.indexTaskCreatedViewTaskControlsForProgress',
+    'ui.noSavedZIPPartsForTheCurrentAccount',
+    'ui.indexPausedResumeItInTaskManager',
+    'ui.downloadPreviouslySavedZIPPartsAgain',
+    'ui.exportingEntireConversation',
+    'ui.conversationExported',
+    'ui.legacyIndexOnlineLinkAndCompleteExportUnverified',
+    'ui.cannotReadIndexStatus',
+    'ui.anExplicitAccountIDIsRequiredLegacyIndex',
+
     'ui.expandMinimap',
     'ui.collapseMinimap'
   ]);

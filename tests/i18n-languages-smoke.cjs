@@ -29,7 +29,7 @@ for (const language of languages) {
     assert.notEqual(i18n.t('扩展已就绪'), '扩展已就绪', `ready text translated for ${language}`);
     for (const value of [
       '长对话快速导航（Minimap）', '导出整个对话（Markdown）', '下载当前对话所有图片 ZIP',
-      '正在导出整个对话…', '已导出整个对话', '归档', '删除',
+      '归档', '删除',
       '导出失败：HTTP 429', '图片下载失败：HTTP 404',
       '图片 ZIP 已生成：成功 4，失败 1；共 2 卷',
       '正在下载图片 2 / 12', '正在保存图片 ZIP 1 / 2',

@@ -36,8 +36,17 @@ const inactiveLegacyKeys = [
   'ui.bulkTaskItemFailed',
   'ui.taskStatusChanged',
   'ui.cannotClearLegacyIndex',
-  'ui.cannotClearCurrentAccountIndex'
-];
+  'ui.cannotClearCurrentAccountIndex',
+  'ui.indexTaskCreatedViewTaskControlsForProgress',
+  'ui.noSavedZIPPartsForTheCurrentAccount',
+  'ui.indexPausedResumeItInTaskManager',
+  'ui.downloadPreviouslySavedZIPPartsAgain',
+  'ui.exportingEntireConversation',
+  'ui.conversationExported',
+  'ui.legacyIndexOnlineLinkAndCompleteExportUnverified',
+  'ui.cannotReadIndexStatus',
+  'ui.anExplicitAccountIDIsRequiredLegacyIndex',
+]
 for (const key of inactiveLegacyKeys) {
   assert(!keys.includes(key), `${key} is not an active user-facing UI string`);
   assert(!Object.hasOwn(sources, key), `${key} is excluded from the canonical locale catalog`);
@@ -70,10 +79,21 @@ for (const key of runtimeKeyReferences) {
   assert(keys.includes(key), `runtime-referenced key is not reviewed: ${key}`);
 }
 const dynamicMapSource = fs.readFileSync(path.join(__dirname, '../scripts/locales/dynamic-map.js'), 'utf8');
+// These two labels are reached through dynamic error-prefix patterns in
+// i18n.js, where translateText resolves the captured label with t(label).
+const dynamicI18nSourceKeys = new Set([
+  'ui.imageDownloadFailed',
+  'ui.failedToDownloadSavedZIPParts'
+]);
+for (const key of dynamicI18nSourceKeys) {
+  assert(runtimeSources['scripts/i18n.js'].includes(sources[key]),
+    `${key} must remain referenced by a dynamic runtime message pattern`);
+}
 for (const [key, sourceValue] of Object.entries(sources)) {
   const sourceLiteralReferenced = Object.entries(runtimeSources).some(([file, source]) =>
     file !== 'scripts/i18n.js' && source.includes(sourceValue));
-  assert(runtimeKeyReferences.has(key) || sourceLiteralReferenced || dynamicMapSource.includes(key),
+  assert(runtimeKeyReferences.has(key) || sourceLiteralReferenced || dynamicMapSource.includes(key)
+      || dynamicI18nSourceKeys.has(key),
     `locale key has no runtime reference; audit before keeping it: ${key}`);
 }
 const popupSource = fs.readFileSync(path.join(__dirname, '../popup/popup.js'), 'utf8');
@@ -107,7 +127,6 @@ const samples = [
   ['es', 'ui.fullTextIndexCache', 'Índice de texto completo y caché'],
   ['es', 'ui.titleMatch', 'Coincidencia en el título'],
   ['ja', 'ui.initialIndexingConsentRequired', '初回インデックス（許可が必要）'],
-  ['fr', 'ui.downloadPreviouslySavedZIPPartsAgain', 'Retélécharger les dernières parties ZIP enregistrées'],
   ['pt-BR', 'ui.localDataCountForThisAccount', 'Dados locais da conta atual'],
   ['es', 'ui.localOnlyConfirmedRemoteDeletion', 'Solo local · eliminación oficial confirmada'],
   ['fr', 'ui.exportThisConversationAsMarkdown', 'Exporter ce chat au format Markdown'],
@@ -157,8 +176,6 @@ const samples = [
     'Des tâches sont en cours ou en attente pour ce compte. Mettez-les en pause ou annulez-les avant le nettoyage.'],
   ['id', 'ui.newerFullJSONExistsRefusingToOverwriteWith',
     'JSON lengkap yang lebih baru sudah tersedia. Data lama tidak digunakan untuk menimpanya.'],
-  ['ar', 'ui.anExplicitAccountIDIsRequiredLegacyIndex',
-    'يلزم تحديد معرّف الحساب صراحةً؛ لا يمكن إسناد إدخالات الفهرس القديم إلى الحساب الحالي تلقائيًا.'],
   ['pt-BR', 'ui.automaticIndexingNotEnabledForThisAccount',
     'A indexação automática de texto completo não está ativada para esta conta'],
   ['zh-TW', 'ui.fullTextSearchFailed', '全文搜尋失敗'],
@@ -176,7 +193,6 @@ const samples = [
   ['ja', 'ui.completeJSONNotSavedLocallyRemoteDeletionCanceled',
     '完全な JSON がローカルに保存されていないため、クラウド上のチャットは削除していません。'],
   ['ja', 'ui.indexingIsRunningInAnotherTab', '別のタブでインデックス作成が実行中です。'],
-  ['es', 'ui.indexPausedResumeItInTaskManager', 'La indexación está en pausa. Reanúdala desde el gestor de tareas.'],
   ['id', 'ui.succeeded', 'Berhasil'],
   ['ru', 'ui.taskNotFoundForCurrentAccount_3826111', 'Задача для текущей учётной записи не найдена'],
   ['ja', 'ui.invalidTaskOperation_d3e0539', '無効なタスク操作です']
