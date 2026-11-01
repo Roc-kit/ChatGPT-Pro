@@ -312,6 +312,17 @@ const APIHandler = (function () {
     return map;
   }
 
+  async function fetchInitialRegularPage() {
+    const token = await getToken();
+    const url = new URL(`${baseUrl()}/conversations`);
+    url.searchParams.set('offset', '0');
+    url.searchParams.set('limit', String(CFG.PAGE_SIZE));
+    url.searchParams.set('order', 'updated');
+    const data = await fetchAuthedJson(token, url.toString());
+    const items = Array.isArray(data) ? data : (data.items || data.conversations || []);
+    return items.map(item => recordFromItem(item)).filter(Boolean);
+  }
+
   async function fetchRegularIncremental(token, cachedMap, forceFull, strictFull = false) {
     const changed = [];
     let offset = 0;

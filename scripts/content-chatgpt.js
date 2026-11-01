@@ -979,6 +979,11 @@
       removeAllBadges();
       if (S.settings.showSidebarTime) stampAll();
     }
+    if (map?.partial) {
+      window.APIHandler.syncConversationList(true)
+        .then(records => applySyncedConversationRecords(records, '已完成首次目录同步'))
+        .catch(error => log('Initial directory sync failed:', error.message));
+    }
     return map;
   }
 

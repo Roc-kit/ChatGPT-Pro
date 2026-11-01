@@ -179,6 +179,11 @@
       : element.querySelector('[data-chatgpt-selection-message-id], [data-message-id]') || element;
   }
 
+  function containsMessageDecorationTarget(node) {
+    if (!(node instanceof Element)) return false;
+    return node.matches('.turn-action-controls') || Boolean(node.querySelector('.turn-action-controls'));
+  }
+
   function containsMessageNode(node) {
     if (!(node instanceof Element)) return false;
     return node.matches(MESSAGE_SELECTOR) || Boolean(node.querySelector(MESSAGE_SELECTOR));
@@ -246,6 +251,7 @@
     messageRole,
     timestampTarget,
     containsMessageNode,
+    containsMessageDecorationTarget,
     findMessage,
     composer,
     sendButton,
