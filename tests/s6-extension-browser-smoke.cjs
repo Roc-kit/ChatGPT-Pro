@@ -639,8 +639,8 @@ async function main() {
       Math.abs(mergedLauncherLayout.centerY - mergedLauncherLayout.dockTop) <= 1 &&
       mergedLauncherLayout.panelTop >= mergedLauncherLayout.buttonBottom - 1 &&
       mergedLauncherLayout.buttonWidth === mergedLauncherLayout.buttonHeight &&
-      mergedLauncherLayout.buttonRadius >= mergedLauncherLayout.buttonWidth / 2 - 1,
-    `directory launcher overlaps the minimap top edge as a matching circular control: ${JSON.stringify(mergedLauncherLayout)}`);
+      mergedLauncherLayout.buttonRadius >= 10 && mergedLauncherLayout.buttonRadius <= 14,
+    `directory launcher overlaps the minimap top edge as a matching rounded-rectangle control: ${JSON.stringify(mergedLauncherLayout)}`);
 
     const horizontalDragPoint = await cdp.eval(pageSession, `(() => {
       const launcher = document.querySelector('[data-chatgpt-pro-launcher]');
