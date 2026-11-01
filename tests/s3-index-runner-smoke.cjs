@@ -21,11 +21,12 @@ const fetched = [];
 const indexed = new Map();
 const failOnce = new Set();
 const failWithStatus = new Map();
+let allowRetryPacing = false;
 let pauseAfterFirst = false;
 let cooldownUntil = 0;
 const accountId = 'account-A';
 let consentApproved = false;
-let policy = { consentAt: null, initialCompletedAt: null };
+let policy = { consentAt: null, initialCompletedAt: null, skippedIndexIds: [] };
 let strictFullScans = 0;
 const initialScanItems = [{ id: 'first-consented', title: 'Full scan item', updateTime: 11 }];
 const context = {
@@ -67,12 +68,15 @@ const context = {
       ...(record.rawUpdateTime ? { update_time: record.rawUpdateTime } : {}) }, source: 'cache' };
   },
   buildSearchIndexRecord: (data, record) => ({ id: record.id, updateTime: record.updateTime, messages: [] }),
-  waitForExport: async () => { throw new Error('local records should not incur network pacing'); },
+  waitForExport: async () => {
+    if (!allowRetryPacing) throw new Error('local records should not incur network pacing');
+  },
   async runtimeMessage(msg) {
     assert.equal(msg.accountId, accountId);
     const job = jobs.get(msg.id);
     switch (msg.action) {
-      case 'indexPolicyGet': return { success: true, result: { ...policy } };
+      case 'indexPolicyGet': return { success: true, result: { ...policy,
+        skippedIndexIds: [...(policy.skippedIndexIds || [])] } };
       case 'logList': return { success: true, result: [] };
       case 'detailStatus': return { success: true, result: { cooldownUntil } };
       case 'localDataStats': return { success: true, directory: 0, complete: 0, indexed: indexed.size };
@@ -91,7 +95,8 @@ const context = {
           id, updateTime, schemaVersion: 2
         })) };
       case 'taskList':
-        return { success: true, result: [...jobs.values()] };
+        return { success: true, result: [...jobs.values()].sort((a, b) =>
+          Number(b.updatedAt || 0) - Number(a.updatedAt || 0)) };
       case 'taskGet':
         return { success: true, result: job || null };
       case 'taskCreate': {
@@ -103,7 +108,8 @@ const context = {
         }
         const task = { id: randomUUID(), type: 'index', accountId, items: msg.items,
           nextIndex: 0, status: 'pending', successCount: 0, failureCount: 0,
-          consecutiveFailures: 0, rateLimitPauseCount: 0, errors: [], lease: null,
+          consecutiveFailures: 0, rateLimitPauseCount: 0,
+          skippedCount: 0, skippedIds: [], errors: [], lease: null,
           createdAt: Date.now(), updatedAt: Date.now() };
         jobs.set(task.id, task);
         return { success: true, result: task };
@@ -150,6 +156,7 @@ const context = {
         if (job.status !== 'running' || job.lease?.token !== msg.token) throw Error('任务租约已失效');
         assert.equal(msg.itemIndex, job.nextIndex, 'checkpoint must be monotonic');
         job.nextIndex++;
+        job.updatedAt = Date.now();
         if (msg.outcome === 'success') {
           job.successCount++;
           job.consecutiveFailures = 0;
@@ -259,15 +266,16 @@ async function main() {
     'persistently skipped conversations never re-enter a later index queue');
 
   const retryRecords = [
-    { id: 'retry-success', title: 'Keep success', updateTime: 17 },
-    { id: 'retry-once', title: 'Retry once', updateTime: 18 }
+    { id: 'retry-once', title: 'Retry once', updateTime: 17 },
+    { id: 'retry-success', title: 'Keep success', updateTime: 18 }
   ];
+  allowRetryPacing = true;
   failOnce.add('retry-once');
   const beforeFirstAttempt = fetched.length;
   const firstAttempt = await context.runner.updateFullTextIndex(retryRecords);
   assert.equal(firstAttempt.failures.length, 1, 'first task records the failed conversation');
   assert.match(firstAttempt.failures[0], /^retry-once：/);
-  assert.deepEqual(fetched.slice(beforeFirstAttempt), ['retry-success', 'retry-once']);
+  assert.deepEqual(fetched.slice(beforeFirstAttempt), ['retry-once', 'retry-success']);
   const failedTask = [...jobs.values()].find(task => task.items?.some(item => item.id === 'retry-once')
     && task.errors?.some(error => error.id === 'retry-once'));
   await assert.rejects(() => context.retryManagedIndexItem(failedTask.id, 'not-a-failure'),
@@ -282,7 +290,7 @@ async function main() {
   assert.equal(dashboardAfterRetry.tasks.find(task => task.id === failedTask.id).errors.length, 0,
     'dashboard hides the original failure after the retried conversation has a current index');
   const beforeAlreadyIndexedRetry = fetched.length;
-  const alreadyIndexed = await context.runner.retryIndexConversation(retryRecords[0]);
+  const alreadyIndexed = await context.runner.retryIndexConversation(retryRecords[1]);
   assert.equal(alreadyIndexed.alreadyIndexed, true, 'already indexed item is treated as a no-op');
   assert.equal(fetched.length, beforeAlreadyIndexedRetry,
     'already indexed item retry makes no detail request');
