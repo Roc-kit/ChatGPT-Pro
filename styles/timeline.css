@@ -110,7 +110,7 @@
   border-radius: 12px !important;
   background: rgba(255, 255, 255, 0.96) !important;
   color: #374151 !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
+  box-shadow: none !important;
   font-size: 0 !important;
   line-height: 1 !important;
   cursor: grab !important;
@@ -149,7 +149,7 @@
   border-radius: 12px !important;
   background: rgba(255, 255, 255, 0.98) !important;
   color: #111827 !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
+  box-shadow: none !important;
 }
 
 .chatgpt-pro-panel {

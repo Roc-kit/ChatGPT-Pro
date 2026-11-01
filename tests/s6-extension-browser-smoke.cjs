@@ -630,6 +630,7 @@ async function main() {
         dockLeft: outer.left, dockTop: outer.top, dockWidth: outer.width,
         buttonWidth: button.width, buttonHeight: button.height,
         buttonRadius: parseFloat(getComputedStyle(launcher).borderTopLeftRadius),
+        buttonShadow: getComputedStyle(launcher).boxShadow,
         panelTop: panel.top, buttonBottom: button.bottom };
     })()`);
     assert(mergedLauncherLayout.inDock && mergedLauncherLayout.className.includes('chatgpt-pro-dock-launcher'),
@@ -639,7 +640,8 @@ async function main() {
       Math.abs(mergedLauncherLayout.centerY - mergedLauncherLayout.dockTop) <= 1 &&
       mergedLauncherLayout.panelTop >= mergedLauncherLayout.buttonBottom - 1 &&
       mergedLauncherLayout.buttonWidth === mergedLauncherLayout.buttonHeight &&
-      mergedLauncherLayout.buttonRadius >= 10 && mergedLauncherLayout.buttonRadius <= 14,
+      mergedLauncherLayout.buttonRadius >= 10 && mergedLauncherLayout.buttonRadius <= 14 &&
+      mergedLauncherLayout.buttonShadow === 'none',
     `directory launcher overlaps the minimap top edge as a matching rounded-rectangle control: ${JSON.stringify(mergedLauncherLayout)}`);
 
     const horizontalDragPoint = await cdp.eval(pageSession, `(() => {
