@@ -280,6 +280,37 @@ async function main() {
       `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
     'minimap switch immediately restores navigation');
     await cdp.eval(pageSession, `(() => {
+      const main = document.querySelector('main');
+      const answer = document.querySelector('[data-message-id="answer"]');
+      const lastMarker = document.querySelector('.chatgpt-pro-minimap-last');
+      answer.style.minHeight = '1500px';
+      window.__manualScrollTargetCalls = 0;
+      const nativeScrollIntoView = answer.scrollIntoView.bind(answer);
+      answer.scrollIntoView = (...args) => {
+        window.__manualScrollTargetCalls++;
+        return nativeScrollIntoView(...args);
+      };
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
+      answer.remove();
+      lastMarker.click();
+      document.dispatchEvent(new WheelEvent('wheel', { deltaY: -200, bubbles: true }));
+      window.scrollTo({ top: Math.max(100, document.documentElement.scrollHeight * 0.45), behavior: 'auto' });
+      window.__manualScrollPosition = window.scrollY;
+      window.setTimeout(() => main.append(answer), 500);
+    })()`);
+    await sleep(900);
+    assert.equal(await cdp.eval(pageSession, 'window.__manualScrollTargetCalls'), 0,
+    'manual wheel navigation cancels a pending minimap jump instead of snapping back when its target mounts');
+    await cdp.eval(pageSession, `(() => {
+      delete window.__manualScrollPosition;
+      delete window.__manualScrollTargetCalls;
+      document.querySelector('[data-message-id="answer"]').style.minHeight = '';
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
+    'minimap restored after manual-scroll cancellation test');
+    await cdp.eval(pageSession, `(() => {
       const answer = document.querySelector('[data-message-id="answer"]');
       answer.style.minHeight = '1500px';
       document.querySelector('.chatgpt-pro-minimap-assistant').click();

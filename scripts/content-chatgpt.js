@@ -342,6 +342,22 @@
     window.setInterval(checkView, MESSAGE_ROUTE_CHECK_MS);
     // Minimap reuses rendered turns and checks local raw JSON without network detail requests.
     window.setInterval(syncConversationMinimap, 3000);
+    // A minimap/search jump can wait for virtualized turns for up to 45s.
+    // Once the user starts navigating manually, that old async jump must not
+    // regain control when its target eventually mounts and snap the view back
+    // to the previous destination (most visibly, the end of a long chat).
+    const cancelPendingJumpForManualNavigation = event => {
+      if (event.type === 'keydown' && ![
+        'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '
+      ].includes(event.key)) return;
+      activeSearchJumpToken++;
+      S.minimap.jumpToken++;
+    };
+    document.addEventListener('wheel', cancelPendingJumpForManualNavigation,
+      { passive: true, capture: true });
+    document.addEventListener('touchmove', cancelPendingJumpForManualNavigation,
+      { passive: true, capture: true });
+    document.addEventListener('keydown', cancelPendingJumpForManualNavigation, true);
     const scheduleActive = () => {
       if (S.minimap.frame) return;
       S.minimap.frame = window.requestAnimationFrame(() => {
