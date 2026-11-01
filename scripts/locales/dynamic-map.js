@@ -198,5 +198,20 @@ window.ChatGPTProDynamicMessageKeys = [
   },
   {
     "default": "status.minimapSpeaker"
+  },
+  {
+    "default": "status.remainingIndexCount"
+  },
+  {
+    "default": "status.skippedIndexCount"
+  },
+  {
+    "default": "status.outdatedIndexCount"
+  },
+  {
+    "default": "status.completeRemainingIndexCount"
+  },
+  {
+    "default": "status.refreshOutdatedIndexCount"
   }
 ];

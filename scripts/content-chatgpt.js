@@ -61,7 +61,7 @@
       showMessageTimestamps: false,
       showMinimap: true,
       autoContinueEnabled: false,
-      autoContinueText: '继续',
+      autoContinueText: '',
       autoContinueDelaySeconds: 120,
       autoContinueMaxCount: 20,
       fontSize: 11,
@@ -1498,6 +1498,11 @@
     const count = popover.querySelector('[data-auto-count]');
     const start = popover.querySelector('[data-auto-start]');
     const pause = popover.querySelector('[data-auto-pause]');
+    const textInput = popover.querySelector('[data-auto-text]');
+    popover.querySelectorAll('[data-auto-i18n]').forEach(element => {
+      element.textContent = window.ChatGPTProI18n.t(element.dataset.autoI18n);
+    });
+    if (textInput) textInput.placeholder = window.ChatGPTProI18n.t('ui.enterContinuationMessage');
     if (status) status.textContent = autoContinueStatusText();
     if (count) count.textContent = window.ChatGPTProI18n.format('ui.sentCount', {
       count: S.autoContinue.sentCount, max: S.settings.autoContinueMaxCount
@@ -1505,7 +1510,11 @@
     if (start) start.textContent = S.autoContinue.mode === 'paused'
       ? window.ChatGPTProI18n.t('ui.resume') : window.ChatGPTProI18n.t('ui.startCurrentChat');
     if (start) start.hidden = S.autoContinue.mode === 'waiting';
+    if (start) start.disabled = !String(textInput?.value || '').trim();
     if (pause) pause.hidden = S.autoContinue.mode !== 'waiting';
+    if (pause) pause.textContent = window.ChatGPTProI18n.t('ui.pause');
+    const stop = popover.querySelector('[data-auto-stop]');
+    if (stop) stop.textContent = window.ChatGPTProI18n.t('ui.stop');
   }
 
   function writeComposerText(text) {
@@ -1531,6 +1540,7 @@
   }
 
   async function sendAutoContinueMessage(continueTask = true) {
+    if (!String(S.settings.autoContinueText || '').trim()) throw new Error('ui.enterContinuationMessage');
     if (window.ChatGPTDomAdapter.isGenerating()) throw new Error('ui.waitingForCurrentReply');
     const existingText = window.ChatGPTDomAdapter.composerText();
     if (existingText && existingText !== S.settings.autoContinueText) throw new Error('ui.composerHasContent');
@@ -1563,6 +1573,9 @@
   }
 
   async function startAutoContinue() {
+    if (!String(S.settings.autoContinueText || '').trim()) {
+      throw new Error('ui.enterContinuationMessage');
+    }
     const id = currentConversationId();
     if (!id) throw new Error('ui.openChatFirst');
     const resumePrevious = S.autoContinue.mode === 'paused'
@@ -1645,23 +1658,23 @@
     popover.hidden = true;
     const t = key => window.ChatGPTProI18n.t(key);
     popover.innerHTML = `
-      <strong>${t('ui.autoContinue')}</strong>
+      <strong data-auto-i18n="ui.autoContinue">${t('ui.autoContinue')}</strong>
       <div class="chatgpt-pro-auto-status" data-auto-status></div>
       <div class="chatgpt-pro-auto-count" data-auto-count></div>
       <label class="chatgpt-pro-auto-field">
-        <span>${t('ui.continuationMessage')}</span>
-        <input type="text" data-auto-text>
-        <small>${t('ui.continuationMessageHelp')}</small>
+        <span data-auto-i18n="ui.continuationMessage">${t('ui.continuationMessage')}</span>
+        <input type="text" data-auto-text required placeholder="${t('ui.enterContinuationMessage')}">
+        <small data-auto-i18n="ui.continuationMessageHelp">${t('ui.continuationMessageHelp')}</small>
       </label>
       <label class="chatgpt-pro-auto-field">
-        <span>${t('ui.pollingInterval')}</span>
+        <span data-auto-i18n="ui.pollingInterval">${t('ui.pollingInterval')}</span>
         <input type="number" min="1" max="86400" data-auto-delay>
-        <small>${t('ui.pollingIntervalHelp')}</small>
+        <small data-auto-i18n="ui.pollingIntervalHelp">${t('ui.pollingIntervalHelp')}</small>
       </label>
       <label class="chatgpt-pro-auto-field">
-        <span>${t('ui.maximumContinuations')}</span>
+        <span data-auto-i18n="ui.maximumContinuations">${t('ui.maximumContinuations')}</span>
         <input type="number" min="1" max="999" data-auto-max>
-        <small>${t('ui.maximumContinuationsHelp')}</small>
+        <small data-auto-i18n="ui.maximumContinuationsHelp">${t('ui.maximumContinuationsHelp')}</small>
       </label>
       <div class="chatgpt-pro-auto-actions">
         <button type="button" data-auto-start>${t('ui.startCurrentChat')}</button>
@@ -1671,11 +1684,12 @@
     const textInput = popover.querySelector('[data-auto-text]');
     const delayInput = popover.querySelector('[data-auto-delay]');
     const maxInput = popover.querySelector('[data-auto-max]');
+    const startButton = popover.querySelector('[data-auto-start]');
     textInput.value = S.settings.autoContinueText;
     delayInput.value = S.settings.autoContinueDelaySeconds;
     maxInput.value = S.settings.autoContinueMaxCount;
     const saveSettings = () => {
-      S.settings.autoContinueText = textInput.value.trim() || t('ui.resume');
+      S.settings.autoContinueText = textInput.value.trim();
       S.settings.autoContinueDelaySeconds = Math.max(1, Math.min(86400, Number(delayInput.value) || 120));
       S.settings.autoContinueMaxCount = Math.max(1, Math.min(999, Number(maxInput.value) || 20));
       textInput.value = S.settings.autoContinueText;
@@ -1689,9 +1703,21 @@
       renderAutoContinueUi();
     };
     [textInput, delayInput, maxInput].forEach(input => input.addEventListener('change', saveSettings));
-    popover.querySelector('[data-auto-start]').addEventListener('click', async () => {
+    textInput.addEventListener('input', () => {
+      startButton.disabled = !textInput.value.trim();
+    });
+    startButton.addEventListener('click', async () => {
       saveSettings();
-      try { await startAutoContinue(); } catch (error) { pauseAutoContinue(error.message); }
+      try { await startAutoContinue(); }
+      catch (error) {
+        if (error.message === 'ui.enterContinuationMessage') {
+          const status = popover.querySelector('[data-auto-status]');
+          if (status) status.textContent = t(error.message);
+          textInput.focus();
+          return;
+        }
+        pauseAutoContinue(error.message);
+      }
     });
     popover.querySelector('[data-auto-pause]').addEventListener('click', () => pauseAutoContinue());
     popover.querySelector('[data-auto-stop]').addEventListener('click', stopAutoContinue);
@@ -3739,9 +3765,9 @@
     let searchCacheRevision = '';
     const searchCache = new Map();
     const initialSearchTitle = document.createElement('strong');
-    initialSearchTitle.textContent = window.ChatGPTProI18n?.t('ui.searchAllConversations') || '搜索所有聊天内容';
+    initialSearchTitle.textContent = '搜索所有聊天内容';
     const initialSearchHint = document.createElement('span');
-    initialSearchHint.textContent = window.ChatGPTProI18n?.t('ui.enterKeywordsToSearchTheLocalIndex') || '输入关键词以搜索已有的本地索引';
+    initialSearchHint.textContent = '输入关键词以搜索已有的本地索引';
     const initialSearchState = document.createElement('div');
     initialSearchState.className = 'chatgpt-pro-search-initial';
     initialSearchState.append(initialSearchTitle, initialSearchHint);
@@ -3824,7 +3850,7 @@
         return;
       }
       if (wasHidden) searchIndexDetail.open = false;
-      searchIndexErrorCount.textContent = `（${normalized.length} 个）`;
+      searchIndexErrorCount.textContent = `(${normalized.length})`;
       searchIndexErrorList.replaceChildren();
       for (const failure of normalized.slice(-10)) {
         const item = itemById.get(failure.id) || {};
@@ -3850,7 +3876,7 @@
           const skip = document.createElement('button');
           skip.type = 'button';
           skip.className = 'chatgpt-pro-search-index-error-skip';
-          skip.textContent = window.ChatGPTProI18n?.t('ui.skipIndexConversation') || '跳过';
+          skip.textContent = '跳过';
           skip.addEventListener('click', async () => {
             const confirmText = window.ChatGPTProI18n?.t('ui.skipIndexConversationConfirm')
               || '跳过此对话？跳过后，此对话将不再自动参与全文索引；清空全文索引后可重新纳入。';
@@ -3864,7 +3890,7 @@
               await refreshSearchIndexStatus();
             } catch (error) {
               skip.disabled = false;
-              searchIndexStatus.textContent = `${window.ChatGPTProI18n?.t('ui.indexOperationFailed') || '索引操作失败'}: ${error.message}`;
+              searchIndexStatus.textContent = `索引操作失败：${error.message}`;
             }
           });
           actions.appendChild(skip);
@@ -3872,7 +3898,7 @@
         actions.appendChild(link);
         heading.append(title, actions);
         const id = document.createElement('div');
-        id.textContent = `ID：${failure.id || '未知'}`;
+        id.textContent = `ID: ${failure.id || '未知'}`;
         const message = document.createElement('div');
         message.className = 'chatgpt-pro-search-index-error-message';
         message.textContent = `错误：${failure.message}`;
@@ -3881,7 +3907,11 @@
         if (hintText) {
           const hint = document.createElement('div');
           hint.className = 'chatgpt-pro-search-index-error-hint';
-          hint.textContent = `判断：${hintText}`;
+          const hintLabel = document.createElement('span');
+          hintLabel.textContent = '判断';
+          const hintValue = document.createElement('span');
+          hintValue.textContent = hintText;
+          hint.append(hintLabel, document.createTextNode(': '), hintValue);
           entry.appendChild(hint);
         }
         searchIndexErrorList.appendChild(entry);
@@ -3891,7 +3921,18 @@
     const indexPauseReason = phase => phase === 'consecutive-failures'
       ? '连续失败，等待人工继续'
       : phase === 'auth-error' ? '登录或权限异常'
-        : phase === 'paused' ? '已手动暂停' : (phase || '未记录原因');
+        : phase === 'paused' ? '已手动暂停' : '未记录原因';
+
+    const setIndexStatusParts = parts => {
+      searchIndexStatus.replaceChildren();
+      const visible = parts.filter(part => part !== null && part !== undefined && part !== '');
+      visible.forEach((part, index) => {
+        if (index) searchIndexStatus.appendChild(document.createTextNode(' · '));
+        const item = document.createElement('span');
+        item.textContent = String(part);
+        searchIndexStatus.appendChild(item);
+      });
+    };
 
     const refreshSearchIndexStatus = async () => {
       try {
@@ -3922,21 +3963,26 @@
         searchIndexUpdate.disabled = Boolean(activeTask && activeTask.status !== 'paused');
         searchIndexUpdate.textContent = !policy.result?.consentAt
           ? '首次索引（需授权）'
-          : activeTask?.status === 'paused' ? '继续'
-            : activeTask ? '执行中'
+            : activeTask?.status === 'paused' ? '继续'
+              : activeTask ? '执行中'
           : outdated ? `刷新索引规则（${outdated} 个）`
             : remaining ? `补齐剩余 ${remaining} 个`
             : policy.result.initialCompletedAt ? '更新索引' : '继续首次索引';
         if (activeTask?.status === 'paused') searchIndexUpdate.dataset.resumeTaskId = activeTask.id;
-        searchIndexStatus.textContent = !policy.result?.consentAt
-          ? `首次建立全文索引需点击授权；不会自动抓取正文。已有索引可搜索 · 当前 ${response.records?.length || 0} 条`
-          : `当前账号已索引 ${response.records?.length || 0} / ${currentRecords.length} 个`
-            + (remaining ? ` · 剩余 ${remaining} 个需要补齐` : '')
-            + (skippedCount ? ` · ${window.ChatGPTProI18n?.format?.('status.skippedIndexConversations', { count: skippedCount }) || `已跳过 ${skippedCount} 个`}` : '')
-            + (outdated ? ` · ${outdated} 个需按新规则重建` : '');
-        if (activeTask) searchIndexStatus.textContent += activeTask.status === 'paused'
-          ? ` · 已暂停：${indexPauseReason(activeTask.phase)}`
-          : ` · ${activeTask.status === 'running' ? '执行中' : '等待执行'} ${activeTask.nextIndex || 0}/${activeTask.items?.length || 0}`;
+        const statusParts = !policy.result?.consentAt
+          ? [`首次建立全文索引需点击授权；不会自动抓取正文。已有索引可搜索 · 当前 ${response.records?.length || 0} 条`]
+          : [
+            `当前账号已索引 ${response.records?.length || 0} / ${currentRecords.length} 个`,
+            remaining ? `剩余 ${remaining} 个需要补齐` : '',
+            skippedCount ? `已跳过 ${skippedCount} 个` : '',
+            outdated ? `${outdated} 个需按新规则重建` : ''
+          ];
+        if (activeTask?.status === 'paused') statusParts.push(indexPauseReason(activeTask.phase));
+        else if (activeTask) {
+          statusParts.push(activeTask.status === 'running' ? '执行中' : '等待执行');
+          statusParts.push(`${activeTask.nextIndex || 0}/${activeTask.items?.length || 0}`);
+        }
+        setIndexStatusParts(statusParts);
         renderIndexFailures(latestFailures, indexTasks, failureTask, skippedIds);
       } catch (error) {
         searchIndexStatus.textContent = `索引状态读取失败：${error.message}`;
@@ -4344,7 +4390,14 @@
     if (values.showMessageTimestamps !== undefined) S.settings.showMessageTimestamps = values.showMessageTimestamps;
     S.settings.showMinimap = values.showMinimap !== false;
     S.settings.autoContinueEnabled = values.autoContinueEnabled === true;
-    if (values.autoContinueText) S.settings.autoContinueText = values.autoContinueText;
+    if (typeof values.autoContinueText === 'string') {
+      if (values.autoContinueText.trim() === '继续') {
+        // The previous release supplied this as a built-in default. Remove
+        // that legacy value so the message field starts empty after upgrade.
+        S.settings.autoContinueText = '';
+        chrome.storage.local.remove('autoContinueText');
+      } else S.settings.autoContinueText = values.autoContinueText;
+    }
     if (values.autoContinueDelaySeconds) S.settings.autoContinueDelaySeconds = Number(values.autoContinueDelaySeconds) || 120;
     if (values.autoContinueMaxCount) S.settings.autoContinueMaxCount = Number(values.autoContinueMaxCount) || 20;
     applyTimestampFontSize(values.fontSize);
@@ -4514,7 +4567,15 @@
         renderAutoContinueUi();
         placeCurrentChatExportButton();
       }
-      if (changes.autoContinueText) S.settings.autoContinueText = changes.autoContinueText.newValue || '继续';
+      if (changes.autoContinueText) {
+        const value = typeof changes.autoContinueText.newValue === 'string'
+          ? changes.autoContinueText.newValue : '';
+        S.settings.autoContinueText = value.trim() === '继续' ? '' : value;
+        if (value.trim() === '继续') chrome.storage.local.remove('autoContinueText');
+        const textInput = document.querySelector('[data-chatgpt-pro-auto-popover] [data-auto-text]');
+        if (textInput && document.activeElement !== textInput) textInput.value = S.settings.autoContinueText;
+        renderAutoContinueUi();
+      }
       if (changes.autoContinueDelaySeconds) S.settings.autoContinueDelaySeconds = Number(changes.autoContinueDelaySeconds.newValue) || 120;
       if (changes.autoContinueMaxCount) S.settings.autoContinueMaxCount = Number(changes.autoContinueMaxCount.newValue) || 20;
       if (changes.openInBackground) S.settings.openInBackground = changes.openInBackground.newValue;

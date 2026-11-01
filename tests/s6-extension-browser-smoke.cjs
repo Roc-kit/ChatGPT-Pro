@@ -1342,6 +1342,58 @@ async function main() {
     })()`), true,
     'Arabic status labels translate while all user-authored conversation titles remain unchanged');
 
+    await cdp.eval(popupSession, `new Promise(resolve => chrome.storage.local.set({
+      uiLanguage: 'en', autoContinueEnabled: true, autoContinueText: '继续'
+    }, resolve))`);
+    await eventually(async () => cdp.eval(pageSession,
+      `Boolean(document.querySelector('[data-chatgpt-pro-auto-continue]'))`),
+    'auto-continue control appears when enabled');
+    await eventually(async () => cdp.eval(popupSession, `new Promise(resolve =>
+      chrome.storage.local.get('autoContinueText', values => resolve(!Object.hasOwn(values, 'autoContinueText'))))`),
+    'legacy built-in Chinese continuation text is removed from stored settings');
+    await cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-auto-continue]').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `!document.querySelector('[data-chatgpt-pro-auto-popover]')?.hidden`),
+    'auto-continue settings popover opens');
+    const autoContinueDefaults = await cdp.eval(pageSession, `(() => {
+      const input = document.querySelector('[data-chatgpt-pro-auto-popover] [data-auto-text]');
+      const start = document.querySelector('[data-chatgpt-pro-auto-popover] [data-auto-start]');
+      return { value: input?.value, placeholder: input?.placeholder, startDisabled: start?.disabled };
+    })()`);
+    assert.deepEqual(autoContinueDefaults, {
+      value: '', placeholder: 'Enter a message to send', startDisabled: true
+    }, 'auto-continue starts with an empty message and cannot send until the user enters one');
+    await cdp.eval(pageSession, `(() => {
+      const input = document.querySelector('[data-chatgpt-pro-auto-popover] [data-auto-text]');
+      input.value = 'Continue'; input.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-auto-popover] [data-auto-start]')?.disabled`), false,
+    'entering a custom continuation message enables Start');
+    await cdp.eval(popupSession, `new Promise(resolve =>
+      chrome.storage.local.set({ autoContinueEnabled: false }, resolve))`);
+
+    await cdp.eval(pageSession, `(() => {
+      const status = document.querySelector('.chatgpt-pro-search-index-status');
+      const parts = [
+        '当前账号已索引 185 / 187 个', '剩余 2 个需要补齐', '已跳过 1 个',
+        '2 个需按新规则重建', '补齐剩余 2 个', '刷新索引规则（2 个）'
+      ];
+      status.replaceChildren();
+      parts.forEach((value, index) => {
+        if (index) status.append(document.createTextNode(' · '));
+        const part = document.createElement('span'); part.textContent = value; status.append(part);
+      });
+    })()`);
+    await eventually(async () => cdp.eval(pageSession, `(() => {
+      const text = document.querySelector('.chatgpt-pro-search-index-status')?.textContent || '';
+      return text.includes('Indexed 185 / 187 for this account') &&
+        text.includes('2 remaining to index') && text.includes('Skipped 1') &&
+        text.includes('2 need rebuilding under the latest rules') &&
+        text.includes('Complete remaining 2') && text.includes('Refresh index rules (2)');
+    })()`), 'full-text indexing counts and action labels use reviewed English dynamic translations');
+
     const skipTask = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
       action: 'taskCreate', accountId: 's6-isolated-account', type: 'index', items: [
         { id: 's6-skip-target', title: 'S6 one skipped conversation', updateTime: 1770000400 },
@@ -1359,13 +1411,32 @@ async function main() {
       const checkpoint = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
         action: 'taskCheckpoint', accountId: 's6-isolated-account', id: '${skipTask.result.id}',
         owner: '${skipOwner}', token: '${skipClaim.result.token}', itemIndex: ${itemIndex},
-        outcome: '${outcome}', error: '${outcome === 'failed' ? 'controlled failure for skip regression' : ''}' })`);
+        outcome: '${outcome}', error: '${outcome === 'failed' ? 'HTTP 404: https://chatgpt.com/backend-api/conversation/s6-skip-target' : ''}' })`);
       assert(checkpoint?.success, `skip test checkpoint ${itemIndex} succeeds: ${checkpoint?.error}`);
     }
     await cdp.eval(pageSession, `document.querySelector('[data-panel-view="search"]').click()`);
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-search-index-error-skip')?.isConnected`),
     'one failed conversation exposes its own skip action');
+    const englishFailureLabels = await cdp.eval(pageSession, `(() => {
+      const root = document.querySelector('.chatgpt-pro-search-index-detail');
+      return {
+        summary: root?.querySelector('summary')?.textContent,
+        skip: root?.querySelector('.chatgpt-pro-search-index-error-skip')?.textContent,
+        open: root?.querySelector('.chatgpt-pro-search-index-error-title a')?.textContent,
+        id: root?.querySelector('.chatgpt-pro-search-index-error > div:nth-child(2)')?.textContent,
+        error: root?.querySelector('.chatgpt-pro-search-index-error-message')?.textContent,
+        assessment: root?.querySelector('.chatgpt-pro-search-index-error-hint')?.textContent
+      };
+    })()`);
+    assert(englishFailureLabels.summary?.includes('Index failures') &&
+      englishFailureLabels.summary.includes('(1)') &&
+      englishFailureLabels.skip === 'Skip' && englishFailureLabels.open === 'Open conversation' &&
+      englishFailureLabels.id.startsWith('ID:') && englishFailureLabels.error.startsWith('Error:') &&
+      englishFailureLabels.error.includes('HTTP 404') &&
+      englishFailureLabels.assessment.startsWith('Assessment:') &&
+      englishFailureLabels.assessment.includes('may be missing or inaccessible'),
+    `full-text failure log labels and explanation use English translations: ${JSON.stringify(englishFailureLabels)}`);
     await cdp.send('Page.enable', {}, pageSession);
     const acceptSkipConfirmation = message => {
       if (message.method === 'Page.javascriptDialogOpening' && message.sessionId === pageSession) {

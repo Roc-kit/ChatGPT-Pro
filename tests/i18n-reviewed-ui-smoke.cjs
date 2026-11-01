@@ -112,7 +112,8 @@ const newIndexUiKeys = [
   'ui.unknownConversation', 'ui.openConversation', 'ui.unrecordedReason',
   'ui.indexPausedAfterRepeatedFailuresCheckLogs',
   'ui.indexPausedAfterAuthenticationErrorCheckLogin',
-  'ui.indexManuallyPausedResumeInTaskManager', 'ui.newConversationSyncComplete'
+  'ui.indexManuallyPausedResumeInTaskManager', 'ui.newConversationSyncComplete',
+  'ui.indexFailureLog', 'ui.errorLabel', 'ui.assessmentLabel', 'ui.enterContinuationMessage'
 ];
 for (const locale of localeNames.filter(locale => locale !== 'zh-CN')) {
   i18n.setLanguage(locale);
@@ -481,7 +482,12 @@ const finalDynamicStatuses = [
   ['status.failedToUpdateAutomaticIndexing', '自动更新设置失败：network timeout',
     { 1: 'network timeout' }],
   ['status.indexStartFailed', '索引启动失败：network timeout', { 1: 'network timeout' }],
-  ['status.incrementalSyncComplete', 'Batch-A · 已完成增量同步', { 1: 'Batch-A' }]
+  ['status.incrementalSyncComplete', 'Batch-A · 已完成增量同步', { 1: 'Batch-A' }],
+  ['status.remainingIndexCount', '剩余 2 个需要补齐', { 1: '2' }],
+  ['status.skippedIndexCount', '已跳过 1 个', { 1: '1' }],
+  ['status.outdatedIndexCount', '2 个需按新规则重建', { 1: '2' }],
+  ['status.completeRemainingIndexCount', '补齐剩余 2 个', { 1: '2' }],
+  ['status.refreshOutdatedIndexCount', '刷新索引规则（2 个）', { 1: '2' }]
 ];
 const sourceKeyByValue = new Map(Object.entries(sources).map(([key, value]) => [value, key]));
 for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(locale))) {

@@ -115,7 +115,12 @@
     [/^(归档|永久删除)完成：成功 (\d+)、失败 (\d+)(（点击查看失败清单）)?$/, m => `${t(m[1])} completed: ${m[2]} succeeded, ${m[3]} failed${m[4] ? ' (click for failures)' : ''}`],
     [/^(归档|永久删除)中止：(.+)$/, m => `${t(m[1])} stopped: ${translateText(m[2])}`],
     [/^(\d+)\/(\d+) · (用户|ChatGPT|消息)：(.+)$/, m => `${m[1]}/${m[2]} · ${t(m[3])}: ${m[4]}`],
-    [/^(\d+)\/(\d+) · (用户|ChatGPT|消息)$/, m => `${m[1]}/${m[2]} · ${translateText(m[3])}`]
+    [/^(\d+)\/(\d+) · (用户|ChatGPT|消息)$/, m => `${m[1]}/${m[2]} · ${translateText(m[3])}`],
+    [/^剩余 (\d+) 个需要补齐$/, m => `${m[1]} remaining to index`],
+    [/^已跳过 (\d+) 个$/, m => `Skipped ${m[1]}`],
+    [/^(\d+) 个需按新规则重建$/, m => `${m[1]} need rebuilding under the latest rules`],
+    [/^补齐剩余 (\d+) 个$/, m => `Complete remaining ${m[1]}`],
+    [/^刷新索引规则（(\d+) 个）$/, m => `Refresh index rules (${m[1]})`]
   ];
   function valueVerb(text) { return text.startsWith('正在归档') ? 'Archiving' : 'Deleting'; }
   function dynamicVariant(index, match) {

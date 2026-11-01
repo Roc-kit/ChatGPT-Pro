@@ -4934,6 +4934,7 @@ ui.autoContinueDisabled
 ui.currentChatNotStarted
 ui.continuationMessage
 ui.continuationMessageHelp
+ui.enterContinuationMessage
 ui.pollingInterval
 ui.pollingIntervalHelp
 ui.maximumContinuations
@@ -5003,6 +5004,26 @@ ui.taskManuallyPaused`.split('\n');
     translations: Object.fromEntries([
       'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
     ].map(locale => [locale, indexStatusUiKeys.map(key => scope.ChatGPTProLocalePacks[locale][key])]))
+  });
+  const fullTextFailureLabelKeys = `ui.indexFailureLog
+ui.errorLabel
+ui.assessmentLabel`.split('\n');
+  blocks.push({
+    keys: fullTextFailureLabelKeys,
+    translations: Object.fromEntries([
+      'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
+    ].map(locale => [locale, fullTextFailureLabelKeys.map(key => scope.ChatGPTProLocalePacks[locale][key])]))
+  });
+  const fullTextIndexStatusKeys = `status.remainingIndexCount
+status.skippedIndexCount
+status.outdatedIndexCount
+status.completeRemainingIndexCount
+status.refreshOutdatedIndexCount`.split('\n');
+  blocks.push({
+    keys: fullTextIndexStatusKeys,
+    translations: Object.fromEntries([
+      'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
+    ].map(locale => [locale, fullTextIndexStatusKeys.map(key => scope.ChatGPTProLocalePacks[locale][key])]))
   });
   for (const block of blocks) {
     for (const [locale, translations] of Object.entries(block.translations)) {
