@@ -3851,6 +3851,11 @@
       }
     };
 
+    const indexPauseReason = phase => phase === 'consecutive-failures'
+      ? (window.ChatGPTProI18n?.t('ui.pausedAfterRepeatedFailures') || '连续失败，等待人工继续')
+      : phase === 'auth-error' ? '登录或权限异常'
+        : phase === 'paused' ? '手动暂停' : (phase || '未记录原因');
+
     const refreshSearchIndexStatus = async () => {
       try {
         const accountId = await window.APIHandler.getAccountId();
@@ -3881,6 +3886,9 @@
           : `当前账号已索引 ${response.records?.length || 0} / ${currentRecords.length} 个`
             + (remaining ? ` · 剩余 ${remaining} 个需要补齐` : '')
             + (skippedCount ? ` · ${window.ChatGPTProI18n?.format?.('status.skippedIndexConversations', { count: skippedCount }) || `已跳过 ${skippedCount} 个`}` : '');
+        if (activeTask?.status === 'paused') {
+          searchIndexStatus.textContent += ` · 已暂停：${indexPauseReason(activeTask.phase)}`;
+        }
         renderIndexFailures(latestFailures, indexTasks, failureTask, skippedIds);
       } catch (error) {
         searchIndexStatus.textContent = `索引状态读取失败：${error.message}`;
