@@ -615,7 +615,8 @@ async function main() {
       'first and last minimap messages have enlarged visible marks and click targets');
     assert(Math.abs(beforeDrag.dockCenter - minimapSize.viewport / 2) <= 2,
       'outer toolbar is vertically centered in the viewport');
-    assert(beforeDrag.dockRadius >= 12, 'outer toolbar uses a rounded rectangle');
+    assert.equal(beforeDrag.dockRadius, 12,
+      'outer toolbar uses the same 12px corner radius as the standalone launcher');
     assert.equal(beforeDrag.exportCursor, 'pointer', 'export icons use the pointer cursor when hovered');
     assert.equal(beforeDrag.autoCursor, 'pointer', 'auto continuation control uses the pointer cursor');
     assert.equal(beforeDrag.autoHidden, true, 'auto continuation control stays hidden until enabled');
@@ -676,6 +677,8 @@ async function main() {
     })()`);
     assert(mergedLauncherLayout.inDock && mergedLauncherLayout.className.includes('chatgpt-pro-dock-launcher'),
       'directory/search launcher is mounted inside the minimap dock');
+    assert.equal(mergedLauncherLayout.buttonRadius, 12,
+      'integrated launcher keeps the same 12px corner radius as the standalone launcher');
     assert(Math.abs(mergedLauncherLayout.centerX -
       (mergedLauncherLayout.dockLeft + mergedLauncherLayout.dockWidth / 2)) <= 1 &&
       Math.abs(mergedLauncherLayout.buttonTop - mergedLauncherLayout.dockTop - 1) <= 1 &&
@@ -683,7 +686,7 @@ async function main() {
       mergedLauncherLayout.buttonWidth === mergedLauncherLayout.dockWidth - 2 &&
       mergedLauncherLayout.buttonHeight === mergedLauncherLayout.buttonWidth &&
       mergedLauncherLayout.dockWidth === 38 &&
-      mergedLauncherLayout.buttonRadius >= 14 && mergedLauncherLayout.buttonRadius <= 18 &&
+      mergedLauncherLayout.buttonRadius === 12 &&
       mergedLauncherLayout.childOrder.join(',') === 'header,minimap,actions' &&
       mergedLauncherLayout.buttonShadow === 'none',
     `directory launcher forms the integrated header of the one-piece dock: ${JSON.stringify(mergedLauncherLayout)}`);
