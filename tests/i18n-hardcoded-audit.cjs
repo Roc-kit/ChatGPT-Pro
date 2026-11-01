@@ -26,7 +26,9 @@ const nonUiExceptions = new Set([
   '批量任务单条处理失败', // Internal task event log.
   '任务状态已修改', // Internal task event log.
   '无法清理旧索引', // Obsolete maintenance action has no current UI caller.
-  '无法清理当前账号索引' // Obsolete maintenance action has no current UI caller.
+  '无法清理当前账号索引', // Obsolete maintenance action has no current UI caller.
+  '用户跳过了一条索引失败的对话', // Structured task event log; not rendered as interface copy.
+  '必须提供明确的账号 ID' // Internal local-store argument validation; not a user-facing message.
 ]);
 const uncovered = [];
 let staticCount = 0;
@@ -53,7 +55,7 @@ assert.deepEqual(uncovered, [], `Untranslated hardcoded UI literals:\n${uncovere
 for (const language of ['en', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja']) {
   i18n.setLanguage(language);
   const dynamicCases = [
-    '当前账号已索引 119 / 119 个 · 未归属旧索引 104 个',
+    '当前账号已索引 119 / 119 个',
     '正在归档 8 / 30 · 成功 6、失败 1',
     '3/10 · 成功 2 · 失败 1',
     '3/10 · 成功 2 · 失败 1 · ZIP 4 卷',

@@ -193,17 +193,22 @@
     if (translatedSuffix) return source.replace(value, translatedSuffix);
     const explanation = diagnosticMessage(value);
     if (explanation) return source.replace(value, explanation);
+    // Exact UI strings take precedence over prefix translation. Otherwise a
+    // complete key such as "已暂停：登录或权限异常" could be split at its
+    // colon and only the generic "已暂停" prefix would be translated.
+    let result = t(value);
     // Translate a known UI label before a colon while preserving the title or
     // other user-authored value that follows it (for example aria-labels).
-    const mixedLabel = value.match(/^(.+?)[：:]\s*(.+)$/);
-    if (mixedLabel && SOURCE_TO_KEY.has(mixedLabel[1]) &&
-        !DYNAMIC.some(([pattern]) => pattern.test(value))) {
-      const translatedPrefix = t(mixedLabel[1]);
-      if (translatedPrefix !== mixedLabel[1]) {
-        return source.replace(value, `${translatedPrefix}: ${mixedLabel[2]}`);
+    if (result === value) {
+      const mixedLabel = value.match(/^(.+?)[：:]\s*(.+)$/);
+      if (mixedLabel && SOURCE_TO_KEY.has(mixedLabel[1]) &&
+          !DYNAMIC.some(([pattern]) => pattern.test(value))) {
+        const translatedPrefix = t(mixedLabel[1]);
+        if (translatedPrefix !== mixedLabel[1]) {
+          return source.replace(value, `${translatedPrefix}: ${mixedLabel[2]}`);
+        }
       }
     }
-    let result = t(value);
     if (result === value) {
       if (current !== 'zh-CN' && value.includes(' · ')) {
         const parts = value.split(' · ');

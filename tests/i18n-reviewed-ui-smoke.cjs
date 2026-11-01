@@ -101,6 +101,27 @@ assert.match(popupSource, /title:\s*i18n\.t\('ui\.filenamePreviewSampleTitle'\)/
   'filename preview must use a localized example title, not a hardcoded Chinese sample');
 assert.match(popupSource, /updateFilenameUi\(currentTemplate\)/,
   'changing the interface language must refresh the filename preview');
+const newIndexUiKeys = [
+  'ui.taskPausedAfterConsecutiveFailures', 'ui.authenticationOrPermissionIssue',
+  'ui.taskPausedAfterAuthenticationError', 'ui.taskPausedAfterRateLimitExhausted',
+  'ui.taskManuallyPaused',
+  'ui.taskRateLimitCooldownWillResume', 'ui.rateLimitRepeatedManualResume',
+  'ui.unknownError', 'ui.indexFailureOfficiallyReportedGone',
+  'ui.indexFailureNotFoundOrNoAccessCannotConfirmDeletion',
+  'ui.indexFailureCheckChatGPTAccountAndAccess', 'ui.indexFailureNewerLocalJSONWillBeUsed',
+  'ui.unknownConversation', 'ui.openConversation', 'ui.unrecordedReason',
+  'ui.indexPausedAfterRepeatedFailuresCheckLogs',
+  'ui.indexPausedAfterAuthenticationErrorCheckLogin',
+  'ui.indexManuallyPausedResumeInTaskManager', 'ui.newConversationSyncComplete'
+];
+for (const locale of localeNames.filter(locale => locale !== 'zh-CN')) {
+  i18n.setLanguage(locale);
+  for (const key of newIndexUiKeys) {
+    assert.notEqual(packs[locale][key], sources[key], `${locale}/${key} must be translated`);
+    assert.equal(i18n.translateText(sources[key]), packs[locale][key],
+      `${locale}/${key} must resolve as a complete UI string`);
+  }
+}
 const placeholders = text => [...text.matchAll(/\{[a-z][a-z0-9_]*\}/gi)].map(m => m[0]).sort();
 
 for (const locale of localeNames.filter(locale => !['zh-CN', 'en'].includes(locale))) {

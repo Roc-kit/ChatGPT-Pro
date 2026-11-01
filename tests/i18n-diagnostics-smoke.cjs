@@ -27,6 +27,10 @@ const hints = {
 };
 for (const locale of localeNames) {
   i18n.setLanguage(locale);
+  const malformedIndexCode = 'E_INDEX_RESPONSE_INVALID';
+  assert.equal(i18n.translateText(malformedIndexCode),
+    `${i18n.t('ui.indexOperationFailed')} (${malformedIndexCode})`,
+    `${locale}: malformed index response code must have a localized explanation`);
   for (const code of codes) {
     const hint = i18n.t(hints[code.split('_')[1]]);
     assert.equal(i18n.translateText(code), `${hint} (${code})`,

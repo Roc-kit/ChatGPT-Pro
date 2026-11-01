@@ -4966,6 +4966,33 @@ status.skippedIndexConversations`.split('\n');
       'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
     ].map(locale => [locale, indexSkipKeys.map(key => scope.ChatGPTProLocalePacks[locale][key])]))
   });
+  const indexStatusUiKeys = `ui.taskPausedAfterConsecutiveFailures
+ui.authenticationOrPermissionIssue
+ui.taskRateLimitCooldownWillResume
+ui.rateLimitRepeatedManualResume
+ui.unknownError
+ui.indexFailureOfficiallyReportedGone
+ui.indexFailureNotFoundOrNoAccessCannotConfirmDeletion
+ui.indexFailureCheckChatGPTAccountAndAccess
+ui.indexFailureNewerLocalJSONWillBeUsed
+ui.unknownConversation
+ui.openConversation
+ui.unrecordedReason
+ui.indexPausedAfterRepeatedFailuresCheckLogs
+ui.indexPausedAfterAuthenticationErrorCheckLogin
+ui.indexManuallyPausedResumeInTaskManager
+ui.newConversationSyncComplete
+ui.taskPausedAfterAuthenticationError
+ui.taskPausedAfterRateLimitExhausted
+ui.taskManuallyPaused`.split('\n');
+  // These strings are part of the index/task UI. Their translations are
+  // independently authored in the offline locale packs above.
+  blocks.push({
+    keys: indexStatusUiKeys,
+    translations: Object.fromEntries([
+      'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
+    ].map(locale => [locale, indexStatusUiKeys.map(key => scope.ChatGPTProLocalePacks[locale][key])]))
+  });
   for (const block of blocks) {
     for (const [locale, translations] of Object.entries(block.translations)) {
       if (translations.length !== block.keys.length) {

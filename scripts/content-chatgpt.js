@@ -2818,7 +2818,7 @@
   function buildSearchIndexRecord(data, rec) {
     if (!data || typeof data !== 'object' || !data.mapping ||
         typeof data.mapping !== 'object' || Array.isArray(data.mapping)) {
-      const error = new Error('E_INDEX_RESPONSE_INVALID: 缺少有效的对话 mapping');
+      const error = new Error('E_INDEX_RESPONSE_INVALID');
       error.code = 'E_INDEX_RESPONSE_INVALID';
       throw error;
     }
@@ -3852,9 +3852,9 @@
     };
 
     const indexPauseReason = phase => phase === 'consecutive-failures'
-      ? (window.ChatGPTProI18n?.t('ui.pausedAfterRepeatedFailures') || '连续失败，等待人工继续')
+      ? '连续失败，等待人工继续'
       : phase === 'auth-error' ? '登录或权限异常'
-        : phase === 'paused' ? '手动暂停' : (phase || '未记录原因');
+        : phase === 'paused' ? '已手动暂停' : (phase || '未记录原因');
 
     const refreshSearchIndexStatus = async () => {
       try {

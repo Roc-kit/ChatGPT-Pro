@@ -49,23 +49,26 @@ document.addEventListener('DOMContentLoaded', () => {
   let indexConsentGranted = false;
   let dashboardStats = null;
   let cooldownDeadline = 0;
-  const taskPhases = {
+  const taskPhaseLabels = {
     fetching: '抓取 / 处理对话', volume: '生成并保存 ZIP 分卷',
     waiting: '请求间隔等待', 'rate-limit': '限流冷却',
-    'rate-limit-exhausted': '连续触发限流，等待人工继续',
-    'consecutive-failures': '连续 3 个对话处理失败，已自动暂停',
-    'auth-error': '登录或权限异常，已暂停',
-    paused: '已手动暂停', pending: '等待执行', completed: '已完成', canceled: '已取消'
+    'rate-limit-exhausted': '连续触发限流，请手动继续',
+    'consecutive-failures': '已自动暂停：连续 3 个对话处理失败',
+    'auth-error': '已暂停：登录或权限异常',
+    paused: '已手动暂停', pending: '待执行', completed: '已完成', canceled: '已取消'
   };
+
+  function taskPhaseLabel(phase) {
+    return taskPhaseLabels[phase] || phase;
+  }
 
   function taskStateLabel(task) {
     if (task.status === 'paused') {
-      return task.phase === 'consecutive-failures'
-        ? '已自动暂停：连续 3 个对话处理失败'
-        : task.phase === 'auth-error' ? '已暂停：登录或权限异常'
-        : task.phase === 'rate-limit' ? '限流冷却中：到期后自动继续'
-        : task.phase === 'rate-limit-exhausted' ? '已暂停：连续触发限流，请手动继续'
-        : '已手动暂停';
+      if (task.phase === 'consecutive-failures') return '已自动暂停：连续 3 个对话处理失败';
+      if (task.phase === 'auth-error') return '已暂停：登录或权限异常';
+      if (task.phase === 'rate-limit') return '限流冷却中：到期后自动继续';
+      if (task.phase === 'rate-limit-exhausted') return '已暂停：连续触发限流，请手动继续';
+      return '已手动暂停';
     }
     return taskStates[task.status] || task.status;
   }
@@ -243,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (task.status === 'running' && cooldownDeadline > Date.now()) {
         detail.append(' · 等待账号限流冷却');
       } else if (task.phase) {
-        detail.append(` · ${taskPhases[task.phase] || task.phase}`);
+        detail.append(` · ${taskPhaseLabel(task.phase)}`);
       }
       if (['running', 'paused'].includes(task.status) && task.waitUntil > Date.now()) {
         const waiting = document.createElement('span');
