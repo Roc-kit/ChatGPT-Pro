@@ -202,9 +202,16 @@ async function main() {
       true, 'advanced disclosure reveals export naming and behavior controls');
     await cdp.eval(popupSession, `document.querySelector('#advancedSettings summary').click()`);
     await cdp.eval(popupSession, `document.querySelector('#taskManager summary').click()`);
-    assert.equal(await cdp.eval(popupSession,
-      `document.querySelector('#taskManager').open && document.querySelector('#taskRefresh').getClientRects().length > 0`),
-      true, 'index disclosure retains reachable task and cache controls');
+    const indexControls = await cdp.eval(popupSession, `(() => ({
+      managerOpen: document.querySelector('#taskManager').open,
+      internalRefreshHidden: !document.querySelector('#taskRefresh').checkVisibility(),
+      autoIndexVisible: document.querySelector('#autoIndexToggle').checkVisibility(),
+      clearIndexVisible: document.querySelector('#clearIndex').checkVisibility(),
+      clearRawVisible: document.querySelector('#clearRaw').checkVisibility()
+    }))()`);
+    assert.deepEqual(indexControls, { managerOpen: true, internalRefreshHidden: true,
+      autoIndexVisible: true, clearIndexVisible: true, clearRawVisible: true },
+    'index disclosure hides internal task actions but retains visible cache and index controls');
     if (process.argv.includes('--popup-layout-only')) {
       await cdp.eval(popupSession, `(() => {
         const select = document.querySelector('#languageSelect');
