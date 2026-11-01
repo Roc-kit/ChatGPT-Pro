@@ -261,13 +261,17 @@ async function main() {
     'minimap visible without requiring eight messages');
     const minimapSize = await cdp.eval(pageSession, `(() => {
       const el = document.querySelector('.chatgpt-pro-minimap');
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
       return { height: el.getBoundingClientRect().height,
         width: el.getBoundingClientRect().width,
         rail: el.querySelector('.chatgpt-pro-minimap-rail').getBoundingClientRect().height,
+        dockHeight: dock.getBoundingClientRect().height,
         viewport: innerHeight, viewportWidth: innerWidth };
     })()`);
-    assert(minimapSize.height >= minimapSize.viewport * 0.58,
-      'minimap occupies the available height above the movable export actions');
+    assert(Math.abs(minimapSize.dockHeight - minimapSize.viewport * 0.5) <= 2,
+      `unconfigured outer tool dock defaults to half the viewport height: ${JSON.stringify(minimapSize)}`);
+    assert(minimapSize.height > minimapSize.dockHeight * 0.7,
+      'minimap occupies most of the unified dock above the movable export actions');
     assert(minimapSize.width >= 24 && minimapSize.rail > minimapSize.height * 0.85,
       'minimap shares a compact, continuous toolbar with the export actions');
     assert.equal(await cdp.eval(popupSession,
@@ -617,6 +621,26 @@ async function main() {
     assert.equal(beforeDrag.exportWidth, beforeDrag.actionWidth,
       'export buttons fill the same available toolbar width without overflowing');
     assert.equal(beforeDrag.actionsCount, 1, 'downloads share one compact movable toolbar action');
+    await cdp.eval(popupSession, `new Promise(resolve =>
+      chrome.storage.local.set({ autoContinueEnabled: true }, resolve))`);
+    await eventually(async () => cdp.eval(pageSession,
+      `!document.querySelector('[data-chatgpt-pro-auto-continue]').hidden`),
+    'enabling auto continuation adds its action to the unified dock');
+    const enabledDockHeight = await cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      const rect = dock.getBoundingClientRect();
+      const actions = dock.querySelector('[data-chatgpt-pro-tool-actions]').getBoundingClientRect();
+      return { height: rect.height, viewport: innerHeight,
+        actionsBottom: actions.bottom, dockBottom: rect.bottom };
+    })()`);
+    assert(Math.abs(enabledDockHeight.height - enabledDockHeight.viewport * 0.5) <= 2 &&
+      Math.abs(enabledDockHeight.actionsBottom - enabledDockHeight.dockBottom) <= 1,
+    `auto continuation keeps the complete dock at half viewport height: ${JSON.stringify(enabledDockHeight)}`);
+    await cdp.eval(popupSession, `new Promise(resolve =>
+      chrome.storage.local.set({ autoContinueEnabled: false }, resolve))`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-auto-continue]').hidden`),
+    'disabling auto continuation restores the compact action stack');
     const mergedLauncherLayout = await cdp.eval(pageSession, `(() => {
       const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
       const launcher = document.querySelector('[data-chatgpt-pro-launcher]');
@@ -688,13 +712,13 @@ async function main() {
       type: 'mousePressed', x: dragPoint.x, y: dragPoint.y, button: 'left', clickCount: 1
     }, pageSession);
     await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mouseMoved', x: dragPoint.x, y: dragPoint.y - 140, button: 'left', buttons: 1
+      type: 'mouseMoved', x: dragPoint.x, y: dragPoint.y - 45, button: 'left', buttons: 1
     }, pageSession);
     await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mouseReleased', x: dragPoint.x, y: dragPoint.y - 140, button: 'left'
+      type: 'mouseReleased', x: dragPoint.x, y: dragPoint.y - 45, button: 'left'
     }, pageSession);
     await eventually(async () => cdp.eval(pageSession,
-      `document.querySelector('[data-chatgpt-pro-tool-actions]').getBoundingClientRect().top < ${beforeDrag.actionTop - 100}`),
+      `document.querySelector('[data-chatgpt-pro-tool-actions]').getBoundingClientRect().top < ${beforeDrag.actionTop - 40}`),
     'export actions can be moved upward to avoid covering page content');
     const afterDrag = await cdp.eval(pageSession, `(() => {
       const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
@@ -704,8 +728,8 @@ async function main() {
         panelHeight: dock.querySelector('.chatgpt-pro-minimap').getBoundingClientRect().height,
         dockHeight: dock.getBoundingClientRect().height };
     })()`);
-    assert(afterDrag.panelHeight < beforeDrag.panelHeight - 100 &&
-      afterDrag.dockHeight < beforeDrag.dockHeight - 100,
+    assert(afterDrag.panelHeight < beforeDrag.panelHeight - 80 &&
+      afterDrag.dockHeight < beforeDrag.dockHeight - 80,
     `moving export actions upward automatically shortens minimap and dock: before=${JSON.stringify(beforeDrag)}, after=${JSON.stringify(afterDrag)}`);
     assert(Math.abs(afterDrag.dockCenter - minimapSize.viewport / 2) <= 2,
       'outer toolbar stays vertically centered as its height shrinks');

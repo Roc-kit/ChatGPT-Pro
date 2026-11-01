@@ -70,7 +70,9 @@
       exportFilenameTemplate: '{created_datetime}_{title}',
       launcherPosition: { x: 0.94, y: 0.76 },
       toolDockPositionX: 1,
-      currentExportPositionY: 0.82,
+      // Without a saved user position, size the complete tool dock to half
+      // of the viewport. A dragged position is persisted as a normalized Y.
+      currentExportPositionY: null,
       panelSize: { width: 580, height: 560 }
     }
   };
@@ -1352,8 +1354,13 @@
     const actions = dock?.querySelector('[data-chatgpt-pro-tool-actions]');
     if (!dock || !actions) return;
     const { minTop, maxTop } = toolActionPositionBounds(actions);
-    const y = Math.max(0, Math.min(1, Number(S.settings.currentExportPositionY) || 0));
-    const top = Math.round(minTop + (maxTop - minTop) * y);
+    const savedY = S.settings.currentExportPositionY;
+    const hasSavedPosition = savedY != null && Number.isFinite(Number(savedY));
+    const defaultDockHeight = window.innerHeight * 0.5;
+    const defaultActionTop = (window.innerHeight + defaultDockHeight) / 2 - actions.offsetHeight;
+    const top = hasSavedPosition
+      ? Math.round(minTop + (maxTop - minTop) * Math.max(0, Math.min(1, Number(savedY))))
+      : Math.max(minTop, Math.min(maxTop, defaultActionTop));
     updateMinimapDockLayout(top);
   }
 
@@ -1542,11 +1549,11 @@
       if (willOpen) positionDownloadPopover(popover);
     });
     ensureCurrentChatToolActions().appendChild(button);
-    placeCurrentChatExportButton(button);
     setupCurrentChatExportDrag(button);
     ensureAutoContinueButton();
     // Keep the primary download action at the bottom of the minimap dock.
     ensureCurrentChatToolActions().appendChild(button);
+    placeCurrentChatExportButton();
   }
 
   function ensureCurrentChatImageButton() {
