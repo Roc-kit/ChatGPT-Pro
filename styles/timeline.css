@@ -748,7 +748,7 @@
   align-items: center !important;
   justify-content: center !important;
   border: 1px solid rgba(127, 127, 127, 0.28) !important;
-  border-radius: 12px !important;
+  border-radius: 50% !important;
   background: rgba(255, 255, 255, 0.96) !important;
   color: #374151 !important;
   box-shadow: none !important;
@@ -826,7 +826,7 @@
 }
 
 .chatgpt-pro-auto-continue[hidden] + .chatgpt-pro-current-export {
-  border-radius: 12px !important;
+  border-radius: 50% !important;
 }
 
 .chatgpt-pro-auto-badge {
@@ -870,17 +870,17 @@
 }
 
 .chatgpt-pro-download-popover {
-  right: 40px !important;
+  left: 0 !important;
+  right: auto !important;
   top: 0 !important;
   bottom: auto !important;
   box-sizing: border-box !important;
-  width: 38px !important;
-  height: 132px !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
   padding: 0 !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 0 !important;
+  display: block !important;
   border: 0 !important;
   border-radius: 0 !important;
   background: transparent !important;
@@ -889,11 +889,14 @@
 }
 
 .chatgpt-pro-download-popover .chatgpt-pro-download-action {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
   box-sizing: border-box !important;
-  width: 36px !important;
-  min-width: 36px !important;
-  height: 36px !important;
-  min-height: 36px !important;
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
   padding: 0 !important;
   display: flex !important;
   align-items: center !important;
@@ -1118,17 +1121,18 @@ html.dark .chatgpt-pro-minimap-preview,
   .chatgpt-pro-current-export,
   .chatgpt-pro-current-images { width: 100% !important; height: 36px !important; flex-basis: 36px !important; }
   .chatgpt-pro-download-popover {
-    right: 46px !important;
+    left: 0 !important;
+    right: auto !important;
     top: 0 !important;
     bottom: auto !important;
-    width: 36px !important;
-    height: 132px !important;
+    width: 0 !important;
+    height: 0 !important;
   }
   .chatgpt-pro-download-popover .chatgpt-pro-download-action {
-    width: 34px !important;
-    min-width: 34px !important;
-    height: 34px !important;
-    min-height: 34px !important;
+    width: 30px !important;
+    min-width: 30px !important;
+    height: 30px !important;
+    min-height: 30px !important;
   }
 }
 

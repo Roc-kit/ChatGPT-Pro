@@ -1324,24 +1324,38 @@
   function positionDownloadPopover(popover) {
     const dock = popover?.closest('[data-chatgpt-pro-tool-dock]');
     const trigger = dock?.querySelector('[data-chatgpt-pro-current-export]');
-    if (!dock || !trigger || popover.hidden) return;
+    const markdown = popover?.querySelector('[data-export-markdown]');
+    const images = popover?.querySelector('[data-export-images]');
+    if (!dock || !trigger || !markdown || !images || popover.hidden) return;
     const dockRect = dock.getBoundingClientRect();
     const triggerRect = trigger.getBoundingClientRect();
-    const minimap = dock.querySelector('[data-chatgpt-pro-minimap]');
-    const minimapRect = minimap?.getBoundingClientRect();
-    const anchorY = minimapRect?.height > 0
-      ? minimapRect.top + minimapRect.height / 2
-      : triggerRect.top + triggerRect.height / 2;
-    const height = popover.offsetHeight || 132;
-    const actionHeight = popover.querySelector('.chatgpt-pro-download-action')?.offsetHeight || 36;
-    // Align Markdown export with the Minimap content; the image action stays
-    // noticeably lower instead of centering both actions around the trigger.
-    const desiredTop = anchorY - actionHeight / 2 - dockRect.top;
-    const minTop = VIEWPORT_MARGIN - dockRect.top;
-    const maxTop = window.innerHeight - VIEWPORT_MARGIN - height - dockRect.top;
-    const top = maxTop >= minTop ? Math.max(minTop, Math.min(maxTop, desiredTop)) : minTop;
-    popover.style.setProperty('top', `${top}px`, 'important');
+    const markdownRect = markdown.getBoundingClientRect();
+    const mainRadius = Math.min(triggerRect.width, triggerRect.height) / 2;
+    const childRadius = Math.min(markdownRect.width, markdownRect.height) / 2;
+    const gap = 4;
+    // Place the three button centers on an equilateral triangle. The two
+    // smaller export buttons sit to the left of the primary download button;
+    // Markdown is level with it and image export is below the pair.
+    const centerDistance = mainRadius + childRadius + gap;
+    const lowerOffset = Math.sqrt(Math.max(0,
+      centerDistance ** 2 - (centerDistance / 2) ** 2));
+    const mainCenterX = triggerRect.left + triggerRect.width / 2;
+    const mainCenterY = triggerRect.top + triggerRect.height / 2;
+    const upperFits = mainCenterY - lowerOffset - childRadius >= VIEWPORT_MARGIN;
+    const lowerFits = mainCenterY + lowerOffset + childRadius <= window.innerHeight - VIEWPORT_MARGIN;
+    const verticalDirection = lowerFits || !upperFits ? 1 : -1;
+
+    popover.style.setProperty('left',
+      `${mainCenterX - dockRect.left - dock.clientLeft}px`, 'important');
+    popover.style.setProperty('top',
+      `${mainCenterY - dockRect.top - dock.clientTop}px`, 'important');
     popover.style.setProperty('bottom', 'auto', 'important');
+    popover.style.setProperty('right', 'auto', 'important');
+    markdown.style.setProperty('left', `${-centerDistance - childRadius}px`, 'important');
+    markdown.style.setProperty('top', `${-childRadius}px`, 'important');
+    images.style.setProperty('left', `${-centerDistance / 2 - childRadius}px`, 'important');
+    images.style.setProperty('top',
+      `${verticalDirection * lowerOffset - childRadius}px`, 'important');
   }
 
   function ensureDownloadPopover() {
@@ -1356,6 +1370,7 @@
     const markdown = document.createElement('button');
     markdown.type = 'button';
     markdown.className = 'chatgpt-pro-download-action';
+    markdown.dataset.exportMarkdown = '1';
     markdown.title = window.ChatGPTProI18n.t('ui.exportEntireChatMarkdown');
     markdown.setAttribute('aria-label', markdown.title);
     markdown.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 15h8M8 18h6"/></svg>';
@@ -1370,6 +1385,7 @@
     const images = document.createElement('button');
     images.type = 'button';
     images.className = 'chatgpt-pro-download-action';
+    images.dataset.exportImages = '1';
     images.title = window.ChatGPTProI18n.t('ui.downloadAllConversationImagesZIP');
     images.setAttribute('aria-label', images.title);
     images.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.5"/><path d="m3 17 5-5 4 4 3-3 6 5"/></svg>';

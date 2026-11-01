@@ -694,10 +694,9 @@ async function main() {
       const buttons = [...document.querySelectorAll('[data-chatgpt-pro-download-popover] button')];
       const popover = document.querySelector('[data-chatgpt-pro-download-popover]');
       const trigger = document.querySelector('[data-chatgpt-pro-current-export]');
-      const minimap = document.querySelector('[data-chatgpt-pro-minimap]');
       const style = getComputedStyle(popover);
       const triggerRect = trigger.getBoundingClientRect();
-      const minimapRect = minimap.getBoundingClientRect();
+      const triggerRadius = parseFloat(getComputedStyle(trigger).borderTopLeftRadius);
       const centers = buttons.map(button => {
         const rect = button.getBoundingClientRect();
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
@@ -706,15 +705,26 @@ async function main() {
       });
       const triggerCenter = { x: triggerRect.left + triggerRect.width / 2,
         y: triggerRect.top + triggerRect.height / 2 };
-      const minimapCenterY = minimapRect.top + minimapRect.height / 2;
+      const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+      const mainRadius = Math.min(triggerRect.width, triggerRect.height) / 2;
+      const childRadius = centers[0]?.width / 2;
+      const expectedDistance = mainRadius + childRadius + 4;
       return buttons.length === 2 && buttons[0].title === 'Export entire chat (Markdown)' &&
         buttons[1].title === 'Download all conversation images (ZIP)' &&
         buttons.every(button => button.querySelector('svg')) &&
+        triggerRadius >= triggerRect.width / 2 - 1 &&
         centers.every(point => Math.abs(point.width - point.height) <= 1 && point.radius >= point.width / 2 - 1) &&
-        Math.abs(centers[0].y - minimapCenterY) <= 3 && centers[1].y - centers[0].y >= 90 &&
-        centers.every(point => point.x < triggerCenter.x) &&
+        centers.every(point => point.width < triggerRect.width) &&
+        Math.abs(distance(centers[0], triggerCenter) - expectedDistance) <= 1 &&
+        Math.abs(distance(centers[1], triggerCenter) - expectedDistance) <= 1 &&
+        Math.abs(distance(centers[0], centers[1]) - expectedDistance) <= 1 &&
+        Math.abs(centers[0].y - triggerCenter.y) <= 1 &&
+        centers[0].x < triggerCenter.x && centers[1].x < triggerCenter.x &&
+        centers[1].y > triggerCenter.y &&
+        Math.abs(centers[1].x - (centers[0].x + triggerCenter.x) / 2) <= 1 &&
         style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.borderTopWidth === '0px' &&
-        style.boxShadow === 'none' && style.pointerEvents === 'none';
+        style.boxShadow === 'none' && style.pointerEvents === 'none' &&
+        popover.getBoundingClientRect().width === 0 && popover.getBoundingClientRect().height === 0;
     })()`), 'combined download menu exposes both translated actions');
     const lowerDragPoint = await cdp.eval(pageSession, `(() => {
       const rect = document.querySelector('[data-chatgpt-pro-current-export]').getBoundingClientRect();
@@ -731,8 +741,10 @@ async function main() {
       type: 'mouseReleased', x: lowerDragPoint.x, y: lowerDragY, button: 'left'
     }, pageSession);
     const lowerMenuBounds = await cdp.eval(pageSession, `(() => {
-      const menu = document.querySelector('[data-chatgpt-pro-download-popover]').getBoundingClientRect();
-      return { top: menu.top, bottom: menu.bottom, viewportHeight: innerHeight };
+      const buttons = [...document.querySelectorAll('[data-chatgpt-pro-download-popover] button')];
+      const rects = buttons.map(button => button.getBoundingClientRect());
+      return { top: Math.min(...rects.map(rect => rect.top)),
+        bottom: Math.max(...rects.map(rect => rect.bottom)), viewportHeight: innerHeight };
     })()`);
     assert(lowerMenuBounds.top >= 8 && lowerMenuBounds.bottom <= lowerMenuBounds.viewportHeight - 8,
       `radial export actions stay within the viewport when the trigger is dragged to the bottom: ${JSON.stringify(lowerMenuBounds)}`);
