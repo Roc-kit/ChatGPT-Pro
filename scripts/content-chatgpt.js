@@ -1327,8 +1327,16 @@
     if (!dock || !trigger || popover.hidden) return;
     const dockRect = dock.getBoundingClientRect();
     const triggerRect = trigger.getBoundingClientRect();
-    const height = popover.offsetHeight || 112;
-    const desiredTop = triggerRect.top + triggerRect.height / 2 - height / 2 - dockRect.top;
+    const minimap = dock.querySelector('[data-chatgpt-pro-minimap]');
+    const minimapRect = minimap?.getBoundingClientRect();
+    const anchorY = minimapRect?.height > 0
+      ? minimapRect.top + minimapRect.height / 2
+      : triggerRect.top + triggerRect.height / 2;
+    const height = popover.offsetHeight || 132;
+    const actionHeight = popover.querySelector('.chatgpt-pro-download-action')?.offsetHeight || 36;
+    // Align Markdown export with the Minimap content; the image action stays
+    // noticeably lower instead of centering both actions around the trigger.
+    const desiredTop = anchorY - actionHeight / 2 - dockRect.top;
     const minTop = VIEWPORT_MARGIN - dockRect.top;
     const maxTop = window.innerHeight - VIEWPORT_MARGIN - height - dockRect.top;
     const top = maxTop >= minTop ? Math.max(minTop, Math.min(maxTop, desiredTop)) : minTop;

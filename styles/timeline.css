@@ -871,10 +871,11 @@
 
 .chatgpt-pro-download-popover {
   right: 40px !important;
-  bottom: -37px !important;
+  top: 0 !important;
+  bottom: auto !important;
   box-sizing: border-box !important;
   width: 38px !important;
-  height: 112px !important;
+  height: 132px !important;
   padding: 0 !important;
   flex-direction: column !important;
   align-items: center !important;
@@ -944,27 +945,6 @@
 .chatgpt-pro-auto-actions button:hover {
   color: #0d9373 !important;
   border-color: rgba(16, 163, 127, 0.45) !important;
-}
-
-html.dark .chatgpt-pro-tool-dock .chatgpt-pro-download-popover,
-[data-theme="dark"] .chatgpt-pro-tool-dock .chatgpt-pro-download-popover {
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-html.dark .chatgpt-pro-tool-dock .chatgpt-pro-download-popover .chatgpt-pro-download-action,
-[data-theme="dark"] .chatgpt-pro-tool-dock .chatgpt-pro-download-popover .chatgpt-pro-download-action {
-  border-color: rgba(148, 163, 184, 0.36) !important;
-  background: rgba(37, 39, 44, 0.98) !important;
-  color: #e5e7eb !important;
-}
-
-html.dark .chatgpt-pro-tool-dock .chatgpt-pro-download-popover .chatgpt-pro-download-action:hover:not(:disabled),
-[data-theme="dark"] .chatgpt-pro-tool-dock .chatgpt-pro-download-popover .chatgpt-pro-download-action:hover:not(:disabled) {
-  border-color: rgba(16, 163, 127, 0.65) !important;
-  background: rgba(13, 147, 115, 0.2) !important;
-  color: #6ee7b7 !important;
 }
 
 .chatgpt-pro-auto-status { font-weight: 600 !important; }
@@ -1139,9 +1119,10 @@ html.dark .chatgpt-pro-minimap-preview,
   .chatgpt-pro-current-images { width: 100% !important; height: 36px !important; flex-basis: 36px !important; }
   .chatgpt-pro-download-popover {
     right: 46px !important;
-    bottom: -36px !important;
+    top: 0 !important;
+    bottom: auto !important;
     width: 36px !important;
-    height: 108px !important;
+    height: 132px !important;
   }
   .chatgpt-pro-download-popover .chatgpt-pro-download-action {
     width: 34px !important;

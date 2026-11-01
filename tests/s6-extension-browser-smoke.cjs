@@ -694,8 +694,10 @@ async function main() {
       const buttons = [...document.querySelectorAll('[data-chatgpt-pro-download-popover] button')];
       const popover = document.querySelector('[data-chatgpt-pro-download-popover]');
       const trigger = document.querySelector('[data-chatgpt-pro-current-export]');
+      const minimap = document.querySelector('[data-chatgpt-pro-minimap]');
       const style = getComputedStyle(popover);
       const triggerRect = trigger.getBoundingClientRect();
+      const minimapRect = minimap.getBoundingClientRect();
       const centers = buttons.map(button => {
         const rect = button.getBoundingClientRect();
         return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
@@ -704,29 +706,16 @@ async function main() {
       });
       const triggerCenter = { x: triggerRect.left + triggerRect.width / 2,
         y: triggerRect.top + triggerRect.height / 2 };
-      const radii = centers.map(point => Math.hypot(point.x - triggerCenter.x, point.y - triggerCenter.y));
+      const minimapCenterY = minimapRect.top + minimapRect.height / 2;
       return buttons.length === 2 && buttons[0].title === 'Export entire chat (Markdown)' &&
         buttons[1].title === 'Download all conversation images (ZIP)' &&
         buttons.every(button => button.querySelector('svg')) &&
         centers.every(point => Math.abs(point.width - point.height) <= 1 && point.radius >= point.width / 2 - 1) &&
-        centers[0].y < triggerCenter.y && centers[1].y > triggerCenter.y &&
-        centers.every(point => point.x < triggerCenter.x) && Math.abs(radii[0] - radii[1]) <= 5 &&
+        Math.abs(centers[0].y - minimapCenterY) <= 3 && centers[1].y - centers[0].y >= 90 &&
+        centers.every(point => point.x < triggerCenter.x) &&
         style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.borderTopWidth === '0px' &&
         style.boxShadow === 'none' && style.pointerEvents === 'none';
     })()`), 'combined download menu exposes both translated actions');
-    await cdp.eval(pageSession, `document.documentElement.classList.add('dark')`);
-    const darkMenuStyles = await cdp.eval(pageSession, `(() => {
-      const menu = document.querySelector('[data-chatgpt-pro-download-popover]');
-      const action = menu.querySelector('button');
-      return { menuBackground: getComputedStyle(menu).backgroundColor,
-        menuBorder: getComputedStyle(menu).borderTopWidth, menuShadow: getComputedStyle(menu).boxShadow,
-        actionBackground: getComputedStyle(action).backgroundColor };
-    })()`);
-    assert(darkMenuStyles.menuBackground === 'rgba(0, 0, 0, 0)' &&
-      darkMenuStyles.menuBorder === '0px' && darkMenuStyles.menuShadow === 'none' &&
-      darkMenuStyles.actionBackground.includes('37, 39, 44'),
-    `radial menu stays transparent and circular actions adapt to dark mode: ${JSON.stringify(darkMenuStyles)}`);
-    await cdp.eval(pageSession, `document.documentElement.classList.remove('dark')`);
     const lowerDragPoint = await cdp.eval(pageSession, `(() => {
       const rect = document.querySelector('[data-chatgpt-pro-current-export]').getBoundingClientRect();
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, viewportHeight: innerHeight };
