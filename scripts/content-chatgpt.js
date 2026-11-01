@@ -3894,17 +3894,28 @@
         const skippedCount = currentRecords.filter(record => skippedIds.has(record.id)).length;
         const remaining = currentRecords.filter(record => !indexedIds.has(record.id)
           && !skippedIds.has(record.id)).length;
+        const outdated = (response.records || []).filter(
+          record => record.schemaVersion !== SEARCH_INDEX_SCHEMA_VERSION
+        ).length;
+        delete searchIndexUpdate.dataset.resumeTaskId;
+        searchIndexUpdate.disabled = Boolean(activeTask && activeTask.status !== 'paused');
         searchIndexUpdate.textContent = !policy.result?.consentAt
           ? '首次索引（需授权）'
-          : policy.result.initialCompletedAt ? '更新索引' : '继续首次索引';
+          : activeTask?.status === 'paused' ? '继续'
+            : activeTask ? '执行中'
+          : outdated ? `刷新索引规则（${outdated} 个）`
+            : remaining ? `补齐剩余 ${remaining} 个`
+            : policy.result.initialCompletedAt ? '更新索引' : '继续首次索引';
+        if (activeTask?.status === 'paused') searchIndexUpdate.dataset.resumeTaskId = activeTask.id;
         searchIndexStatus.textContent = !policy.result?.consentAt
           ? `首次建立全文索引需点击授权；不会自动抓取正文。已有索引可搜索 · 当前 ${response.records?.length || 0} 条`
           : `当前账号已索引 ${response.records?.length || 0} / ${currentRecords.length} 个`
             + (remaining ? ` · 剩余 ${remaining} 个需要补齐` : '')
-            + (skippedCount ? ` · ${window.ChatGPTProI18n?.format?.('status.skippedIndexConversations', { count: skippedCount }) || `已跳过 ${skippedCount} 个`}` : '');
-        if (activeTask?.status === 'paused') {
-          searchIndexStatus.textContent += ` · 已暂停：${indexPauseReason(activeTask.phase)}`;
-        }
+            + (skippedCount ? ` · ${window.ChatGPTProI18n?.format?.('status.skippedIndexConversations', { count: skippedCount }) || `已跳过 ${skippedCount} 个`}` : '')
+            + (outdated ? ` · ${outdated} 个需按新规则重建` : '');
+        if (activeTask) searchIndexStatus.textContent += activeTask.status === 'paused'
+          ? ` · 已暂停：${indexPauseReason(activeTask.phase)}`
+          : ` · ${activeTask.status === 'running' ? '执行中' : '等待执行'} ${activeTask.nextIndex || 0}/${activeTask.items?.length || 0}`;
         renderIndexFailures(latestFailures, indexTasks, failureTask, skippedIds);
       } catch (error) {
         searchIndexStatus.textContent = `索引状态读取失败：${error.message}`;
@@ -3994,6 +4005,17 @@
       if (searchIndexUpdate.disabled) return;
       searchIndexUpdate.disabled = true;
       try {
+        const resumeTaskId = searchIndexUpdate.dataset.resumeTaskId;
+        if (resumeTaskId) {
+          const accountId = await window.APIHandler.getAccountId(true);
+          await indexTaskMessage('taskControl', accountId, { id: resumeTaskId, operation: 'resume' });
+          searchIndexStatus.textContent = '执行中';
+          delete searchIndexUpdate.dataset.resumeTaskId;
+          await runIndexTask(accountId, resumeTaskId);
+          await runtimeMessage({ action: 'indexPolicyFinishInitial', accountId }).catch(() => {});
+          await refreshSearchIndexStatus();
+          return;
+        }
         const result = await updateIndexWithConsent(currentRecords, progress => {
           const base = `${progress.done} / ${progress.total}`;
           if (progress.phase === 'initial-directory') {
