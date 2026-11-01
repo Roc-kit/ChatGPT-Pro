@@ -104,6 +104,7 @@ window.ChatGPTProLocalePacks["bn"] = {
   "ui.archive": "আর্কাইভ",
   "ui.delete": "মুছে ফেলুন",
   "ui.downloadAllConversationImagesZIP": "সকল কথোপকথনের ছবি ডাউনলোড করুন (ZIP)",
+  "ui.downloadCurrentConversation": "বর্তমান কথোপকথন ডাউনলোড করুন",
   "ui.conversationMinimap": "কথোপকথন মিনিকার্ড",
   "ui.projectsAll": "সমস্ত কিছু",
   "ui.allSources": "সকল উৎস",

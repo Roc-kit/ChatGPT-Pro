@@ -1306,6 +1306,13 @@
     button.addEventListener('pointercancel', finish);
   }
 
+  function updateCurrentChatExportButtonLabel(button) {
+    if (!button) return;
+    const label = window.ChatGPTProI18n?.t('ui.downloadCurrentConversation') || '下载当前对话';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+  }
+
   function closeToolPopovers(except = null) {
     document.querySelectorAll('.chatgpt-pro-tool-popover').forEach(element => {
       if (element !== except) element.hidden = true;
@@ -1361,6 +1368,7 @@
       return;
     }
     if (existing) {
+      updateCurrentChatExportButtonLabel(existing);
       ensureCurrentChatToolActions().appendChild(existing);
       ensureCurrentChatImageButton();
       ensureAutoContinueButton();
@@ -1372,8 +1380,7 @@
     button.type = 'button';
     button.className = 'chatgpt-pro-current-export';
     button.setAttribute('data-chatgpt-pro-current-export', '1');
-    button.setAttribute('aria-label', '\u4e0b\u8f7d\u5f53\u524d\u5bf9\u8bdd');
-    button.title = '\u4e0b\u8f7d\u5f53\u524d\u5bf9\u8bdd';
+    updateCurrentChatExportButtonLabel(button);
     button.innerHTML = `
       <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -1392,7 +1399,6 @@
       popover.hidden = !willOpen;
     });
     ensureCurrentChatToolActions().appendChild(button);
-    window.ChatGPTProI18n?.watch(button);
     placeCurrentChatExportButton(button);
     setupCurrentChatExportDrag(button);
     ensureAutoContinueButton();
@@ -4516,6 +4522,9 @@
       if (changes.exportFilenameTemplate) S.settings.exportFilenameTemplate = changes.exportFilenameTemplate.newValue || '{created_datetime}_{title}';
       if (changes.uiLanguage) {
         window.ChatGPTProI18n?.setLanguage(changes.uiLanguage.newValue || 'auto');
+        updateCurrentChatExportButtonLabel(
+          document.querySelector('[data-chatgpt-pro-current-export]')
+        );
         document.querySelector('[data-chatgpt-pro-auto-popover]')?.remove();
         document.querySelector('[data-chatgpt-pro-download-popover]')?.remove();
         window.ChatGPTProI18n?.setDirection(S.timeline);

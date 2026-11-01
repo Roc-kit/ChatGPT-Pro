@@ -104,6 +104,7 @@ window.ChatGPTProLocalePacks["id"] = {
   "ui.archive": "Arsip",
   "ui.delete": "Hapus",
   "ui.downloadAllConversationImagesZIP": "Unduh semua gambar percakapan ignity ZIP)",
+  "ui.downloadCurrentConversation": "Unduh percakapan saat ini",
   "ui.conversationMinimap": "Minimap percakapan",
   "ui.projectsAll": "Proyek",
   "ui.allSources": "Semua sumber",

@@ -87,6 +87,7 @@ window.ChatGPTProLocalePacks["zh-CN"] = {
   "ui.archive": "归档",
   "ui.delete": "删除",
   "ui.downloadAllConversationImagesZIP": "下载当前对话所有图片 ZIP",
+  "ui.downloadCurrentConversation": "下载当前对话",
   "ui.conversationMinimap": "长对话快速导航",
   "ui.created": "创建时间",
   "ui.title": "标题",

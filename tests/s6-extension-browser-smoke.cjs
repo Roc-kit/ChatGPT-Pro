@@ -720,6 +720,12 @@ async function main() {
         .filter(Boolean).filter(text => /[\\u3400-\\u9fff]/u.test(text));
     })()`);
     assert.deepEqual(untranslated, [], 'static conversation controls have no untranslated Chinese in English mode');
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-current-export]')?.title`),
+    'Download current conversation', 'minimap current-conversation download tooltip is localized in English');
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-current-export]')?.getAttribute('aria-label')`),
+    'Download current conversation', 'minimap download button accessible label matches its localized tooltip');
     await cdp.eval(pageSession, `document.querySelector('[data-panel-view="search"]').click()`);
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-search-index-status')?.textContent.includes('Authorize to build a full-text index')`),
@@ -1086,6 +1092,9 @@ async function main() {
     assert(markLocal?.success && markLocal?.result?.marked, 'fixture is explicitly marked local-only in IDB');
     await cdp.eval(popupSession, `new Promise(resolve =>
       chrome.storage.local.set({ uiLanguage: 'es' }, resolve))`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-current-export]')?.title === 'Descargar la conversación actual'`),
+    'minimap current-conversation download tooltip follows a runtime language change');
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelector('[data-panel-view="search"]')?.textContent.includes('texto')`),
     'search panel reacts to the saved Spanish interface language');

@@ -104,6 +104,7 @@ window.ChatGPTProLocalePacks["ru"] = {
   "ui.archive": "архив",
   "ui.delete": "Исключить",
   "ui.downloadAllConversationImagesZIP": "Скачать все изображения разговора (ZIP)",
+  "ui.downloadCurrentConversation": "Скачать текущий разговор",
   "ui.conversationMinimap": "Разговорная мини-карта",
   "ui.projectsAll": "Проекты · Все",
   "ui.allSources": "Все источники",
