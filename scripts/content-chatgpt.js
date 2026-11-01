@@ -1084,15 +1084,9 @@
   function setLauncherIcon(expanded) {
     if (!S.launcher) return;
     if (expanded) {
-      if (S.launcher.classList.contains('chatgpt-pro-dock-launcher')) {
-        S.launcher.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg>';
-      } else {
-        S.launcher.textContent = '−';
-      }
-    } else if (S.launcher.classList.contains('chatgpt-pro-dock-launcher')) {
-      S.launcher.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+      S.launcher.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg>';
     } else {
-      S.launcher.textContent = '☰';
+      S.launcher.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
     }
   }
 
@@ -1226,6 +1220,7 @@
     });
     document.body.appendChild(button);
     S.launcher = button;
+    setLauncherIcon(false);
     window.ChatGPTProI18n?.watch(button);
     placeLauncher();
     setupLauncherDrag(button);
@@ -1317,7 +1312,7 @@
     const dock = actions.closest('[data-chatgpt-pro-tool-dock]');
     const header = dock?.querySelector('[data-chatgpt-pro-launcher]');
     const actionHeight = actions.offsetHeight;
-    const headerHeight = header?.offsetHeight || 76;
+    const headerHeight = header?.offsetHeight || 38;
     const maxTop = Math.max(VIEWPORT_MARGIN,
       window.innerHeight - actionHeight - VIEWPORT_MARGIN);
     const availablePanelHeight = Math.max(0,

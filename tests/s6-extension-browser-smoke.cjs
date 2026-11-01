@@ -273,8 +273,8 @@ async function main() {
       `unconfigured outer tool dock defaults to half the viewport height: ${JSON.stringify(minimapSize)}`);
     assert(minimapSize.height > 80,
       `minimap fills the flexible middle section between the dock header and action footer: ${JSON.stringify(minimapSize)}`);
-    assert(minimapSize.dockWidth === 76 && minimapSize.rail > minimapSize.height * 0.85,
-      'desktop dock uses the unified 76px-wide layout with a full-height navigation rail');
+    assert(minimapSize.dockWidth === 38 && minimapSize.rail > minimapSize.height * 0.85,
+      'desktop dock restores the original 38px width with a full-height navigation rail');
     assert.equal(await cdp.eval(popupSession,
       `document.querySelector('#minimapToggle').getAttribute('aria-checked')`), 'true');
     await cdp.eval(popupSession, `document.querySelector('#minimapToggle').click()`);
@@ -643,6 +643,8 @@ async function main() {
     assert(Math.abs(enabledDockHeight.height - enabledDockHeight.viewport * 0.5) <= 2 &&
       Math.abs(enabledDockHeight.actionsBottom - enabledDockHeight.dockBottom) <= 1 &&
       enabledDockHeight.autoTop < enabledDockHeight.exportTop &&
+      enabledDockHeight.autoBottom - enabledDockHeight.autoTop === 38 &&
+      enabledDockHeight.exportBottom - enabledDockHeight.exportTop === 38 &&
       enabledDockHeight.autoWidth === enabledDockHeight.actionsWidth &&
       enabledDockHeight.exportWidth === enabledDockHeight.actionsWidth &&
       enabledDockHeight.exportBottom <= enabledDockHeight.dockBottom - 1,
@@ -680,7 +682,7 @@ async function main() {
       mergedLauncherLayout.panelTop >= mergedLauncherLayout.buttonBottom - 1 &&
       mergedLauncherLayout.buttonWidth === mergedLauncherLayout.dockWidth - 2 &&
       mergedLauncherLayout.buttonHeight === mergedLauncherLayout.buttonWidth &&
-      mergedLauncherLayout.dockWidth >= 64 && mergedLauncherLayout.dockWidth <= 76 &&
+      mergedLauncherLayout.dockWidth === 38 &&
       mergedLauncherLayout.buttonRadius >= 14 && mergedLauncherLayout.buttonRadius <= 18 &&
       mergedLauncherLayout.childOrder.join(',') === 'header,minimap,actions' &&
       mergedLauncherLayout.buttonShadow === 'none',
@@ -780,7 +782,7 @@ async function main() {
         actionsBottom: actions.bottom, dockCenter: (outer.top + outer.bottom) / 2 };
     })()`);
     assert(narrowLayout.left >= 0 && narrowLayout.right <= narrowLayout.width &&
-      narrowLayout.dockWidth === 64 &&
+      narrowLayout.dockWidth === 44 &&
       narrowLayout.actionsBottom <= narrowLayout.height &&
       narrowLayout.panelBottom <= narrowLayout.actionsTop + 1 &&
       narrowLayout.dockHeight < narrowLayout.height &&
@@ -1635,6 +1637,20 @@ async function main() {
       return Boolean(launcher && launcher.parentElement === document.body &&
         !document.querySelector('[data-chatgpt-pro-tool-dock]'));
     })()`), 'leaving a conversation restores the standalone draggable directory launcher');
+    assert.deepEqual(await cdp.eval(pageSession, `(() => {
+      const launcher = document.querySelector('[data-chatgpt-pro-launcher]');
+      const rect = launcher.getBoundingClientRect();
+      return { width: rect.width, height: rect.height,
+        cursor: getComputedStyle(launcher).cursor,
+        dockClass: launcher.classList.contains('chatgpt-pro-dock-launcher'),
+        borderRadius: getComputedStyle(launcher).borderTopLeftRadius,
+        background: getComputedStyle(launcher).backgroundColor,
+        boxShadow: getComputedStyle(launcher).boxShadow,
+        iconWidth: launcher.querySelector('svg')?.getBoundingClientRect().width || 0 };
+    })()`), { width: 42, height: 42, cursor: 'grab', dockClass: false,
+      borderRadius: '12px', background: 'rgba(255, 255, 255, 0.96)',
+      boxShadow: 'none', iconWidth: 20 },
+    'ChatGPT home retains a standalone draggable 42px launcher styled consistently with the unified dock');
     await cdp.eval(pageSession, `(() => {
       history.pushState({}, '', ${JSON.stringify(CHAT_URL)});
       window.dispatchEvent(new PopStateEvent('popstate'));

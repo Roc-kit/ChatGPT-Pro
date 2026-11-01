@@ -39,30 +39,57 @@
 .chatgpt-pro-launcher {
   position: fixed !important;
   z-index: 2147483647 !important;
+  box-sizing: border-box !important;
   width: 42px !important;
   height: 42px !important;
   padding: 0 !important;
-  border: 1px solid rgba(127, 127, 127, 0.32) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1px solid rgba(127, 127, 127, 0.28) !important;
   border-radius: 12px !important;
-  background: rgba(32, 33, 35, 0.92) !important;
-  color: #fff !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18) !important;
-  font-size: 19px !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: #374151 !important;
+  box-shadow: none !important;
+  font-size: 0 !important;
   line-height: 1 !important;
   cursor: grab !important;
-  opacity: 0.84 !important;
+  opacity: 1 !important;
   touch-action: none !important;
   user-select: none !important;
 }
 
-.chatgpt-pro-launcher:hover { opacity: 1 !important; }
+.chatgpt-pro-launcher:hover {
+  border-color: rgba(127, 127, 127, 0.28) !important;
+  background: rgba(16, 163, 127, 0.06) !important;
+  color: #0d9373 !important;
+}
 .chatgpt-pro-launcher.chatgpt-pro-dragging { cursor: grabbing !important; opacity: 1 !important; }
 .chatgpt-pro-launcher.chatgpt-pro-open {
   opacity: 1 !important;
-  background: #fff !important;
-  color: #111827 !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: #374151 !important;
   border-color: rgba(127, 127, 127, 0.28) !important;
   box-shadow: none !important;
+}
+
+.chatgpt-pro-launcher:not(.chatgpt-pro-dock-launcher) svg {
+  width: 20px !important;
+  height: 20px !important;
+  fill: none !important;
+  stroke: currentColor !important;
+  stroke-width: 2 !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  pointer-events: none !important;
+}
+
+html.dark .chatgpt-pro-launcher:not(.chatgpt-pro-dock-launcher),
+.dark .chatgpt-pro-launcher:not(.chatgpt-pro-dock-launcher),
+[data-theme="dark"] .chatgpt-pro-launcher:not(.chatgpt-pro-dock-launcher) {
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  background: rgba(37, 39, 44, 0.96) !important;
+  color: #e5e7eb !important;
 }
 
 .chatgpt-pro-launcher.chatgpt-pro-open[data-panel-vertical="down"][data-panel-horizontal="left"] {
@@ -97,9 +124,9 @@
   right: auto !important;
   transform: none !important;
   box-sizing: border-box !important;
-  flex: 0 0 calc(var(--chatgpt-pro-tool-dock-width, 76px) - 2px) !important;
+  flex: 0 0 calc(var(--chatgpt-pro-tool-dock-width, 38px) - 2px) !important;
   width: 100% !important;
-  height: calc(var(--chatgpt-pro-tool-dock-width, 76px) - 2px) !important;
+  height: calc(var(--chatgpt-pro-tool-dock-width, 38px) - 2px) !important;
   min-width: 0 !important;
   min-height: 0 !important;
   padding: 0 !important;
@@ -767,7 +794,7 @@
   position: fixed !important;
   top: 25vh !important;
   right: 15px !important;
-  --chatgpt-pro-tool-dock-width: 76px;
+  --chatgpt-pro-tool-dock-width: 38px;
   width: var(--chatgpt-pro-tool-dock-width) !important;
   height: 50vh !important;
   min-height: 0 !important;
@@ -808,10 +835,10 @@
   box-sizing: border-box !important;
   inset: auto !important;
   z-index: auto !important;
-  flex: 0 0 58px !important;
+  flex: 0 0 38px !important;
   width: 100% !important;
   min-width: 0 !important;
-  height: 58px !important;
+  height: 38px !important;
   margin: 0 !important;
   padding: 0 !important;
   display: flex !important;
@@ -857,8 +884,8 @@
 .chatgpt-pro-current-images {
   box-sizing: border-box !important;
   width: 100% !important;
-  height: 58px !important;
-  flex-basis: 58px !important;
+  height: 38px !important;
+  flex-basis: 38px !important;
   cursor: pointer !important;
 }
 
@@ -1202,15 +1229,15 @@ html.dark .chatgpt-pro-minimap-preview,
 
 @media (max-width: 640px) {
   .chatgpt-pro-tool-dock {
-    --chatgpt-pro-tool-dock-width: 64px;
+    --chatgpt-pro-tool-dock-width: 44px;
     right: 6px !important;
   }
   .chatgpt-pro-launcher.chatgpt-pro-dock-launcher {
-    flex-basis: 62px !important;
-    height: 62px !important;
+    flex-basis: 42px !important;
+    height: 42px !important;
   }
   .chatgpt-pro-current-export,
-  .chatgpt-pro-current-images { width: 100% !important; height: 52px !important; flex-basis: 52px !important; }
+  .chatgpt-pro-current-images { width: 100% !important; height: 36px !important; flex-basis: 36px !important; }
   .chatgpt-pro-download-popover {
     left: 0 !important;
     right: auto !important;
