@@ -1341,6 +1341,51 @@ async function main() {
         project.querySelector('.chatgpt-pro-row-title-text')?.textContent === 'R8 unique project fixture');
     })()`), true,
     'Arabic status labels translate while all user-authored conversation titles remain unchanged');
+
+    const skipTask = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
+      action: 'taskCreate', accountId: 's6-isolated-account', type: 'index', items: [
+        { id: 's6-skip-target', title: 'S6 one skipped conversation', updateTime: 1770000400 },
+        { id: 's6-keep-one', title: 'S6 keep one', updateTime: 1770000401 },
+        { id: 's6-keep-two', title: 'S6 keep two', updateTime: 1770000402 }
+      ] })`);
+    assert(skipTask?.success, `skip test task create failed: ${skipTask?.error}`);
+    const skipTaskId = skipTask.result.id;
+    const skipOwner = 's6-skip-test-owner';
+    const skipClaim = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
+      action: 'taskClaim', accountId: 's6-isolated-account', id: '${skipTask.result.id}',
+      owner: '${skipOwner}' })`);
+    assert(skipClaim?.success && skipClaim.result?.acquired, 'skip test task claim succeeds');
+    for (const [itemIndex, outcome] of [[0, 'failed'], [1, 'success'], [2, 'success']]) {
+      const checkpoint = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
+        action: 'taskCheckpoint', accountId: 's6-isolated-account', id: '${skipTask.result.id}',
+        owner: '${skipOwner}', token: '${skipClaim.result.token}', itemIndex: ${itemIndex},
+        outcome: '${outcome}', error: '${outcome === 'failed' ? 'controlled failure for skip regression' : ''}' })`);
+      assert(checkpoint?.success, `skip test checkpoint ${itemIndex} succeeds: ${checkpoint?.error}`);
+    }
+    await cdp.eval(pageSession, `document.querySelector('[data-panel-view="search"]').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-search-index-error-skip')?.isConnected`),
+    'one failed conversation exposes its own skip action');
+    await cdp.send('Page.enable', {}, pageSession);
+    const acceptSkipConfirmation = message => {
+      if (message.method === 'Page.javascriptDialogOpening' && message.sessionId === pageSession) {
+        cdp.send('Page.handleJavaScriptDialog', { accept: true }, pageSession).catch(() => {});
+      }
+    };
+    cdp.listeners.add(acceptSkipConfirmation);
+    await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-search-index-error-skip').click()`);
+    cdp.listeners.delete(acceptSkipConfirmation);
+    await eventually(async () => cdp.eval(popupSession, `(async () => {
+      const task = await chrome.runtime.sendMessage({ action: 'taskGet',
+        accountId: 's6-isolated-account', id: '${skipTaskId}' });
+      const policy = await chrome.runtime.sendMessage({ action: 'indexPolicyGet',
+        accountId: 's6-isolated-account' });
+      return task?.success && policy?.success && task.result.skippedCount === 1 &&
+        task.result.skippedIds?.length === 1 && task.result.skippedIds[0] === 's6-skip-target' &&
+        task.result.errors?.length === 0 &&
+        JSON.stringify(policy.result.skippedIndexIds) === JSON.stringify(['s6-skip-target']);
+    })()`), 'skip action persists only the selected conversation ID');
     assert(!browserErrors.some(Boolean), `Chrome runtime exceptions: ${browserErrors.join('; ')}`);
     console.log(`S6_EXTENSION_PASS: real MV3, timestamps, filename settings, single MD/JSON, project/title filter, cached index and two ZIP parts; requests=${JSON.stringify(requests)}`);
   } finally {
