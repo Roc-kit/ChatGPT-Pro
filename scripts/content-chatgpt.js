@@ -3014,18 +3014,27 @@
     const skippedIds = new Set(policy.result?.skippedIndexIds || []);
     const metadata = await runtimeMessage({ action: 'searchIndexMetadata', accountId });
     const indexed = new Map((metadata.records || []).map(record => [record.id, record]));
+    const skippedCount = records.filter(record => skippedIds.has(record.id)).length;
     const pending = records.filter(record => {
       if (skippedIds.has(record.id)) return false;
       const existing = indexed.get(record.id);
       return !existing || existing.schemaVersion !== SEARCH_INDEX_SCHEMA_VERSION
         || Number(existing.updateTime || 0) < timestampValue(record.updateTime);
     });
-    if (!pending.length) return { indexedCount: 0, skippedCount: records.length, failures: [] };
+    if (!pending.length) return {
+      indexedCount: 0, skippedCount,
+      alreadyIndexedCount: records.length - skippedCount, failures: []
+    };
     const task = await indexTaskMessage('taskCreate', accountId, {
       type: 'index', items: pending, options: { automatic: options.automatic === true }
     });
     if (task.status === 'paused') return { paused: true };
-    return runIndexTask(accountId, task.id, onProgress);
+    const result = await runIndexTask(accountId, task.id, onProgress);
+    return {
+      ...result,
+      skippedCount: skippedCount + Number(result.skippedCount || 0),
+      alreadyIndexedCount: records.length - pending.length - skippedCount
+    };
   }
   async function retryIndexConversation(record, onProgress) {
     if (!record?.id) throw new Error('E_INDEX_RETRY_RECORD_INVALID');
@@ -3036,7 +3045,8 @@
     const existing = (metadata.records || []).find(item => item.id === record.id);
     if (existing && existing.schemaVersion === SEARCH_INDEX_SCHEMA_VERSION
         && Number(existing.updateTime || 0) >= timestampValue(record.updateTime)) {
-      return { indexedCount: 0, skippedCount: 1, failures: [], alreadyIndexed: true };
+      return { indexedCount: 0, skippedCount: 0, alreadyIndexedCount: 1,
+        failures: [], alreadyIndexed: true };
     }
     // Unlike ordinary task creation, a per-item retry must never silently
     // attach itself to another active queue returned by the singleton guard.

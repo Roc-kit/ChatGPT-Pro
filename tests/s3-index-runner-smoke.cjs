@@ -212,7 +212,8 @@ async function main() {
   assert.equal(job.status, 'completed');
   assert.deepEqual(fetched, ['a', 'b', 'c'], 'already completed record was not reprocessed');
   const reuse = await context.runner.updateFullTextIndex(records);
-  assert.equal(reuse.skippedCount, 3);
+  assert.equal(reuse.skippedCount, 0, 'already indexed conversations are not reported as intentionally skipped');
+  assert.equal(reuse.alreadyIndexedCount, 3);
   assert.deepEqual(fetched, ['a', 'b', 'c'], 'unchanged fully indexed records require no network');
 
   const extra = [{ id: 'd', title: 'd', updateTime: 4 }];
@@ -259,11 +260,24 @@ async function main() {
   const beforeSkipFilter = fetched.length;
   const afterSkipFilter = await context.runner.updateFullTextIndex([
     { id: 'user-skipped', title: 'User skipped', updateTime: 15 },
-    { id: 'after-skip', title: 'After skip', updateTime: 16 }
+    { id: 'after-skip', title: 'After skip', updateTime: 16 },
+    { id: 'after-skip-2', title: 'After skip 2', updateTime: 17 }
   ]);
-  assert.equal(afterSkipFilter.indexedCount, 1);
-  assert.deepEqual(fetched.slice(beforeSkipFilter), ['after-skip'],
-    'persistently skipped conversations never re-enter a later index queue');
+  assert.equal(afterSkipFilter.indexedCount, 2);
+  assert.equal(afterSkipFilter.skippedCount, 1,
+    'one explicitly skipped conversation does not count the other queue entries as skipped');
+  assert.deepEqual(fetched.slice(beforeSkipFilter), ['after-skip', 'after-skip-2'],
+    'only the selected conversation is excluded; all other conversations are indexed');
+  const beforeNoPending = fetched.length;
+  const noPending = await context.runner.updateFullTextIndex([
+    { id: 'user-skipped', title: 'User skipped', updateTime: 15 },
+    { id: 'after-skip', title: 'After skip', updateTime: 16 },
+    { id: 'after-skip-2', title: 'After skip 2', updateTime: 17 }
+  ]);
+  assert.equal(noPending.skippedCount, 1);
+  assert.equal(noPending.alreadyIndexedCount, 2,
+    'a no-op update distinguishes the one skipped conversation from two already indexed conversations');
+  assert.equal(fetched.length, beforeNoPending, 'no-op update makes no detail requests');
 
   const retryRecords = [
     { id: 'retry-once', title: 'Retry once', updateTime: 17 },

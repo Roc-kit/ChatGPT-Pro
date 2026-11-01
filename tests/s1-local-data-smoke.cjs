@@ -911,8 +911,9 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check(skippedFailure.success && afterSkipTask.result.errors.length === 2 &&
       afterSkipTask.result.failureCount === 2 && afterSkipTask.result.skippedCount === 1,
       'skipping a failed item removes it from the failure list and task failure count');
-    check(afterSkipPolicy.result.skippedIndexIds.includes('failure-0'),
-      'skipped conversation is persisted for this account');
+    check(JSON.stringify(afterSkipPolicy.result.skippedIndexIds) === JSON.stringify(['failure-0']) &&
+      JSON.stringify(afterSkipTask.result.skippedIds) === JSON.stringify(['failure-0']),
+      'skipping one failed item persists only that conversation ID, not the rest of the task');
     check(!(await send({ action: 'indexSkipConversation', accountId: 'batch-b-other',
       taskId: failureTask.result.id, conversationId: 'failure-1' })).success,
       'another account cannot skip an item from this task');
