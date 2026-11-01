@@ -122,7 +122,6 @@
     if (index === 6) return match[0].startsWith('正在归档') ? 'archive' : 'delete';
     if (index === 59) return match[1] === '正在归档' ? 'archive' : 'delete';
     if (index === 60) return `${match[1] === '归档' ? 'archive' : 'delete'}${match[4] ? 'WithFailures' : ''}`;
-    if (index === 9) return match[2] ? 'full' : 'short';
     if (index === 10) return match[5] ? 'full' : 'short';
     if (index === 27) return match[2] ? 'full' : 'short';
     return 'default';
