@@ -25,6 +25,7 @@ function createHarness(runSync) {
     let _syncPromise = null;
     let _syncAccountId = null;
     let _syncCheckLatest = false;
+    let _syncRequireComplete = false;
     ${source.slice(start, end)}
     globalThis.sync = syncConversationList;
   `, context);
@@ -79,7 +80,75 @@ async function main() {
   assert.equal(firstResult[0].id, 'same-latest-snapshot');
   assert.equal(secondResult[0].id, 'same-latest-snapshot');
 
-  console.log('S4_DIRECTORY_SYNC_PASS: stale maintenance follow-up, current event sync coalescing');
+  let resolveStrict;
+  let strictStarted;
+  const strictStartedPromise = new Promise(resolve => { strictStarted = resolve; });
+  let strictCalls = 0;
+  const strictHarness = createHarness((_forceFull, _accountId, requireComplete) => {
+    strictCalls++;
+    assert.equal(requireComplete, true);
+    strictStarted();
+    return new Promise(resolve => { resolveStrict = resolve; });
+  });
+  const firstStrict = strictHarness.sync(true, { requireComplete: true });
+  await strictStartedPromise;
+  const secondStrict = strictHarness.sync(true, { requireComplete: true });
+  await tick();
+  resolveStrict([{ id: 'verified-full-directory' }]);
+  const [firstStrictResult, secondStrictResult] = await Promise.all([firstStrict, secondStrict]);
+  assert.equal(strictCalls, 1,
+    'concurrent initial-index requests share an already-running verified full scan');
+  assert.equal(firstStrictResult[0].id, 'verified-full-directory');
+  assert.equal(secondStrictResult[0].id, 'verified-full-directory');
+
+  let resolvePartial;
+  let partialStarted;
+  const partialStartedPromise = new Promise(resolve => { partialStarted = resolve; });
+  let resolveVerified;
+  let verifiedStarted;
+  const verifiedStartedPromise = new Promise(resolve => { verifiedStarted = resolve; });
+  let upgradeCalls = 0;
+  const upgradeHarness = createHarness((_forceFull, _accountId, requireComplete) => {
+    upgradeCalls++;
+    if (upgradeCalls === 1) {
+      assert.equal(requireComplete, false);
+      partialStarted();
+      return new Promise(resolve => { resolvePartial = resolve; });
+    }
+    assert.equal(requireComplete, true);
+    verifiedStarted();
+    return new Promise(resolve => { resolveVerified = resolve; });
+  });
+  const partialSync = upgradeHarness.sync(false);
+  await partialStartedPromise;
+  const verifiedSync = upgradeHarness.sync(true, { requireComplete: true });
+  await tick();
+  resolvePartial([{ id: 'partial-directory' }]);
+  await verifiedStartedPromise;
+  resolveVerified([{ id: 'verified-directory' }]);
+  const [partialResult, verifiedResult] = await Promise.all([partialSync, verifiedSync]);
+  assert.equal(upgradeCalls, 2,
+    'a strict full scan still follows an in-flight non-strict maintenance sync');
+  assert.equal(partialResult[0].id, 'partial-directory');
+  assert.equal(verifiedResult[0].id, 'verified-directory');
+
+  const timestampStart = source.indexOf('  async function getConversationTimestamps(');
+  const timestampEnd = source.indexOf('\n  async function scheduledConversationDetail', timestampStart);
+  assert(timestampStart >= 0 && timestampEnd > timestampStart,
+    'production timestamp directory fallback is present');
+  const timestampContext = {
+    readDirectory: async () => [],
+    buildTimestampMap: records => new Map(records.map(record => [record.id, record]))
+  };
+  vm.createContext(timestampContext);
+  vm.runInContext(`${source.slice(timestampStart, timestampEnd)}\n`
+    + 'globalThis.timestamps = getConversationTimestamps;', timestampContext);
+  const initialTimestamps = await timestampContext.timestamps(false);
+  assert.equal(initialTimestamps.size, 0);
+  assert.equal(initialTimestamps.partial, true,
+    'empty local directory requests a single full sync rather than prefetching page zero separately');
+
+  console.log('S4_DIRECTORY_SYNC_PASS: stale maintenance follow-up, event/strict sync coalescing, no duplicate initial page');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

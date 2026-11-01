@@ -34,6 +34,7 @@ const APIHandler = (function () {
   let _syncPromise = null;
   let _syncAccountId = null;
   let _syncCheckLatest = false;
+  let _syncRequireComplete = false;
   const _conversationPromises = new Map();
 
   // Revalidate when a previously backgrounded tab comes back into focus.
@@ -312,17 +313,6 @@ const APIHandler = (function () {
     return map;
   }
 
-  async function fetchInitialRegularPage() {
-    const token = await getToken();
-    const url = new URL(`${baseUrl()}/conversations`);
-    url.searchParams.set('offset', '0');
-    url.searchParams.set('limit', String(CFG.PAGE_SIZE));
-    url.searchParams.set('order', 'updated');
-    const data = await fetchAuthedJson(token, url.toString());
-    const items = Array.isArray(data) ? data : (data.items || data.conversations || []);
-    return items.map(item => recordFromItem(item)).filter(Boolean);
-  }
-
   async function fetchRegularIncremental(token, cachedMap, forceFull, strictFull = false) {
     const changed = [];
     let offset = 0;
@@ -588,9 +578,12 @@ const APIHandler = (function () {
         return syncConversationList(forceFull, options);
       }
       const joinedCheckLatest = _syncCheckLatest;
+      const joinedRequireComplete = _syncRequireComplete;
       const result = await _syncPromise;
       if (await getAccountId(true) !== expectedAccountId) throw new Error('登录账号已切换，请重新同步');
-      if (options.requireComplete === true) return syncConversationList(true, options);
+      if (options.requireComplete === true) {
+        return joinedRequireComplete ? result : syncConversationList(true, options);
+      }
       // An event-triggered latest check must not silently join an older
       // maintenance sync that began before the new conversation appeared.
       if (options.checkLatest === true && !joinedCheckLatest) {
@@ -611,6 +604,7 @@ const APIHandler = (function () {
     }
     _syncAccountId = expectedAccountId;
     _syncCheckLatest = options.checkLatest === true;
+    _syncRequireComplete = options.requireComplete === true;
     _syncPromise = runSync(forceFull, expectedAccountId, options.requireComplete === true);
     try {
       return await _syncPromise;
@@ -618,6 +612,7 @@ const APIHandler = (function () {
       _syncPromise = null;
       _syncAccountId = null;
       _syncCheckLatest = false;
+      _syncRequireComplete = false;
     }
   }
 
@@ -633,7 +628,10 @@ const APIHandler = (function () {
     if (!forceFull) {
       const cached = await readDirectory();
       if (cached.length) return buildTimestampMap(cached);
-      const initial = buildTimestampMap(await fetchInitialRegularPage());
+      // The caller starts the full directory sync when this map is partial.
+      // Do not fetch offset=0 separately: that would be fetched again by the
+      // full sync moments later, duplicating the first metadata request.
+      const initial = new Map();
       initial.partial = true;
       return initial;
     }
