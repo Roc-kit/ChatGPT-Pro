@@ -617,6 +617,66 @@ async function main() {
     assert.equal(beforeDrag.exportWidth, beforeDrag.actionWidth,
       'export buttons fill the same available toolbar width without overflowing');
     assert.equal(beforeDrag.actionsCount, 1, 'downloads share one compact movable toolbar action');
+    const mergedLauncherLayout = await cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      const launcher = document.querySelector('[data-chatgpt-pro-launcher]');
+      const outer = dock.getBoundingClientRect();
+      const button = launcher.getBoundingClientRect();
+      const panel = dock.querySelector('[data-chatgpt-pro-minimap]').getBoundingClientRect();
+      return { inDock: launcher.parentElement === dock,
+        className: launcher.className,
+        centerX: button.left + button.width / 2,
+        centerY: button.top + button.height / 2,
+        dockLeft: outer.left, dockTop: outer.top, dockWidth: outer.width,
+        buttonWidth: button.width, buttonHeight: button.height,
+        buttonRadius: parseFloat(getComputedStyle(launcher).borderTopLeftRadius),
+        panelTop: panel.top, buttonBottom: button.bottom };
+    })()`);
+    assert(mergedLauncherLayout.inDock && mergedLauncherLayout.className.includes('chatgpt-pro-dock-launcher'),
+      'directory/search launcher is mounted inside the minimap dock');
+    assert(Math.abs(mergedLauncherLayout.centerX -
+      (mergedLauncherLayout.dockLeft + mergedLauncherLayout.dockWidth / 2)) <= 1 &&
+      Math.abs(mergedLauncherLayout.centerY - mergedLauncherLayout.dockTop) <= 1 &&
+      mergedLauncherLayout.panelTop >= mergedLauncherLayout.buttonBottom - 1 &&
+      mergedLauncherLayout.buttonWidth === mergedLauncherLayout.buttonHeight &&
+      mergedLauncherLayout.buttonRadius >= mergedLauncherLayout.buttonWidth / 2 - 1,
+    `directory launcher overlaps the minimap top edge as a matching circular control: ${JSON.stringify(mergedLauncherLayout)}`);
+
+    const horizontalDragPoint = await cdp.eval(pageSession, `(() => {
+      const launcher = document.querySelector('[data-chatgpt-pro-launcher]');
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      const button = launcher.getBoundingClientRect();
+      return { x: button.left + button.width / 2, y: button.top + button.height / 2,
+        dockLeft: dock.getBoundingClientRect().left };
+    })()`);
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed', x: horizontalDragPoint.x, y: horizontalDragPoint.y,
+      button: 'left', clickCount: 1
+    }, pageSession);
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved', x: horizontalDragPoint.x - 120, y: horizontalDragPoint.y,
+      button: 'left', buttons: 1
+    }, pageSession);
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x: horizontalDragPoint.x - 120, y: horizontalDragPoint.y,
+      button: 'left'
+    }, pageSession);
+    const movedDock = await cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      const launcher = document.querySelector('[data-chatgpt-pro-launcher]').getBoundingClientRect();
+      const outer = dock.getBoundingClientRect();
+      return { left: outer.left, right: outer.right, width: outer.width,
+        launcherCenterX: launcher.left + launcher.width / 2,
+        dockCenterX: outer.left + outer.width / 2 };
+    })()`);
+    assert(movedDock.left < horizontalDragPoint.dockLeft - 100 && movedDock.left >= 0 &&
+      movedDock.right <= minimapSize.viewportWidth &&
+      Math.abs(movedDock.launcherCenterX - movedDock.dockCenterX) <= 1,
+    `dragging the directory launcher moves the entire dock horizontally within the viewport: ${JSON.stringify(movedDock)}`);
+    const persistedDockX = await cdp.eval(popupSession, `new Promise(resolve =>
+      chrome.storage.local.get('toolDockPositionX', data => resolve(data.toolDockPositionX)))`);
+    assert(Number.isFinite(persistedDockX) && persistedDockX < 1,
+      `horizontal dock position is persisted independently: ${persistedDockX}`);
     const dragPoint = await cdp.eval(pageSession, `(() => {
       const button = document.querySelector('[data-chatgpt-pro-current-export]');
       const r = button.getBoundingClientRect();
@@ -1510,6 +1570,24 @@ async function main() {
         task.result.errors?.length === 0 &&
         JSON.stringify(policy.result.skippedIndexIds) === JSON.stringify(['s6-skip-target']);
     })()`), 'skip action persists only the selected conversation ID');
+    await cdp.eval(pageSession, `(() => {
+      history.pushState({}, '', '/');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    })()`);
+    await eventually(async () => cdp.eval(pageSession, `(() => {
+      const launcher = document.querySelector('[data-chatgpt-pro-launcher]');
+      return Boolean(launcher && launcher.parentElement === document.body &&
+        !document.querySelector('[data-chatgpt-pro-tool-dock]'));
+    })()`), 'leaving a conversation restores the standalone draggable directory launcher');
+    await cdp.eval(pageSession, `(() => {
+      history.pushState({}, '', ${JSON.stringify(CHAT_URL)});
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    })()`);
+    await eventually(async () => cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      const launcher = document.querySelector('[data-chatgpt-pro-launcher]');
+      return Boolean(dock && launcher && launcher.parentElement === dock);
+    })()`), 'returning to a conversation reattaches the directory launcher to the minimap dock');
     assert(!browserErrors.some(Boolean), `Chrome runtime exceptions: ${browserErrors.join('; ')}`);
     console.log(`S6_EXTENSION_PASS: real MV3, timestamps, filename settings, single MD/JSON, project/title filter, cached index and two ZIP parts; requests=${JSON.stringify(requests)}`);
   } finally {

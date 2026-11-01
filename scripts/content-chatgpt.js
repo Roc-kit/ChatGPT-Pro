@@ -69,6 +69,7 @@
       closeOnOutsideClick: true,
       exportFilenameTemplate: '{created_datetime}_{title}',
       launcherPosition: { x: 0.94, y: 0.76 },
+      toolDockPositionX: 1,
       currentExportPositionY: 0.82,
       panelSize: { width: 580, height: 560 }
     }
@@ -479,9 +480,9 @@
 
   function minimapSlotCount() {
     const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
-    const actions = dock?.querySelector('[data-chatgpt-pro-tool-actions]');
-    const railHeight = actions
-      ? Math.max(0, actions.offsetTop - 12)
+    const panel = dock?.querySelector('[data-chatgpt-pro-minimap]');
+    const railHeight = panel
+      ? Math.max(0, panel.clientHeight - 6)
       : Math.max(36, window.innerHeight * 0.72);
     return Math.max(3, Math.min(49, Math.floor(railHeight / 10)));
   }
@@ -1065,8 +1066,29 @@
       S.launcher.removeAttribute('data-panel-vertical');
       S.launcher.removeAttribute('data-panel-horizontal');
       S.launcher.setAttribute('aria-expanded', 'false');
+      setLauncherIcon(false);
+      S.launcher.title = launcherTitle(false);
+    }
+  }
+
+  function launcherTitle(expanded) {
+    const key = expanded ? 'ui.collapseConversationsDragToMove' : 'ui.conversationsDragToMove';
+    return window.ChatGPTProI18n?.t(key)
+      || (expanded ? 'Collapse conversations (drag to move)' : 'Conversations (drag to move)');
+  }
+
+  function setLauncherIcon(expanded) {
+    if (!S.launcher) return;
+    if (expanded) {
+      if (S.launcher.classList.contains('chatgpt-pro-dock-launcher')) {
+        S.launcher.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg>';
+      } else {
+        S.launcher.textContent = '−';
+      }
+    } else if (S.launcher.classList.contains('chatgpt-pro-dock-launcher')) {
+      S.launcher.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
+    } else {
       S.launcher.textContent = '☰';
-      S.launcher.title = '聊天目录（可拖动）';
     }
   }
 
@@ -1093,6 +1115,10 @@
 
   function placeLauncher() {
     if (!S.launcher) return;
+    if (S.launcher.closest('[data-chatgpt-pro-tool-dock]')) {
+      placeCurrentChatToolDock();
+      return;
+    }
     const { left, top } = getLauncherPixelPosition();
     S.launcher.style.left = `${left}px`;
     S.launcher.style.top = `${top}px`;
@@ -1120,9 +1146,10 @@
       dragging = true;
       S.launcherMoved = false;
       const rect = button.getBoundingClientRect();
+      const dock = button.closest('[data-chatgpt-pro-tool-dock]');
       startX = event.clientX;
       startY = event.clientY;
-      startLeft = rect.left;
+      startLeft = dock ? dock.getBoundingClientRect().left : rect.left;
       startTop = rect.top;
       button.setPointerCapture(event.pointerId);
       button.classList.add('chatgpt-pro-dragging');
@@ -1133,6 +1160,17 @@
       const dx = event.clientX - startX;
       const dy = event.clientY - startY;
       if (Math.abs(dx) + Math.abs(dy) > 5) S.launcherMoved = true;
+      const dock = button.closest('[data-chatgpt-pro-tool-dock]');
+      if (dock) {
+        const { minLeft, maxLeft } = toolDockPositionBounds(dock);
+        const left = Math.max(minLeft, Math.min(maxLeft, startLeft + dx));
+        dock.style.setProperty('left', `${left}px`, 'important');
+        dock.style.setProperty('right', 'auto', 'important');
+        const downloadPopover = dock.querySelector('[data-chatgpt-pro-download-popover]');
+        if (downloadPopover && !downloadPopover.hidden) positionDownloadPopover(downloadPopover);
+        if (S.timeline) positionTimelinePanel();
+        return;
+      }
       const maxLeft = window.innerWidth - button.offsetWidth - VIEWPORT_MARGIN;
       const maxTop = window.innerHeight - button.offsetHeight - VIEWPORT_MARGIN;
       const left = Math.max(VIEWPORT_MARGIN, Math.min(maxLeft, startLeft + dx));
@@ -1147,8 +1185,12 @@
       dragging = false;
       button.classList.remove('chatgpt-pro-dragging');
       try { button.releasePointerCapture(event.pointerId); } catch (_) {}
-      const rect = button.getBoundingClientRect();
-      saveLauncherPosition(rect.left, rect.top);
+      const dock = button.closest('[data-chatgpt-pro-tool-dock]');
+      if (dock) saveCurrentChatToolDockPosition(dock.getBoundingClientRect().left, dock);
+      else {
+        const rect = button.getBoundingClientRect();
+        saveLauncherPosition(rect.left, rect.top);
+      }
       if (S.timeline) positionTimelinePanel();
     };
     button.addEventListener('pointerup', finish);
@@ -1168,7 +1210,7 @@
     button.setAttribute('data-chatgpt-pro-launcher', '1');
     button.setAttribute('aria-label', '打开聊天目录');
     button.setAttribute('aria-expanded', 'false');
-    button.title = '聊天目录（可拖动）';
+    button.title = launcherTitle(false);
     button.textContent = '☰';
     button.addEventListener('click', event => {
       if (S.launcherMoved) {
@@ -1204,6 +1246,7 @@
     dock.className = 'chatgpt-pro-tool-dock';
     dock.setAttribute('data-chatgpt-pro-tool-dock', '1');
     document.body.appendChild(dock);
+    placeCurrentChatToolDock();
     window.ChatGPTProI18n?.watch(dock);
     return dock;
   }
@@ -1219,12 +1262,65 @@
     return actions;
   }
 
+  function toolDockPositionBounds(dock) {
+    const minLeft = VIEWPORT_MARGIN;
+    const maxLeft = Math.max(minLeft, window.innerWidth - dock.offsetWidth - VIEWPORT_MARGIN);
+    return { minLeft, maxLeft };
+  }
+
+  function placeCurrentChatToolDock() {
+    const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+    if (!dock) return;
+    const { minLeft, maxLeft } = toolDockPositionBounds(dock);
+    const x = Math.max(0, Math.min(1, Number(S.settings.toolDockPositionX ?? 1)));
+    const left = Math.round(minLeft + (maxLeft - minLeft) * x);
+    dock.style.setProperty('left', `${left}px`, 'important');
+    dock.style.setProperty('right', 'auto', 'important');
+  }
+
+  function saveCurrentChatToolDockPosition(left, dock) {
+    const { minLeft, maxLeft } = toolDockPositionBounds(dock);
+    const x = Math.max(0, Math.min(1, (left - minLeft) / Math.max(1, maxLeft - minLeft)));
+    S.settings.toolDockPositionX = x;
+    chrome.storage.local.set({ toolDockPositionX: x });
+  }
+
+  function attachLauncherToToolDock(dock) {
+    if (!S.launcher?.isConnected) ensureFloatingButton();
+    if (!S.launcher) return;
+    const alreadyAttached = S.launcher.parentElement === dock;
+    if (!alreadyAttached) dock.insertBefore(S.launcher, dock.firstChild);
+    S.launcher.classList.add('chatgpt-pro-dock-launcher');
+    S.launcher.style.removeProperty('left');
+    S.launcher.style.removeProperty('top');
+    S.launcher.title = launcherTitle(false);
+    setLauncherIcon(Boolean(S.timeline));
+    if (!alreadyAttached) placeCurrentChatToolDock();
+    if (S.timeline) positionTimelinePanel();
+  }
+
+  function detachLauncherFromToolDock(dock) {
+    if (!S.launcher || !dock?.contains(S.launcher)) return;
+    closeTimeline();
+    S.launcher.classList.remove('chatgpt-pro-dock-launcher');
+    document.body.appendChild(S.launcher);
+    S.launcher.title = launcherTitle(false);
+    setLauncherIcon(false);
+    placeLauncher();
+  }
+
   function toolActionPositionBounds(actions) {
-    const maxTop = Math.max(VIEWPORT_MARGIN, window.innerHeight - actions.offsetHeight - VIEWPORT_MARGIN);
-    // Keep the dock's bottom at or below the viewport midpoint so its frame
-    // can shrink around the content while remaining vertically centered.
+    const height = actions.offsetHeight;
+    const maxTop = Math.max(VIEWPORT_MARGIN,
+      window.innerHeight - height - VIEWPORT_MARGIN - 19);
+    // Reserve room for the overlapping directory button and a usable minimap
+    // rail. The bottom export action remains the vertical resize handle.
+    const maxPanelHeight = Math.max(0,
+      window.innerHeight - height - VIEWPORT_MARGIN * 2 - 38 - 26);
+    const minPanelHeight = Math.min(60, maxPanelHeight);
+    const minOffsetTop = 26 + minPanelHeight;
     const minTop = Math.min(maxTop, Math.max(VIEWPORT_MARGIN,
-      Math.ceil((window.innerHeight - actions.offsetHeight - 4) / 2)));
+      Math.ceil((window.innerHeight - height + minOffsetTop) / 2)));
     return { minTop, maxTop };
   }
 
@@ -1241,11 +1337,11 @@
     const dockTop = window.innerHeight - actionTop - actions.offsetHeight;
     const actionsOffsetTop = actionTop - dockTop;
     dock.style.setProperty('top', `${dockTop}px`, 'important');
-    // The dock and the last action share the same bottom edge; only the
-    // minimap keeps its small inset at the top.
+    // The dock and the last action share the same bottom edge. The directory
+    // button overlaps the dock's top edge; the minimap rail starts beneath it.
     dock.style.setProperty('height', `${Math.max(0, actionsOffsetTop + actions.offsetHeight)}px`, 'important');
     actions.style.setProperty('top', `${actionsOffsetTop}px`, 'important');
-    const panelHeight = Math.max(0, actionsOffsetTop - 6);
+    const panelHeight = Math.max(0, actionsOffsetTop - 26);
     if (panel) panel.style.setProperty('height', `${panelHeight}px`, 'important');
     const downloadPopover = dock.querySelector('[data-chatgpt-pro-download-popover]');
     if (downloadPopover && !downloadPopover.hidden) positionDownloadPopover(downloadPopover);
@@ -1405,9 +1501,14 @@
     const id = currentConversationId();
     const existing = document.querySelector('[data-chatgpt-pro-current-export]');
     if (!id) {
-      document.querySelector('[data-chatgpt-pro-tool-dock]')?.remove();
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      detachLauncherFromToolDock(dock);
+      dock?.remove();
       return;
     }
+    ensureFloatingButton();
+    const dock = ensureCurrentChatToolDock();
+    attachLauncherToToolDock(dock);
     if (existing) {
       updateCurrentChatExportButtonLabel(existing);
       ensureCurrentChatToolActions().appendChild(existing);
@@ -3766,8 +3867,8 @@
     window.ChatGPTProI18n?.watch(panel);
     S.launcher.classList.add('chatgpt-pro-open');
     S.launcher.setAttribute('aria-expanded', 'true');
-    S.launcher.textContent = '−';
-    S.launcher.title = '收起聊天目录（可拖动）';
+    setLauncherIcon(true);
+    S.launcher.title = launcherTitle(true);
     applyPanelSize(panel);
     setupPanelResize(panel);
     const status = panel.querySelector('.chatgpt-pro-panel-status');
@@ -4423,7 +4524,7 @@
   async function loadSettings() {
     const values = await new Promise(resolve => {
       chrome.storage.local.get(
-        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'currentExportPositionY', 'panelSize', 'uiLanguage', 'autoContinueEnabled', 'autoContinueText', 'autoContinueDelaySeconds', 'autoContinueMaxCount'],
+        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'toolDockPositionX', 'currentExportPositionY', 'panelSize', 'uiLanguage', 'autoContinueEnabled', 'autoContinueText', 'autoContinueDelaySeconds', 'autoContinueMaxCount'],
         data => resolve(data || {})
       );
     });
@@ -4449,6 +4550,10 @@
     window.ChatGPTProI18n?.setLanguage(values.uiLanguage || 'auto');
     if (values.launcherPosition?.x != null && values.launcherPosition?.y != null) {
       S.settings.launcherPosition = values.launcherPosition;
+    }
+    if (values.toolDockPositionX != null) {
+      const x = Number(values.toolDockPositionX);
+      if (Number.isFinite(x)) S.settings.toolDockPositionX = Math.max(0, Math.min(1, x));
     }
     if (values.currentExportPositionY != null) S.settings.currentExportPositionY = values.currentExportPositionY;
     if (values.panelSize?.width && values.panelSize?.height) S.settings.panelSize = values.panelSize;

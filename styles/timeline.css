@@ -89,6 +89,69 @@
   border-radius: 0 0 0 12px !important;
 }
 
+/* In a conversation, the directory/search launcher becomes the top control
+   of the minimap dock and overlaps its outer top border. */
+.chatgpt-pro-launcher.chatgpt-pro-dock-launcher {
+  position: absolute !important;
+  top: -19px !important;
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
+  box-sizing: border-box !important;
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  min-height: 38px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1px solid rgba(127, 127, 127, 0.28) !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  color: #374151 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
+  font-size: 0 !important;
+  line-height: 1 !important;
+  cursor: grab !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  touch-action: none !important;
+  user-select: none !important;
+  z-index: 5 !important;
+}
+
+.chatgpt-pro-launcher.chatgpt-pro-dock-launcher:hover {
+  border-color: rgba(16, 163, 127, 0.45) !important;
+  background: rgba(240, 253, 249, 0.98) !important;
+  color: #0d9373 !important;
+}
+
+.chatgpt-pro-launcher.chatgpt-pro-dock-launcher.chatgpt-pro-dragging {
+  cursor: grabbing !important;
+  opacity: 0.82 !important;
+}
+
+.chatgpt-pro-launcher.chatgpt-pro-dock-launcher svg {
+  width: 20px !important;
+  height: 20px !important;
+  fill: none !important;
+  stroke: currentColor !important;
+  stroke-width: 2 !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  pointer-events: none !important;
+}
+
+.chatgpt-pro-launcher.chatgpt-pro-dock-launcher.chatgpt-pro-open,
+.chatgpt-pro-launcher.chatgpt-pro-dock-launcher.chatgpt-pro-open[data-panel-vertical][data-panel-horizontal] {
+  border: 1px solid rgba(127, 127, 127, 0.28) !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  color: #111827 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
+}
+
 .chatgpt-pro-panel {
   position: fixed !important;
   z-index: 2147483646 !important;
@@ -979,7 +1042,7 @@
   position: absolute !important;
   box-sizing: border-box !important;
   z-index: 1 !important;
-  top: 4px !important;
+  top: 20px !important;
   left: 4px !important;
   right: 4px !important;
   width: auto !important;
