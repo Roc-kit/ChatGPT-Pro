@@ -1247,6 +1247,8 @@
     actions.style.setProperty('top', `${actionsOffsetTop}px`, 'important');
     const panelHeight = Math.max(0, actionsOffsetTop - 6);
     if (panel) panel.style.setProperty('height', `${panelHeight}px`, 'important');
+    const downloadPopover = dock.querySelector('[data-chatgpt-pro-download-popover]');
+    if (downloadPopover && !downloadPopover.hidden) positionDownloadPopover(downloadPopover);
   }
 
   function placeCurrentChatExportButton() {
@@ -1308,7 +1310,7 @@
 
   function updateCurrentChatExportButtonLabel(button) {
     if (!button) return;
-    const label = window.ChatGPTProI18n?.t('ui.downloadCurrentConversation') || '下载当前对话';
+    const label = window.ChatGPTProI18n?.t('ui.openExportMenu') || '打开导出菜单';
     button.title = label;
     button.setAttribute('aria-label', label);
   }
@@ -1317,6 +1319,21 @@
     document.querySelectorAll('.chatgpt-pro-tool-popover').forEach(element => {
       if (element !== except) element.hidden = true;
     });
+  }
+
+  function positionDownloadPopover(popover) {
+    const dock = popover?.closest('[data-chatgpt-pro-tool-dock]');
+    const trigger = dock?.querySelector('[data-chatgpt-pro-current-export]');
+    if (!dock || !trigger || popover.hidden) return;
+    const dockRect = dock.getBoundingClientRect();
+    const triggerRect = trigger.getBoundingClientRect();
+    const height = popover.offsetHeight || 112;
+    const desiredTop = triggerRect.top + triggerRect.height / 2 - height / 2 - dockRect.top;
+    const minTop = VIEWPORT_MARGIN - dockRect.top;
+    const maxTop = window.innerHeight - VIEWPORT_MARGIN - height - dockRect.top;
+    const top = maxTop >= minTop ? Math.max(minTop, Math.min(maxTop, desiredTop)) : minTop;
+    popover.style.setProperty('top', `${top}px`, 'important');
+    popover.style.setProperty('bottom', 'auto', 'important');
   }
 
   function ensureDownloadPopover() {
@@ -1397,6 +1414,7 @@
       const willOpen = popover.hidden;
       closeToolPopovers(popover);
       popover.hidden = !willOpen;
+      if (willOpen) positionDownloadPopover(popover);
     });
     ensureCurrentChatToolActions().appendChild(button);
     placeCurrentChatExportButton(button);

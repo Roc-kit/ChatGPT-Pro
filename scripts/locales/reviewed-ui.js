@@ -421,7 +421,6 @@ ui.exportJSON
 ui.archive
 ui.delete
 ui.downloadAllConversationImagesZIP
-ui.downloadCurrentConversation
 ui.conversationMinimap
 ui.expandMinimap
 ui.collapseMinimap`.split('\n'),
@@ -463,7 +462,6 @@ ui.collapseMinimap`.split('\n'),
 封存
 刪除
 下載此對話的所有圖片（ZIP）
-下載目前對話
 對話快速導覽
 展開導覽
 收合導覽`.split('\n'),
@@ -504,7 +502,6 @@ Exportar JSON
 Archivar
 Eliminar
 Descargar todas las imágenes de esta conversación (ZIP)
-Descargar la conversación actual
 Navegación por la conversación
 Expandir navegación
 Contraer navegación`.split('\n'),
@@ -545,7 +542,6 @@ JSON एक्सपोर्ट करें
 संग्रहित करें
 मिटाएँ
 इस चैट की सभी तस्वीरें डाउनलोड करें (ZIP)
-वर्तमान बातचीत डाउनलोड करें
 चैट नेविगेशन
 नेविगेशन खोलें
 नेविगेशन समेटें`.split('\n'),
@@ -586,7 +582,6 @@ JSON एक्सपोर्ट करें
 أرشفة
 حذف
 تنزيل جميع صور هذه المحادثة (ZIP)
-تنزيل المحادثة الحالية
 التنقل بين الرسائل
 توسيع شريط التنقل
 طي شريط التنقل`.split('\n'),
@@ -627,7 +622,6 @@ Exportar JSON
 Arquivar
 Excluir
 Baixar todas as imagens desta conversa (ZIP)
-Baixar conversa atual
 Navegação pela conversa
 Expandir navegação
 Recolher navegação`.split('\n'),
@@ -668,7 +662,6 @@ JSON এক্সপোর্ট করুন
 আর্কাইভ করুন
 মুছুন
 এই চ্যাটের সব ছবি ডাউনলোড করুন (ZIP)
-বর্তমান কথোপকথন ডাউনলোড করুন
 চ্যাট নেভিগেশন
 নেভিগেশন খুলুন
 নেভিগেশন গুটিয়ে নিন`.split('\n'),
@@ -709,7 +702,6 @@ Ekspor JSON
 Arsipkan
 Hapus
 Unduh semua gambar dalam percakapan ini (ZIP)
-Unduh percakapan saat ini
 Navigasi percakapan
 Perluas navigasi
 Ciutkan navigasi`.split('\n'),
@@ -750,7 +742,6 @@ Exporter en JSON
 Archiver
 Supprimer
 Télécharger toutes les images de cette conversation (ZIP)
-Télécharger la conversation actuelle
 Navigation dans la conversation
 Développer la navigation
 Réduire la navigation`.split('\n'),
@@ -791,7 +782,6 @@ Réduire la navigation`.split('\n'),
 Архивировать
 Удалить
 Скачать все изображения из этого чата (ZIP)
-Скачать текущий разговор
 Навигация по чату
 Развернуть навигацию
 Свернуть навигацию`.split('\n'),
@@ -832,7 +822,6 @@ JSON をエクスポート
 アーカイブ
 削除
 このチャットの画像をすべてダウンロード（ZIP）
-現在の会話をダウンロード
 チャット内ナビゲーション
 ナビゲーションを展開
 ナビゲーションを折りたたむ`.split('\n')
@@ -5024,6 +5013,12 @@ status.refreshOutdatedIndexCount`.split('\n');
     translations: Object.fromEntries([
       'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
     ].map(locale => [locale, fullTextIndexStatusKeys.map(key => scope.ChatGPTProLocalePacks[locale][key])]))
+  });
+  blocks.push({
+    keys: ['ui.openExportMenu'],
+    translations: Object.fromEntries([
+      'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
+    ].map(locale => [locale, [scope.ChatGPTProLocalePacks[locale]['ui.openExportMenu']]]))
   });
   for (const block of blocks) {
     for (const [locale, translations] of Object.entries(block.translations)) {

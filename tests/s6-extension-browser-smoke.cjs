@@ -692,11 +692,63 @@ async function main() {
       `document.querySelector('[data-chatgpt-pro-current-export]').click()`);
     await eventually(async () => cdp.eval(pageSession, `(() => {
       const buttons = [...document.querySelectorAll('[data-chatgpt-pro-download-popover] button')];
+      const popover = document.querySelector('[data-chatgpt-pro-download-popover]');
+      const trigger = document.querySelector('[data-chatgpt-pro-current-export]');
+      const style = getComputedStyle(popover);
+      const triggerRect = trigger.getBoundingClientRect();
+      const centers = buttons.map(button => {
+        const rect = button.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
+          radius: parseFloat(getComputedStyle(button).borderTopLeftRadius),
+          width: rect.width, height: rect.height };
+      });
+      const triggerCenter = { x: triggerRect.left + triggerRect.width / 2,
+        y: triggerRect.top + triggerRect.height / 2 };
+      const radii = centers.map(point => Math.hypot(point.x - triggerCenter.x, point.y - triggerCenter.y));
       return buttons.length === 2 && buttons[0].title === 'Export entire chat (Markdown)' &&
         buttons[1].title === 'Download all conversation images (ZIP)' &&
-        buttons.every(button => button.querySelector('svg') &&
-          Math.abs(button.getBoundingClientRect().width - button.getBoundingClientRect().height) <= 1);
+        buttons.every(button => button.querySelector('svg')) &&
+        centers.every(point => Math.abs(point.width - point.height) <= 1 && point.radius >= point.width / 2 - 1) &&
+        centers[0].y < triggerCenter.y && centers[1].y > triggerCenter.y &&
+        centers.every(point => point.x < triggerCenter.x) && Math.abs(radii[0] - radii[1]) <= 5 &&
+        style.backgroundColor === 'rgba(0, 0, 0, 0)' && style.borderTopWidth === '0px' &&
+        style.boxShadow === 'none' && style.pointerEvents === 'none';
     })()`), 'combined download menu exposes both translated actions');
+    await cdp.eval(pageSession, `document.documentElement.classList.add('dark')`);
+    const darkMenuStyles = await cdp.eval(pageSession, `(() => {
+      const menu = document.querySelector('[data-chatgpt-pro-download-popover]');
+      const action = menu.querySelector('button');
+      return { menuBackground: getComputedStyle(menu).backgroundColor,
+        menuBorder: getComputedStyle(menu).borderTopWidth, menuShadow: getComputedStyle(menu).boxShadow,
+        actionBackground: getComputedStyle(action).backgroundColor };
+    })()`);
+    assert(darkMenuStyles.menuBackground === 'rgba(0, 0, 0, 0)' &&
+      darkMenuStyles.menuBorder === '0px' && darkMenuStyles.menuShadow === 'none' &&
+      darkMenuStyles.actionBackground.includes('37, 39, 44'),
+    `radial menu stays transparent and circular actions adapt to dark mode: ${JSON.stringify(darkMenuStyles)}`);
+    await cdp.eval(pageSession, `document.documentElement.classList.remove('dark')`);
+    const lowerDragPoint = await cdp.eval(pageSession, `(() => {
+      const rect = document.querySelector('[data-chatgpt-pro-current-export]').getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, viewportHeight: innerHeight };
+    })()`);
+    const lowerDragY = lowerDragPoint.viewportHeight - 2;
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed', x: lowerDragPoint.x, y: lowerDragPoint.y, button: 'left', clickCount: 1
+    }, pageSession);
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved', x: lowerDragPoint.x, y: lowerDragY, button: 'left', buttons: 1
+    }, pageSession);
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x: lowerDragPoint.x, y: lowerDragY, button: 'left'
+    }, pageSession);
+    const lowerMenuBounds = await cdp.eval(pageSession, `(() => {
+      const menu = document.querySelector('[data-chatgpt-pro-download-popover]').getBoundingClientRect();
+      return { top: menu.top, bottom: menu.bottom, viewportHeight: innerHeight };
+    })()`);
+    assert(lowerMenuBounds.top >= 8 && lowerMenuBounds.bottom <= lowerMenuBounds.viewportHeight - 8,
+      `radial export actions stay within the viewport when the trigger is dragged to the bottom: ${JSON.stringify(lowerMenuBounds)}`);
+    await cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-current-export]').click()`);
     await cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-minimap-user')?.dispatchEvent(new Event('pointerenter'))`);
     await eventually(async () => cdp.eval(pageSession,
@@ -722,10 +774,10 @@ async function main() {
     assert.deepEqual(untranslated, [], 'static conversation controls have no untranslated Chinese in English mode');
     assert.equal(await cdp.eval(pageSession,
       `document.querySelector('[data-chatgpt-pro-current-export]')?.title`),
-    'Download current conversation', 'minimap current-conversation download tooltip is localized in English');
+    'Open export menu', 'minimap export trigger tooltip describes opening the menu');
     assert.equal(await cdp.eval(pageSession,
       `document.querySelector('[data-chatgpt-pro-current-export]')?.getAttribute('aria-label')`),
-    'Download current conversation', 'minimap download button accessible label matches its localized tooltip');
+    'Open export menu', 'minimap export trigger accessible label matches its localized tooltip');
     await cdp.eval(pageSession, `document.querySelector('[data-panel-view="search"]').click()`);
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-search-index-status')?.textContent.includes('Authorize to build a full-text index')`),
@@ -1093,8 +1145,8 @@ async function main() {
     await cdp.eval(popupSession, `new Promise(resolve =>
       chrome.storage.local.set({ uiLanguage: 'es' }, resolve))`);
     await eventually(async () => cdp.eval(pageSession,
-      `document.querySelector('[data-chatgpt-pro-current-export]')?.title === 'Descargar la conversación actual'`),
-    'minimap current-conversation download tooltip follows a runtime language change');
+      `document.querySelector('[data-chatgpt-pro-current-export]')?.title === 'Abrir menú de exportación'`),
+    'minimap export-menu tooltip follows a runtime language change');
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelector('[data-panel-view="search"]')?.textContent.includes('texto')`),
     'search panel reacts to the saved Spanish interface language');

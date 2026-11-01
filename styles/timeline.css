@@ -870,23 +870,51 @@
 }
 
 .chatgpt-pro-download-popover {
-  width: auto !important;
-  padding: 7px !important;
-  flex-direction: row !important;
-  gap: 6px !important;
+  right: 40px !important;
+  bottom: -37px !important;
+  box-sizing: border-box !important;
+  width: 38px !important;
+  height: 112px !important;
+  padding: 0 !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  pointer-events: none !important;
 }
 
 .chatgpt-pro-download-popover .chatgpt-pro-download-action {
   box-sizing: border-box !important;
-  width: 38px !important;
-  min-width: 38px !important;
-  height: 38px !important;
-  min-height: 38px !important;
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 36px !important;
+  min-height: 36px !important;
   padding: 0 !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  border-radius: 9px !important;
+  border: 1px solid rgba(127, 127, 127, 0.3) !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.97) !important;
+  color: #1f2937 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14) !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+
+.chatgpt-pro-download-popover .chatgpt-pro-download-action:hover:not(:disabled) {
+  border-color: rgba(16, 163, 127, 0.55) !important;
+  background: rgba(240, 253, 249, 0.98) !important;
+  color: #0d9373 !important;
+}
+
+.chatgpt-pro-download-popover .chatgpt-pro-download-action:disabled {
+  opacity: 0.55 !important;
+  cursor: wait !important;
 }
 
 .chatgpt-pro-download-action svg {
@@ -916,6 +944,27 @@
 .chatgpt-pro-auto-actions button:hover {
   color: #0d9373 !important;
   border-color: rgba(16, 163, 127, 0.45) !important;
+}
+
+html.dark .chatgpt-pro-tool-dock .chatgpt-pro-download-popover,
+[data-theme="dark"] .chatgpt-pro-tool-dock .chatgpt-pro-download-popover {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html.dark .chatgpt-pro-tool-dock .chatgpt-pro-download-popover .chatgpt-pro-download-action,
+[data-theme="dark"] .chatgpt-pro-tool-dock .chatgpt-pro-download-popover .chatgpt-pro-download-action {
+  border-color: rgba(148, 163, 184, 0.36) !important;
+  background: rgba(37, 39, 44, 0.98) !important;
+  color: #e5e7eb !important;
+}
+
+html.dark .chatgpt-pro-tool-dock .chatgpt-pro-download-popover .chatgpt-pro-download-action:hover:not(:disabled),
+[data-theme="dark"] .chatgpt-pro-tool-dock .chatgpt-pro-download-popover .chatgpt-pro-download-action:hover:not(:disabled) {
+  border-color: rgba(16, 163, 127, 0.65) !important;
+  background: rgba(13, 147, 115, 0.2) !important;
+  color: #6ee7b7 !important;
 }
 
 .chatgpt-pro-auto-status { font-weight: 600 !important; }
@@ -1088,6 +1137,18 @@ html.dark .chatgpt-pro-minimap-preview,
   .chatgpt-pro-minimap { left: 3px !important; right: 3px !important; }
   .chatgpt-pro-current-export,
   .chatgpt-pro-current-images { width: 100% !important; height: 36px !important; flex-basis: 36px !important; }
+  .chatgpt-pro-download-popover {
+    right: 46px !important;
+    bottom: -36px !important;
+    width: 36px !important;
+    height: 108px !important;
+  }
+  .chatgpt-pro-download-popover .chatgpt-pro-download-action {
+    width: 34px !important;
+    min-width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+  }
 }
 
 .chatgpt-pro-resize-handle {

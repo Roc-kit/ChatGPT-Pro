@@ -119,7 +119,7 @@ window.ChatGPTProLocalePacks["zh-TW"] = {
   "ui.archive": "歸檔",
   "ui.delete": "刪除",
   "ui.downloadAllConversationImagesZIP": "下載所有對話影像 (ZIP)",
-  "ui.downloadCurrentConversation": "下載目前對話",
+  "ui.openExportMenu": "開啟匯出選單",
   "ui.conversationMinimap": "相談相談相談相談相談相想",
   "ui.searchQuery": "搜尋查詢",
   "ui.loadingIndexStatus": "正在載入索引狀態...",

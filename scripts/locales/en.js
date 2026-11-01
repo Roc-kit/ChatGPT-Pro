@@ -91,7 +91,7 @@ window.ChatGPTProLocalePacks["en"] = {
   "ui.archive": "Archive",
   "ui.delete": "Delete",
   "ui.downloadAllConversationImagesZIP": "Download all conversation images (ZIP)",
-  "ui.downloadCurrentConversation": "Download current conversation",
+  "ui.openExportMenu": "Open export menu",
   "ui.conversationMinimap": "Conversation minimap",
   "ui.created": "Created",
   "ui.title": "Title",

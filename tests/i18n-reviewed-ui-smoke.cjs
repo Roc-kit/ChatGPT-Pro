@@ -113,7 +113,8 @@ const newIndexUiKeys = [
   'ui.indexPausedAfterRepeatedFailuresCheckLogs',
   'ui.indexPausedAfterAuthenticationErrorCheckLogin',
   'ui.indexManuallyPausedResumeInTaskManager', 'ui.newConversationSyncComplete',
-  'ui.indexFailureLog', 'ui.errorLabel', 'ui.assessmentLabel', 'ui.enterContinuationMessage'
+  'ui.indexFailureLog', 'ui.errorLabel', 'ui.assessmentLabel', 'ui.enterContinuationMessage',
+  'ui.openExportMenu'
 ];
 for (const locale of localeNames.filter(locale => locale !== 'zh-CN')) {
   i18n.setLanguage(locale);
