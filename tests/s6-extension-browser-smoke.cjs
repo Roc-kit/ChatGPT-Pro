@@ -146,6 +146,14 @@ class PipeCDP {
       || reply.exceptionDetails.text || 'Page exception');
     return reply.result?.value;
   }
+  async evalInContext(session, contextId, expression) {
+    const reply = await this.send('Runtime.evaluate', {
+      expression, contextId, returnByValue: true, awaitPromise: true
+    }, session);
+    if (reply.exceptionDetails) throw Error(reply.exceptionDetails.exception?.description
+      || reply.exceptionDetails.text || 'Isolated-world exception');
+    return reply.result?.value;
+  }
 }
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -171,8 +179,11 @@ async function main() {
   ], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
   const cdp = new PipeCDP(chrome);
   const requests = { session: 0, directory: 0, projectList: 0, details: 0, detailLog: [] };
+  let failDirectoryRequests = false;
   let pageSession;
   let extensionId;
+  let contentContextId = null;
+  const pageExecutionContexts = [];
   const armDockHeightTransition = () => cdp.eval(pageSession, `(() => {
     const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
     window.__dockHeightSamples = [];
@@ -208,6 +219,12 @@ async function main() {
   })()`);
   const browserErrors = [];
   cdp.listeners.add(message => {
+    if (message.method === 'Runtime.executionContextCreated' && message.sessionId === pageSession) {
+      const context = message.params?.context;
+      pageExecutionContexts.push({ id: context?.id, name: context?.name,
+        origin: context?.origin, isDefault: context?.auxData?.isDefault });
+      if (context?.auxData?.isDefault === false) contentContextId = context.id;
+    }
     if (message.method === 'Runtime.exceptionThrown') {
       const details = message.params?.exceptionDetails;
       browserErrors.push(details?.exception?.description || details?.text || 'unknown runtime exception');
@@ -215,13 +232,19 @@ async function main() {
     if (message.method !== 'Fetch.requestPaused' || message.sessionId !== pageSession) return;
     const url = new URL(message.params.request.url);
     let response;
+    let responseCode = 200;
     if (url.pathname === '/api/auth/session') {
       requests.session++;
       response = { user: { id: 's6-isolated-account' }, accessToken: 'isolated-fixture-token' };
     } else if (url.pathname === '/backend-api/conversations') {
       requests.directory++;
-      response = { items: [{ id: CHAT_ID, title: CHAT.title, create_time: CHAT.update_time,
-        update_time: CHAT.update_time }], total: 1 };
+      if (failDirectoryRequests) {
+        responseCode = 503;
+        response = { error: 'fixture directory sync unavailable' };
+      } else {
+        response = { items: [{ id: CHAT_ID, title: CHAT.title, create_time: CHAT.update_time,
+          update_time: CHAT.update_time }], total: 1 };
+      }
     } else if (url.pathname === '/backend-api/gizmos/snorlax/sidebar') {
       requests.projectList++;
       response = { items: [] };
@@ -234,7 +257,7 @@ async function main() {
     const isJson = Boolean(response);
     const body = isJson ? JSON.stringify(response) : BODY;
     cdp.send('Fetch.fulfillRequest', {
-      requestId: message.params.requestId, responseCode: 200,
+      requestId: message.params.requestId, responseCode,
       responseHeaders: [
         { name: 'content-type', value: isJson ? 'application/json' : 'text/html; charset=utf-8' },
         { name: 'cache-control', value: 'no-store' }
@@ -1403,6 +1426,29 @@ async function main() {
     'full-text search status uses wildcard translation for changing counts');
     await cdp.eval(pageSession, `document.querySelector('[data-panel-view="directory"]').click()`);
     await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
+    // A remote directory failure must not hide records already persisted in
+    // the extension's local IndexedDB.
+    const previousDirectoryRequests = requests.directory;
+    failDirectoryRequests = true;
+    // The storage key contains the account ID verbatim (including hyphens).
+    await cdp.eval(popupSession, `new Promise(resolve => chrome.storage.local.set({
+      ['chatgpt_pro_directory_ts_account_' + 's6-isolated-account']: 0
+    }, resolve))`);
+    await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
+    await eventually(async () => requests.directory > previousDirectoryRequests,
+      'forced directory revalidation reaches the simulated failing endpoint');
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-row').length === 1`),
+    'cached local directory renders before the remote sync attempt');
+    await eventually(async () => cdp.eval(pageSession,
+      `/同步失败|Sync failed/i.test(document.querySelector('.chatgpt-pro-panel-status')?.textContent || '')`),
+    'remote directory failure is reported without discarding local records');
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-row')?.textContent.includes(${JSON.stringify(CHAT.title)})`), true,
+    'locally managed conversation remains visible when remote synchronization fails');
+    failDirectoryRequests = false;
+    await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
+
     // Set a deterministic test language; production defaults to browser locale.
     await cdp.eval(popupSession, `(() => {
       const select = document.querySelector('#languageSelect');
@@ -2128,6 +2174,51 @@ async function main() {
       const launcher = document.querySelector('[data-chatgpt-pro-launcher]');
       return Boolean(dock && launcher && launcher.parentElement === dock);
     })()`), 'returning to a conversation reattaches the directory launcher to the minimap dock');
+
+    // Last: simulate a stale content script after an extension reload. The
+    // message channel is unavailable, but the last account-scoped directory
+    // snapshot must remain visible with a safe reload action.
+    assert(contentContextId, `content-script isolated world was captured: ${JSON.stringify(pageExecutionContexts)}`);
+    assert.deepEqual(await cdp.evalInContext(pageSession, contentContextId, `({
+      runtimeId: chrome.runtime.id, apiHandler: typeof window.APIHandler,
+      contextName: document.currentScript?.src || ''
+    })`), { runtimeId: extensionId, apiHandler: 'object', contextName: '' },
+    'captured isolated world belongs to the ChatGPT-Pro content script');
+    await cdp.eval(pageSession, `(() => {
+      if (document.querySelector('.chatgpt-pro-panel')) {
+        document.querySelector('[data-chatgpt-pro-launcher]').click();
+      }
+    })()`);
+    await cdp.evalInContext(pageSession, contentContextId, `(() => {
+      Object.defineProperty(chrome.runtime, 'sendMessage', {
+        configurable: true, writable: true,
+        value: () => { throw new Error('Extension context invalidated'); }
+      });
+    })()`);
+    await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
+    try {
+      await eventually(async () => cdp.eval(pageSession, `
+        document.querySelectorAll('.chatgpt-pro-row').length > 0 &&
+        Boolean(document.querySelector('.chatgpt-pro-panel-status .chatgpt-pro-context-reload'))`),
+      'stale extension context keeps the last local directory visible with a reload recovery action');
+    } catch (error) {
+      const panel = await cdp.eval(pageSession, `({
+        rows: document.querySelectorAll('.chatgpt-pro-row').length,
+        status: document.querySelector('.chatgpt-pro-panel-status')?.textContent
+      })`);
+      throw Error(`${error.message}; panel=${JSON.stringify(panel)}`);
+    }
+    await cdp.eval(pageSession, `document.querySelector('[data-panel-view="search"]').click()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `Boolean(document.querySelector('.chatgpt-pro-search-index-status .chatgpt-pro-context-reload'))`),
+    'full-text index status explains how to restore an invalidated extension context');
+    await cdp.eval(pageSession, `(() => {
+      const input = document.querySelector('.chatgpt-pro-fulltext-input');
+      input.value = 'fixture local search'; input.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('.chatgpt-pro-search-results')?.textContent.includes('cannot read the local index')`),
+    'full-text search reports the extension-context limitation instead of treating local data as deleted');
     assert(!browserErrors.some(Boolean), `Chrome runtime exceptions: ${browserErrors.join('; ')}`);
     console.log(`S6_EXTENSION_PASS: real MV3, timestamps, filename settings, single MD/JSON, project/title filter, cached index and two ZIP parts; requests=${JSON.stringify(requests)}`);
   } finally {

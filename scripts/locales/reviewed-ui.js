@@ -3457,6 +3457,88 @@ La demande de démarrage de l’indexation a été envoyée. Gardez l’onglet C
       }
     },
     {
+      // Recovery messages shown when a stale content script loses its extension connection.
+      keys: [
+        'ui.extensionContextReloadRequired',
+        'ui.reloadPageToRestoreExtension',
+        'ui.showingLastLocalDirectory',
+        'ui.showingLastLocalSearchResults',
+        'ui.fullTextUnavailableExtensionReload'
+      ],
+      translations: {
+        'zh-TW': [
+          '擴充功能連線已失效；本機資料仍保存在擴充功能資料庫中，重新整理頁面後即可重新讀取。',
+          '重新整理頁面以恢復擴充功能連線',
+          '擴充功能連線已失效，目前顯示最近一次本機目錄（{count} 筆）；重新整理頁面後可恢復完整功能。',
+          '顯示最近一次本機搜尋結果 · {count} 筆',
+          '擴充功能連線已失效，目前頁面無法讀取本機索引；重新整理頁面後即可繼續搜尋。'
+        ],
+        es: [
+          'La conexión de la extensión se perdió. Los datos locales siguen en la base de datos de la extensión; recarga la página para volver a leerlos.',
+          'Recargar la página para restaurar la extensión',
+          'Conexión de la extensión perdida. Se muestra el último directorio local ({count} elementos); recarga la página para restaurar todas las funciones.',
+          'Se muestran los últimos resultados de búsqueda local · {count}',
+          'La conexión de la extensión se perdió y esta página no puede leer el índice local. Recarga la página para volver a buscar.'
+        ],
+        hi: [
+          'एक्सटेंशन का कनेक्शन समाप्त हो गया है। स्थानीय डेटा एक्सटेंशन डेटाबेस में सुरक्षित है; इसे फिर से पढ़ने के लिए पेज रीफ़्रेश करें।',
+          'एक्सटेंशन कनेक्शन बहाल करने के लिए पेज रीफ़्रेश करें',
+          'एक्सटेंशन कनेक्शन समाप्त हो गया। पिछली स्थानीय निर्देशिका ({count} आइटम) दिखाई जा रही है; सभी सुविधाएँ बहाल करने के लिए पेज रीफ़्रेश करें।',
+          'पिछले स्थानीय खोज परिणाम दिखाए जा रहे हैं · {count}',
+          'एक्सटेंशन कनेक्शन समाप्त होने के कारण यह पेज स्थानीय इंडेक्स नहीं पढ़ सकता। फिर से खोजने के लिए पेज रीफ़्रेश करें।'
+        ],
+        ar: [
+          'انقطع اتصال الإضافة. لا تزال البيانات المحلية محفوظة في قاعدة بيانات الإضافة؛ أعد تحميل الصفحة لقراءتها مجددًا.',
+          'أعد تحميل الصفحة لاستعادة اتصال الإضافة',
+          'انقطع اتصال الإضافة. يتم عرض آخر دليل محلي ({count} عنصر)؛ أعد تحميل الصفحة لاستعادة جميع الوظائف.',
+          'عرض أحدث نتائج البحث المحلية · {count}',
+          'انقطع اتصال الإضافة، ولا يمكن لهذه الصفحة قراءة الفهرس المحلي. أعد تحميل الصفحة لمتابعة البحث.'
+        ],
+        'pt-BR': [
+          'A conexão da extensão foi perdida. Os dados locais continuam no banco de dados da extensão; recarregue a página para lê-los novamente.',
+          'Recarregar a página para restaurar a extensão',
+          'Conexão da extensão perdida. Exibindo o último diretório local ({count} itens); recarregue a página para restaurar todos os recursos.',
+          'Exibindo os resultados locais mais recentes · {count}',
+          'A conexão da extensão foi perdida e esta página não pode ler o índice local. Recarregue a página para pesquisar novamente.'
+        ],
+        bn: [
+          'এক্সটেনশনের সংযোগ বিচ্ছিন্ন হয়েছে। স্থানীয় ডেটা এক্সটেনশনের ডেটাবেসে সংরক্ষিত আছে; আবার পড়তে পৃষ্ঠা রিফ্রেশ করুন।',
+          'এক্সটেনশনের সংযোগ ফেরাতে পৃষ্ঠা রিফ্রেশ করুন',
+          'এক্সটেনশনের সংযোগ বিচ্ছিন্ন। সর্বশেষ স্থানীয় ডিরেক্টরি ({count}টি) দেখানো হচ্ছে; সব সুবিধা ফেরাতে পৃষ্ঠা রিফ্রেশ করুন।',
+          'সর্বশেষ স্থানীয় অনুসন্ধানের ফল দেখানো হচ্ছে · {count}',
+          'এক্সটেনশনের সংযোগ বিচ্ছিন্ন হওয়ায় এই পৃষ্ঠা স্থানীয় ইনডেক্স পড়তে পারছে না। আবার অনুসন্ধান করতে পৃষ্ঠা রিফ্রেশ করুন।'
+        ],
+        id: [
+          'Koneksi ekstensi terputus. Data lokal tetap tersimpan di database ekstensi; muat ulang halaman untuk membacanya kembali.',
+          'Muat ulang halaman untuk memulihkan ekstensi',
+          'Koneksi ekstensi terputus. Menampilkan direktori lokal terakhir ({count} item); muat ulang halaman untuk memulihkan semua fungsi.',
+          'Menampilkan hasil pencarian lokal terakhir · {count}',
+          'Koneksi ekstensi terputus sehingga halaman ini tidak dapat membaca indeks lokal. Muat ulang halaman untuk mencari lagi.'
+        ],
+        fr: [
+          'La connexion de l’extension est interrompue. Les données locales restent dans sa base de données ; rechargez la page pour les relire.',
+          'Recharger la page pour rétablir l’extension',
+          'Connexion de l’extension interrompue. Dernier répertoire local affiché ({count} éléments) ; rechargez la page pour rétablir toutes les fonctions.',
+          'Derniers résultats de recherche locale affichés · {count}',
+          'La connexion de l’extension est interrompue ; cette page ne peut pas lire l’index local. Rechargez la page pour rechercher à nouveau.'
+        ],
+        ru: [
+          'Связь с расширением потеряна. Локальные данные сохранены в базе расширения; перезагрузите страницу, чтобы прочитать их снова.',
+          'Перезагрузить страницу и восстановить расширение',
+          'Связь с расширением потеряна. Показан последний локальный список ({count}); перезагрузите страницу для восстановления всех функций.',
+          'Показаны последние локальные результаты поиска · {count}',
+          'Связь с расширением потеряна, поэтому страница не может прочитать локальный индекс. Перезагрузите страницу, чтобы продолжить поиск.'
+        ],
+        ja: [
+          '拡張機能との接続が無効になりました。ローカルデータは拡張機能のデータベースに保存されています。ページを再読み込みすると再び読み取れます。',
+          'ページを再読み込みして拡張機能を復元',
+          '拡張機能との接続が失われました。最後のローカルディレクトリ（{count} 件）を表示しています。ページを再読み込みすると全機能が復元されます。',
+          '直近のローカル検索結果を表示 · {count} 件',
+          '拡張機能との接続が失われ、このページではローカルインデックスを読み取れません。再検索するにはページを再読み込みしてください。'
+        ]
+      }
+    },
+    {
       // Bulk export task controls, saved ZIP-part recovery and their live statuses.
       keys: [
         'ui.bulkExportFailed',

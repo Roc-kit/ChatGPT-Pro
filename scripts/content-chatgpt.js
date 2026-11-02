@@ -30,6 +30,9 @@
     stamped: new WeakSet(),
     observer: null,
     timeline: null,
+    directoryCacheAccountId: null,
+    directoryRecords: [],
+    searchResultsCache: new Map(),
     launcher: null,
     launcherMoved: false,
     currentExportMoved: false,
@@ -1492,6 +1495,22 @@
       setLauncherIcon(false);
       S.launcher.title = launcherTitle(false);
     }
+  }
+
+  function isExtensionContextInvalidated(error) {
+    return /extension context invalidated|context has been invalidated/i.test(String(error?.message || error || ''));
+  }
+
+  function showExtensionContextRecovery(container, message) {
+    if (!container) return;
+    container.replaceChildren(document.createTextNode(message));
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chatgpt-pro-context-reload';
+    button.textContent = window.ChatGPTProI18n?.t('ui.reloadPageToRestoreExtension')
+      || '刷新页面以恢复扩展连接';
+    button.addEventListener('click', () => window.location.reload());
+    container.appendChild(button);
   }
 
   function launcherTitle(expanded) {
@@ -4396,7 +4415,7 @@
     let searchTimer = null;
     let searchRequestId = 0;
     let searchCacheRevision = '';
-    const searchCache = new Map();
+    const searchCache = S.searchResultsCache;
     const initialSearchTitle = document.createElement('strong');
     initialSearchTitle.textContent = '搜索所有聊天内容';
     const initialSearchHint = document.createElement('span');
@@ -4416,6 +4435,8 @@
         return;
       }
       clearRecentSearches();
+      S.directoryCacheAccountId = null;
+      S.directoryRecords = [];
       window.clearTimeout(searchTimer);
       searchResults.replaceChildren();
       searchIndexStatus.textContent = '账号已变化；请重新授权或搜索当前账号';
@@ -4443,6 +4464,7 @@
 
     const selection = { ids: selectedIds, onChange: updateSelectionUi };
     const renderCurrent = () => {
+      if (S.directoryCacheAccountId) S.directoryRecords = currentRecords.slice();
       const query = titleFilterInput.value;
       titleFilterButton.classList.toggle('chatgpt-pro-filter-active', Boolean(normalizedSearchText(query)));
       titleFilterButton.setAttribute('aria-label', query ? `标题筛选：${query}` : '按标题筛选');
@@ -4618,8 +4640,14 @@
         setIndexStatusParts(statusParts);
         renderIndexFailures(latestFailures, indexTasks, failureTask, skippedIds);
       } catch (error) {
-        searchIndexStatus.textContent = `索引状态读取失败：${error.message}`;
-        renderIndexFailures([]);
+        if (isExtensionContextInvalidated(error)) {
+          showExtensionContextRecovery(searchIndexStatus,
+            window.ChatGPTProI18n?.t('ui.extensionContextReloadRequired')
+              || '扩展连接已失效；本地索引未被删除，刷新页面后可重新读取。');
+        } else {
+          searchIndexStatus.textContent = `索引状态读取失败：${error.message}`;
+          renderIndexFailures([]);
+        }
       }
     };
 
@@ -4654,8 +4682,10 @@
         return;
       }
       status.textContent = '正在搜索本地索引…';
+      let cacheKey = '';
       try {
         const accountId = await window.APIHandler.getAccountId();
+        cacheKey = JSON.stringify([accountId, query]);
         // Cheap version metadata invalidates the small recent-query cache
         // after an index write, account switch or manual index deletion.
         const [metadata, directoryState] = await Promise.all([
@@ -4671,7 +4701,6 @@
           searchCache.clear();
           searchCacheRevision = revision;
         }
-        const cacheKey = JSON.stringify([accountId, query]);
         let cached = searchCache.get(cacheKey);
         if (!cached) {
           const response = await runtimeMessage({ action: 'searchFullText', accountId, query, limit: 200 });
@@ -4687,7 +4716,29 @@
         renderFullTextResults(searchResults, cached, query);
         status.textContent = `当前账号 ${cached.length} 条`;
       } catch (error) {
-        if (requestId === searchRequestId) status.textContent = `全文搜索失败：${error.message}`;
+        if (requestId !== searchRequestId) return;
+        if (isExtensionContextInvalidated(error)) {
+          const cached = searchCache.get(cacheKey);
+          if (cached) {
+            renderFullTextResults(searchResults, cached, query);
+            status.textContent = window.ChatGPTProI18n?.format('ui.showingLastLocalSearchResults', {
+              count: cached.length
+            }) || `显示最近一次本地搜索结果 · ${cached.length} 条`;
+          } else {
+            searchResults.replaceChildren();
+            const unavailable = document.createElement('div');
+            unavailable.className = 'chatgpt-pro-search-initial';
+            unavailable.textContent = window.ChatGPTProI18n?.t('ui.fullTextUnavailableExtensionReload')
+              || '扩展连接已失效，当前页面无法读取本地索引；刷新页面后可继续搜索。';
+            searchResults.appendChild(unavailable);
+            status.textContent = '本地索引仍保存在扩展数据库中';
+          }
+          showExtensionContextRecovery(searchIndexStatus,
+            window.ChatGPTProI18n?.t('ui.extensionContextReloadRequired')
+              || '扩展连接已失效；本地索引未被删除，刷新页面后可重新读取。');
+        } else {
+          status.textContent = `全文搜索失败：${error.message}`;
+        }
       }
     };
     fullTextForm.addEventListener('submit', event => {
@@ -4927,9 +4978,21 @@
     }
     requestAnimationFrame(positionTimelinePanel);
 
+    let accountId = null;
     try {
+      accountId = await window.APIHandler.getAccountId();
+      if (S.directoryCacheAccountId === accountId && S.directoryRecords.length) {
+        currentRecords = S.directoryRecords.slice();
+        populateProjectFilter(projectFilter, currentRecords);
+        renderCurrent();
+        if (activeView === 'directory') status.textContent = `本地已有 ${currentRecords.length} 条，正在检查更新…`;
+        requestAnimationFrame(positionTimelinePanel);
+      }
+
       const cached = await window.APIHandler.getCachedConversationList();
       currentRecords = cached;
+      S.directoryCacheAccountId = accountId;
+      S.directoryRecords = cached.slice();
       if (cached.length) {
         populateProjectFilter(projectFilter, cached);
         renderCurrent();
@@ -4938,17 +5001,57 @@
       } else {
         if (activeView === 'directory') status.textContent = '首次使用，正在建立本地目录…';
       }
+    } catch (error) {
+      if (S.timeline !== panel) return;
+      if (isExtensionContextInvalidated(error)) {
+        const hasSnapshot = accountId && S.directoryCacheAccountId === accountId && currentRecords.length;
+        if (hasSnapshot) {
+          populateProjectFilter(projectFilter, currentRecords);
+          renderCurrent();
+          showExtensionContextRecovery(status,
+            window.ChatGPTProI18n?.format('ui.showingLastLocalDirectory', {
+              count: currentRecords.length
+            }) || `扩展连接已失效，当前显示最近一次本地目录（${currentRecords.length} 条）；刷新页面后可继续使用。`);
+        } else {
+          showExtensionContextRecovery(status,
+            window.ChatGPTProI18n?.t('ui.extensionContextReloadRequired')
+              || '扩展连接已失效；本地数据仍保存在扩展数据库中，刷新页面后可重新读取。');
+        }
+      } else {
+        status.textContent = `本地目录读取失败：${error.message}`;
+      }
+      return;
+    }
 
+    // The local directory is already rendered. Remote synchronization is a
+    // separate best-effort step and must never clear the user's local view.
+    try {
       const fresh = await window.APIHandler.syncConversationList(false);
       if (!S.timeline || S.timeline !== panel) return;
       currentRecords = fresh;
+      S.directoryCacheAccountId = accountId;
+      S.directoryRecords = fresh.slice();
       populateProjectFilter(projectFilter, fresh);
       renderCurrent();
       status.textContent = activeView === 'directory' ? `${fresh.length} 条 · 已完成增量同步` : '本地全文搜索';
       requestAnimationFrame(positionTimelinePanel);
       if (S.settings.showSidebarTime) await reloadTimestampMap(false);
     } catch (e) {
-      if (S.timeline === panel && activeView === 'directory') status.textContent = `同步失败，已保留本地数据：${e.message}`;
+      if (S.timeline !== panel) return;
+      if (isExtensionContextInvalidated(e)) {
+        if (currentRecords.length) {
+          showExtensionContextRecovery(status,
+            window.ChatGPTProI18n?.format('ui.showingLastLocalDirectory', {
+              count: currentRecords.length
+            }) || `扩展连接已失效，当前仍显示本地目录（${currentRecords.length} 条）；刷新页面后可恢复完整功能。`);
+        } else {
+          showExtensionContextRecovery(status,
+            window.ChatGPTProI18n?.t('ui.extensionContextReloadRequired')
+              || '扩展连接已失效；本地数据仍保存在扩展数据库中，刷新页面后可重新读取。');
+        }
+      } else if (activeView === 'directory') {
+        status.textContent = `同步失败，已保留本地数据：${e.message}`;
+      }
     }
   }
 

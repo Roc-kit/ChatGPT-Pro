@@ -322,6 +322,36 @@ html.dark .chatgpt-pro-launcher:not(.chatgpt-pro-dock-launcher),
   display: none !important;
 }
 
+.chatgpt-pro-context-reload {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+  margin-inline-start: 6px !important;
+  padding: 2px 6px !important;
+  border: 1px solid rgba(107, 114, 128, 0.35) !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+  color: inherit !important;
+  font: inherit !important;
+  line-height: 1.4 !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+}
+.chatgpt-pro-context-reload:hover {
+  background: rgba(127, 127, 127, 0.1) !important;
+}
+.chatgpt-pro-panel-status:has(.chatgpt-pro-context-reload),
+.chatgpt-pro-search-index-status:has(.chatgpt-pro-context-reload) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 5px !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
 .chatgpt-pro-batch-actions {
   flex: 0 1 auto !important;
   display: flex !important;
