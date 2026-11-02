@@ -59,6 +59,14 @@
   user-select: none !important;
 }
 
+.chatgpt-pro-launcher:not(.chatgpt-pro-dock-launcher) {
+  opacity: var(--chatgpt-pro-toolbar-opacity, 0.5) !important;
+}
+
+.chatgpt-pro-launcher:not(.chatgpt-pro-dock-launcher):hover {
+  opacity: 1 !important;
+}
+
 .chatgpt-pro-launcher:hover {
   border-color: rgba(127, 127, 127, 0.28) !important;
   background: rgba(16, 163, 127, 0.06) !important;
@@ -809,12 +817,20 @@ html.dark .chatgpt-pro-launcher:not(.chatgpt-pro-dock-launcher),
   align-items: stretch !important;
   pointer-events: none !important;
   overflow: visible !important;
+  transition: none !important;
+  opacity: var(--chatgpt-pro-toolbar-opacity, 0.5) !important;
 }
 
-.chatgpt-pro-tool-dock.chatgpt-pro-tool-dock-minimap-hidden {
-  border-color: transparent !important;
-  background: transparent !important;
-  box-shadow: none !important;
+.chatgpt-pro-tool-dock:hover {
+  opacity: 1 !important;
+}
+
+.chatgpt-pro-tool-dock.chatgpt-pro-dock-animating {
+  transition: top 1000ms ease-out, height 1000ms ease-out !important;
+}
+
+.chatgpt-pro-tool-dock.chatgpt-pro-dock-dragging {
+  transition: none !important;
 }
 
 .chatgpt-pro-tool-actions {
@@ -1083,6 +1099,23 @@ html.dark .chatgpt-pro-launcher:not(.chatgpt-pro-dock-launcher),
   background: transparent !important;
   box-shadow: none !important;
   pointer-events: auto !important;
+  opacity: 1 !important;
+  transition: opacity 1000ms ease-out !important;
+}
+
+.chatgpt-pro-minimap-entering,
+.chatgpt-pro-minimap-collapsing {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.chatgpt-pro-minimap-collapsing {
+  flex: 0 1 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  overflow: hidden !important;
 }
 
 .chatgpt-pro-minimap-rail {
@@ -1134,6 +1167,7 @@ html.dark .chatgpt-pro-launcher:not(.chatgpt-pro-dock-launcher),
   border-radius: 2px !important;
   background: transparent !important;
   opacity: 1 !important;
+  transition: opacity 220ms ease-out !important;
   cursor: pointer !important;
 }
 
@@ -1225,6 +1259,15 @@ html.dark .chatgpt-pro-minimap-preview,
 [data-theme="dark"] .chatgpt-pro-minimap-preview {
   background: #25272c !important;
   color: #f3f4f6 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chatgpt-pro-tool-dock,
+  .chatgpt-pro-tool-dock.chatgpt-pro-dock-animating,
+  .chatgpt-pro-minimap,
+  .chatgpt-pro-minimap-marker {
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @media (max-width: 640px) {

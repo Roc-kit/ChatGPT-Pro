@@ -98,7 +98,7 @@ ui.timestampFontSizeSidebarAndMessages`.split('\n'),
 介面語言
 常用顯示設定
 進階設定
-背景分頁、面板行為、匯出檔名
+介面顯示、背景分頁、面板行為、匯出檔名
 匯出檔名
 建立時間 + 對話標題
 建立時間 + 來源 + 對話標題
@@ -128,7 +128,7 @@ Tamaño de las marcas de tiempo
 Idioma de la interfaz
 Ajustes de visualización
 Configuración avanzada
-Pestañas en segundo plano, panel y nombres de archivo
+Visualización, pestañas en segundo plano, comportamiento del panel y nombres de archivo
 Nombres de archivos exportados
 Fecha de creación + título
 Fecha de creación + origen + título
@@ -158,7 +158,7 @@ Tamaño de las marcas de tiempo (barra lateral y mensajes)`.split('\n'),
 इंटरफ़ेस की भाषा
 डिस्प्ले सेटिंग्स
 उन्नत सेटिंग्स
-बैकग्राउंड टैब, पैनल और एक्सपोर्ट फ़ाइल नाम
+प्रदर्शन, बैकग्राउंड टैब, पैनल व्यवहार और एक्सपोर्ट फ़ाइल नाम
 एक्सपोर्ट फ़ाइल के नाम
 बनाने का समय + शीर्षक
 बनाने का समय + स्रोत + शीर्षक
@@ -188,7 +188,7 @@ Tamaño de las marcas de tiempo (barra lateral y mensajes)`.split('\n'),
 لغة الواجهة
 إعدادات العرض
 الإعدادات المتقدمة
-علامات تبويب الخلفية وسلوك اللوحة وأسماء الملفات
+العرض، وعلامات التبويب في الخلفية، وسلوك اللوحة، وأسماء ملفات التصدير
 أسماء الملفات المصدّرة
 وقت الإنشاء + العنوان
 وقت الإنشاء + المصدر + العنوان
@@ -218,7 +218,7 @@ Tamanho da fonte dos horários
 Idioma da interface
 Configurações de exibição
 Configurações avançadas
-Abas em segundo plano, painel e nomes de arquivos
+Exibição, abas em segundo plano, comportamento do painel e nomes de arquivos de exportação
 Nomes dos arquivos exportados
 Data de criação + título
 Data de criação + origem + título
@@ -248,7 +248,7 @@ Tamanho da fonte dos horários (barra lateral e mensagens)`.split('\n'),
 ইন্টারফেসের ভাষা
 প্রদর্শন সেটিংস
 উন্নত সেটিংস
-ব্যাকগ্রাউন্ড ট্যাব, প্যানেল ও ফাইলের নাম
+প্রদর্শন, ব্যাকগ্রাউন্ড ট্যাব, প্যানেলের আচরণ ও এক্সপোর্ট ফাইলের নাম
 এক্সপোর্ট করা ফাইলের নাম
 তৈরির সময় + শিরোনাম
 তৈরির সময় + উৎস + শিরোনাম
@@ -278,7 +278,7 @@ Ukuran font stempel waktu
 Bahasa antarmuka
 Pengaturan tampilan
 Pengaturan lanjutan
-Tab latar belakang, perilaku panel, dan nama berkas
+Tampilan, tab latar belakang, perilaku panel, dan nama file ekspor
 Nama berkas ekspor
 Waktu dibuat + judul
 Waktu dibuat + sumber + judul
@@ -308,7 +308,7 @@ Taille du texte des horodatages
 Langue de l’interface
 Paramètres d’affichage
 Paramètres avancés
-Onglets en arrière-plan, panneau et noms de fichiers
+Affichage, onglets en arrière-plan, comportement du panneau et noms des fichiers exportés
 Noms des fichiers exportés
 Date de création + titre
 Date de création + source + titre
@@ -338,7 +338,7 @@ Taille du texte des horodatages (barre latérale et messages)`.split('\n'),
 Язык интерфейса
 Настройки отображения
 Дополнительные настройки
-Фоновые вкладки, поведение панели и имена файлов
+Отображение, фоновые вкладки, поведение панели и имена файлов экспорта
 Имена файлов при экспорте
 Дата создания + название
 Дата создания + источник + название
@@ -368,7 +368,7 @@ Taille du texte des horodatages (barre latérale et messages)`.split('\n'),
 表示言語
 表示設定
 詳細設定
-バックグラウンドタブ・パネルの動作・ファイル名
+表示・バックグラウンドタブ・パネルの動作・エクスポートファイル名
 エクスポート時のファイル名
 作成日時 + タイトル
 作成日時 + 出典 + タイトル
@@ -4920,6 +4920,7 @@ ui.localOnlyStatus`.split('\n'),
   ];
   const autoContinueKeys = `ui.autoContinue
 ui.autoContinueDisabled
+ui.autoContinueTooltip
 ui.currentChatNotStarted
 ui.continuationMessage
 ui.continuationMessageHelp
@@ -5019,6 +5020,17 @@ status.refreshOutdatedIndexCount`.split('\n');
     translations: Object.fromEntries([
       'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
     ].map(locale => [locale, [scope.ChatGPTProLocalePacks[locale]['ui.openExportMenu']]]))
+  });
+  const popupDisplayKeys = `ui.followBrowserLanguage
+ui.interfaceDisplay
+ui.toolbarOpacity
+ui.restoreOpacityOnHover
+ui.behaviorSettings`.split('\n');
+  blocks.push({
+    keys: popupDisplayKeys,
+    translations: Object.fromEntries([
+      'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
+    ].map(locale => [locale, popupDisplayKeys.map(key => scope.ChatGPTProLocalePacks[locale][key])]))
   });
   for (const block of blocks) {
     for (const [locale, translations] of Object.entries(block.translations)) {

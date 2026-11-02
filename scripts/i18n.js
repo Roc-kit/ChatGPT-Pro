@@ -12,7 +12,7 @@
   const SOURCE_TO_KEY = new Map(Object.entries(ZH).map(([key, source]) => [source, key]));
   const DYNAMIC_KEYS = scope.ChatGPTProDynamicMessageKeys || [];
   const LANGUAGES = [
-    ['auto','自动 / Browser'],['zh-CN','简体中文'],['zh-TW','繁體中文'],
+    ['auto','跟随浏览器'],['zh-CN','简体中文'],['zh-TW','繁體中文'],
     ['en','English'],['es','Español'],['hi','हिन्दी'],['ar','العربية'],
     ['pt-BR','Português (Brasil)'],['bn','বাংলা'],['id','Bahasa Indonesia'],
     ['fr','Français'],['ru','Русский'],['ja','日本語']

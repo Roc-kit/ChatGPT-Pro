@@ -46,6 +46,8 @@
     messageConversationId: null,
     messageConversation: null,
     messageConversationPromise: null,
+    messageConversationRefreshId: null,
+    messageConversationRefreshPromise: null,
     messageConversationRefreshSignature: '',
     messageConversationRefreshAt: 0,
     messageVisibilityObserver: null,
@@ -54,7 +56,12 @@
     observedMessageSignature: '',
     messageRouteRetryTimers: [],
     minimap: { id: null, signature: '', entries: [], allEntries: [], active: null, frame: 0, layoutSlots: 0,
-      cachedId: null, cachedMessages: null, lastCacheCheck: 0, checking: false, cachePromise: null, jumpToken: 0 },
+      cachedId: null, cachedAccountId: null, cachedMessages: null, dataSignature: '',
+      entriesDataSignature: '',
+      lastCacheCheck: 0, checking: false, cachePromise: null, jumpToken: 0,
+      renderedRefreshSignature: '', renderedRefreshAt: 0,
+      wasGenerating: false,
+      syncTimer: null, transitionTimer: null, transitionToken: 0 },
     settings: {
       enabled: true,
       showSidebarTime: false,
@@ -65,6 +72,7 @@
       autoContinueDelaySeconds: 120,
       autoContinueMaxCount: 20,
       fontSize: 11,
+      toolDockOpacity: 50,
       openInBackground: true,
       closeOnOutsideClick: true,
       exportFilenameTemplate: '{created_datetime}_{title}',
@@ -86,6 +94,14 @@
       ? Math.max(8, Math.min(24, Math.round(parsed))) : 11;
     S.settings.fontSize = fontSize;
     document.documentElement.style.setProperty('--chatgpt-pro-timestamp-font-size', `${fontSize}px`);
+  }
+
+  function applyToolDockOpacity(value) {
+    const parsed = Number(value);
+    const opacity = Number.isFinite(parsed)
+      ? Math.max(1, Math.min(100, Math.round(parsed))) : 50;
+    S.settings.toolDockOpacity = opacity;
+    document.documentElement.style.setProperty('--chatgpt-pro-toolbar-opacity', String(opacity / 100));
   }
 
   function timestampValue(value) {
@@ -193,6 +209,17 @@
     return S.messageVisibilityObserver;
   }
 
+  function isConversationSnapshotNewer(candidate, current) {
+    if (!current) return true;
+    const candidateTime = timestampValue(candidate?.update_time ?? candidate?.updated_at);
+    const currentTime = timestampValue(current?.update_time ?? current?.updated_at);
+    if (candidateTime !== currentTime) return candidateTime > currentTime;
+    const candidateBranchLength = currentBranchMessages(candidate).length;
+    const currentBranchLength = currentBranchMessages(current).length;
+    if (candidateBranchLength !== currentBranchLength) return candidateBranchLength > currentBranchLength;
+    return Object.keys(candidate?.mapping || {}).length >= Object.keys(current?.mapping || {}).length;
+  }
+
   async function stampMessageTimestamps() {
     if (!S.settings.enabled || !S.settings.showMessageTimestamps) {
       removeMessageTimestamps();
@@ -210,7 +237,7 @@
       try {
         const data = await conversationPromise;
         if (currentConversationId() !== conversationId || S.messageConversationId !== conversationId) return 0;
-        S.messageConversation = data;
+        if (isConversationSnapshotNewer(data, S.messageConversation)) S.messageConversation = data;
       } catch (error) {
         log('Message timestamp data load failed:', error.message);
         return 0;
@@ -231,7 +258,7 @@
       S.messageConversationRefreshSignature = renderedSignature;
       S.messageConversationRefreshAt = Date.now();
       try {
-        const data = await window.APIHandler.getConversation(conversationId, { forceNetwork: true });
+        const data = await refreshConversationFromNetwork(conversationId);
         if (currentConversationId() !== conversationId || S.messageConversationId !== conversationId) return 0;
         S.messageConversation = data;
       } catch (error) {
@@ -267,6 +294,32 @@
     return [...ids];
   }
 
+  function refreshConversationFromNetwork(conversationId) {
+    if (S.messageConversationRefreshPromise
+        && S.messageConversationRefreshId === conversationId) {
+      return S.messageConversationRefreshPromise;
+    }
+    const promise = window.APIHandler.getConversation(conversationId, { forceNetwork: true });
+    S.messageConversationRefreshId = conversationId;
+    S.messageConversationRefreshPromise = promise;
+    promise.then(data => {
+      if (currentConversationId() === conversationId && S.messageConversationId === conversationId
+          && isConversationSnapshotNewer(data, S.messageConversation)) {
+        S.messageConversation = data;
+      }
+      if (S.messageConversationRefreshPromise === promise) {
+        S.messageConversationRefreshPromise = null;
+        S.messageConversationRefreshId = null;
+      }
+    }, () => {
+      if (S.messageConversationRefreshPromise === promise) {
+        S.messageConversationRefreshPromise = null;
+        S.messageConversationRefreshId = null;
+      }
+    });
+    return promise;
+  }
+
   function renderedMessageSignature() {
     return renderedMessageIds().join('|');
   }
@@ -292,6 +345,7 @@
       S.observedMessageElements = new WeakSet();
 
       stampMessageTimestamps().catch(error => log('Message timestamp view refresh failed:', error.message));
+      scheduleMinimapSync(180);
       return;
     }
 
@@ -318,6 +372,7 @@
     clearMessageRouteRetryTimers();
     removeMessageTimestamps();
     if (S.settings.enabled) ensureCurrentChatExportButton();
+    scheduleMinimapSync(0);
 
     if (!S.settings.enabled || !conversationId) return true;
     for (const delay of MESSAGE_ROUTE_RETRY_DELAYS_MS) {
@@ -343,8 +398,9 @@
       window.navigation.addEventListener('navigatesuccess', checkView);
     }
     window.setInterval(checkView, MESSAGE_ROUTE_CHECK_MS);
-    // Minimap reuses rendered turns and checks local raw JSON without network detail requests.
-    window.setInterval(syncConversationMinimap, 3000);
+    // Minimap updates follow route and rendered-message changes. Do not poll
+    // the conversation detail endpoint to chase transient DOM mutations.
+    window.setInterval(checkMinimapGenerationState, 1200);
     // A minimap/search jump can wait for virtualized turns for up to 45s.
     // Once the user starts navigating manually, that old async jump must not
     // regain control when its target eventually mounts and snap the view back
@@ -365,7 +421,7 @@
       if (S.minimap.frame) return;
       S.minimap.frame = window.requestAnimationFrame(() => {
         S.minimap.frame = 0;
-        updateMinimapActive();
+        updateMinimapSampling();
       });
     };
     document.addEventListener('scroll', scheduleActive, { passive: true, capture: true });
@@ -431,43 +487,125 @@
     return grouped.map((entry, index) => ({ ...entry, index }));
   }
 
-  function minimapMessages(data, rendered) {
-    const domRaw = rendered.map((target, index) => ({
-      id: window.ChatGPTDomAdapter.messageIds(target)[0] || '',
-      target, role: window.ChatGPTDomAdapter.messageRole(target),
-      preview: String(target.innerText || target.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 180),
-      index
-    }));
-    const domHasRoles = domRaw.some(entry => ['user', 'assistant'].includes(entry.role));
-    const dom = domHasRoles
-      ? groupMinimapMessages(domRaw)
-      : domRaw.map((entry, index) => ({ ...entry, index, targets: entry.target ? [entry.target] : [] }));
-    if (!data?.mapping) return dom;
-    const byId = new Map();
-    for (const entry of domRaw) if (entry.id) byId.set(entry.id, entry.target);
-    const fullRaw = currentBranchMessages(data)
-      .filter(isUserVisibleMessage)
-      .map((message, index) => ({
-        id: message.id, role: message.author.role,
-        target: byId.get(message.id) || null,
-        preview: messageText(message).replace(/\s+/g, ' ').trim().slice(0, 180),
-        channel: message.channel, index
-      }));
-    const full = groupMinimapMessages(fullRaw);
-    // If ChatGPT has changed its DOM IDs, retain the full first/last entries
-    // but use DOM ordering when the cached branch does not match this page.
-    if (full.length && !full.some(entry => entry.target) && full.length === dom.length) {
-      full.forEach((entry, index) => {
-        entry.target = dom[index].target;
-        entry.targets = dom[index].targets || (dom[index].target ? [dom[index].target] : []);
-      });
+  function minimapBranchMessages(data) {
+    const mapping = data?.mapping;
+    const currentNode = data?.current_node;
+    if (!mapping || typeof mapping !== 'object' || !currentNode
+        || !Object.prototype.hasOwnProperty.call(mapping, currentNode)) return null;
+
+    const messages = [];
+    const visited = new Set();
+    let nodeId = currentNode;
+    while (nodeId) {
+      if (visited.has(nodeId)) return null;
+      visited.add(nodeId);
+      const node = mapping[nodeId];
+      if (!node) return null;
+      if (node.message) messages.push(node.message);
+      if (!Object.prototype.hasOwnProperty.call(node, 'parent')) return null;
+      if (node.parent && !Object.prototype.hasOwnProperty.call(mapping, node.parent)) return null;
+      nodeId = node.parent || null;
     }
-    const matchedDomGroups = domHasRoles
-      ? dom.filter(entry => entry.targets?.some(target => full.some(item => item.targets?.includes(target)))).length
-      : 0;
-    const domCoverage = dom.length ? matchedDomGroups / dom.length : 0;
-    if (full.length && !domHasRoles && full.some(entry => entry.target)) return full;
-    return full.length && (full.length >= dom.length || domCoverage >= 0.5) ? full : dom;
+    return messages.reverse();
+  }
+
+  function minimapConversationFingerprint(data, branch = minimapBranchMessages(data)) {
+    if (!branch || !data?.mapping) return '';
+    let contentHash = 2166136261;
+    for (const message of branch) {
+      const value = [message.id || '', message.author?.role || '', message.channel || '', messageText(message)].join('\u0000');
+      for (let index = 0; index < value.length; index++) {
+        contentHash ^= value.charCodeAt(index);
+        contentHash = Math.imul(contentHash, 16777619);
+      }
+    }
+    return [data.id || '', data.current_node || '', data.update_time ?? data.updated_at ?? '',
+      Object.keys(data.mapping).length, branch.length, branch.at(-1)?.id || '',
+      (contentHash >>> 0).toString(36)].join(':');
+  }
+
+  function minimapMessages(data, rendered) {
+    const branch = minimapBranchMessages(data);
+    if (!branch) return [];
+    const byId = new Map();
+    for (const target of rendered) {
+      for (const id of window.ChatGPTDomAdapter.messageIds(target)) {
+        if (id) byId.set(id, target);
+      }
+    }
+    const fullRaw = branch.filter(isUserVisibleMessage).map((message, index) => ({
+      id: message.id, role: message.author.role,
+      target: byId.get(message.id) || null,
+      preview: messageText(message).replace(/\s+/g, ' ').trim().slice(0, 180),
+      channel: message.channel, index
+    }));
+    // The full JSON defines message count, ordering, branch and previews.
+    // DOM nodes are only optional navigation targets for already-mounted messages.
+    return groupMinimapMessages(fullRaw);
+  }
+
+  function updateMinimapEntryTargets(entries, rendered) {
+    const byId = new Map();
+    for (const target of rendered) {
+      for (const id of window.ChatGPTDomAdapter.messageIds(target)) {
+        if (id && !byId.has(id)) byId.set(id, target);
+      }
+    }
+    for (const entry of entries) {
+      const targets = [];
+      for (const id of entry.messageIds || [entry.startId || entry.id]) {
+        const target = byId.get(id);
+        if (target && !targets.includes(target)) targets.push(target);
+      }
+      entry.targets = targets;
+      entry.target = targets[0] || null;
+    }
+  }
+
+  function renderedMinimapMessageIds() {
+    const ids = new Set();
+    for (const element of window.ChatGPTDomAdapter.messageElements()) {
+      if (!element.isConnected || !element.getClientRects().length) continue;
+      if (!['user', 'assistant'].includes(window.ChatGPTDomAdapter.messageRole(element))) continue;
+      window.ChatGPTDomAdapter.messageIds(element).forEach(id => { if (id) ids.add(id); });
+    }
+    return [...ids];
+  }
+
+  function refreshMinimapForNewRenderedMessages(id, branch) {
+    if (S.minimap.checking || window.ChatGPTDomAdapter.isGenerating()) return;
+    const branchIds = new Set(branch.filter(isUserVisibleMessage).map(message => message.id));
+    const renderedIds = renderedMinimapMessageIds();
+    // Only the newest rendered message can prove the cached branch is stale.
+    // Intermediate virtualized DOM replacements and test/navigation placeholders
+    // must not trigger an unnecessary conversation-detail request.
+    const latestRenderedId = renderedIds.at(-1);
+    if (!latestRenderedId || branchIds.has(latestRenderedId)) return;
+    const unknownIds = [latestRenderedId];
+    const signature = `${id}:${unknownIds.join('|')}`;
+    if (signature === S.minimap.renderedRefreshSignature
+        && Date.now() - S.minimap.renderedRefreshAt < 30000) return;
+    S.minimap.renderedRefreshSignature = signature;
+    S.minimap.renderedRefreshAt = Date.now();
+    checkMinimapCache(id, { forceNetwork: true })
+      .catch(error => log('Minimap lazy-load refresh failed:', error.message));
+  }
+
+  function checkMinimapGenerationState() {
+    if (!S.settings.enabled || !S.settings.showMinimap || !currentConversationId()) {
+      S.minimap.wasGenerating = false;
+      return;
+    }
+    const generating = window.ChatGPTDomAdapter.isGenerating();
+    if (generating) {
+      S.minimap.wasGenerating = true;
+      return;
+    }
+    if (!S.minimap.wasGenerating) return;
+    S.minimap.wasGenerating = false;
+    const id = currentConversationId();
+    const branch = minimapBranchMessages(S.minimap.cachedMessages);
+    if (id && branch) refreshMinimapForNewRenderedMessages(id, branch);
   }
 
   function minimapSample(messages, activeIndex) {
@@ -480,40 +618,102 @@
     return [messages[0], ...messages.slice(start, start + inside), messages[total - 1]];
   }
 
+  function updateMinimapSampling(allowHidden = false) {
+    const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+    const panel = dock?.querySelector('[data-chatgpt-pro-minimap]');
+    const allEntries = S.minimap.allEntries;
+    if (!dock || !panel || !allEntries.length
+        || (!allowHidden && dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden'))) return;
+    const anchor = window.innerHeight * 0.38;
+    const nearest = allEntries.reduce((best, entry) => {
+      if (!entry.target?.isConnected) return best;
+      const distance = Math.abs(entry.target.getBoundingClientRect().top - anchor);
+      return !best || distance < best.distance ? { entry, distance } : best;
+    }, null);
+    const activeIndex = nearest?.entry.index ?? S.minimap.active?.index ?? 0;
+    const sampled = minimapSample(allEntries, activeIndex);
+    const slots = minimapSlotCount();
+    const signature = `${S.minimap.id}:${allEntries.length}:slots=${slots}:${sampled.map(item => item.index).join(',')}`;
+    S.minimap.signature = signature;
+    S.minimap.layoutSlots = slots;
+    updateMinimapPanel(panel, sampled, allEntries.length);
+    updateMinimapActive();
+  }
+
   function minimapSlotCount() {
     const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
     const panel = dock?.querySelector('[data-chatgpt-pro-minimap]');
-    const railHeight = panel
-      ? Math.max(0, panel.clientHeight - 6)
-      : Math.max(36, window.innerHeight * 0.72);
+    const expanded = Boolean(panel && !dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden'));
+    const headerHeight = dock?.querySelector('[data-chatgpt-pro-launcher]')?.offsetHeight || 38;
+    const actionHeight = dock?.querySelector('[data-chatgpt-pro-tool-actions]')?.offsetHeight || 0;
+    const expectedPanelHeight = Math.max(36, window.innerHeight * 0.5 - headerHeight - actionHeight - 12);
+    const railHeight = expanded ? Math.max(0, panel.clientHeight - 12) : expectedPanelHeight;
     return Math.max(3, Math.min(49, Math.floor(railHeight / 10)));
   }
 
-  async function checkMinimapCache(id) {
+  async function adoptMinimapConversationSnapshot(id, accountId, data, branch = minimapBranchMessages(data)) {
+    if (!branch || (data?.id && data.id !== id)
+        || await window.APIHandler.getAccountId() !== accountId
+        || currentConversationId() !== id) return false;
+    const persisted = await runtimeMessage({ action: 'localDataGetConversation', accountId, id });
+    const expectedFingerprint = minimapConversationFingerprint(data, branch);
+    const persistedFingerprint = minimapConversationFingerprint(persisted?.raw);
+    if (!persisted?.hit || !expectedFingerprint || persistedFingerprint !== expectedFingerprint) return false;
+    if (await window.APIHandler.getAccountId() !== accountId || currentConversationId() !== id) return false;
+    S.minimap.cachedMessages = data;
+    S.minimap.dataSignature = expectedFingerprint;
+    S.minimap.signature = '';
+    return true;
+  }
+
+  async function checkMinimapCache(id, { forceNetwork = false } = {}) {
+    const accountId = await window.APIHandler.getAccountId();
     if (S.minimap.checking) {
       const pending = S.minimap.cachePromise;
-      if (S.minimap.cachedId === id) return pending;
+      if (S.minimap.cachedId === id && S.minimap.cachedAccountId === accountId) return pending;
       if (pending) await pending;
       if (currentConversationId() === id) return checkMinimapCache(id);
       return;
     }
-    if (S.minimap.cachedId === id &&
-        (S.minimap.cachedMessages || Date.now() - S.minimap.lastCacheCheck < 20000)) return;
-    if (S.minimap.cachedId !== id) S.minimap.cachedMessages = null;
+    const sameCache = S.minimap.cachedId === id && S.minimap.cachedAccountId === accountId;
+    if (sameCache && S.minimap.cachedMessages && !forceNetwork) return S.minimap.cachedMessages;
+    if (sameCache && !forceNetwork && Date.now() - S.minimap.lastCacheCheck < 30000) {
+      return S.minimap.cachedMessages;
+    }
+    if (!sameCache) {
+      S.minimap.cachedMessages = null;
+      S.minimap.dataSignature = '';
+      S.minimap.entriesDataSignature = '';
+    }
     S.minimap.cachedId = id;
+    S.minimap.cachedAccountId = accountId;
     S.minimap.lastCacheCheck = Date.now();
     S.minimap.checking = true;
     const pending = (async () => {
       try {
-        const accountId = await window.APIHandler.getAccountId();
-        const result = await runtimeMessage({ action: 'localDataGetConversation', accountId, id });
-        if (currentConversationId() === id && result.hit && result.raw?.mapping) {
-          S.minimap.cachedMessages = result.raw;
-          S.minimap.signature = '';
-          if (S.settings.enabled && S.settings.showMinimap) syncConversationMinimap();
+        let result = forceNetwork
+          ? { data: await refreshConversationFromNetwork(id), source: 'network' }
+          : await window.APIHandler.getConversation(id, { withSource: true });
+        if (result?.data?.id && result.data.id !== id) {
+          throw new Error('详情接口返回的对话 ID 与当前页面不一致');
         }
+        let branch = minimapBranchMessages(result?.data);
+        if (!branch && result?.source === 'cache' && !forceNetwork) {
+          result = { data: await refreshConversationFromNetwork(id), source: 'network' };
+          branch = minimapBranchMessages(result?.data);
+        }
+        if (!branch) throw new Error('完整对话 JSON 缺少有效的 current_node 分支');
+        // APIHandler normally persists network details itself. Verify the
+        // IndexedDB write before exposing this snapshot to the Minimap; a
+        // failed write must never turn an in-memory partial result into data.
+        if (!await adoptMinimapConversationSnapshot(id, accountId, result.data, branch)) {
+          throw new Error('完整对话 JSON 尚未成功保存到 IndexedDB');
+        }
+        if (S.settings.enabled && S.settings.showMinimap) syncConversationMinimap();
+        return result.data;
       } catch (error) {
         log('Minimap local cache unavailable:', error.message);
+        return null;
       } finally {
         S.minimap.checking = false;
         if (S.minimap.cachePromise === pending) S.minimap.cachePromise = null;
@@ -624,7 +824,7 @@
     // only ChatGPT's currently rendered lazy-load window. Its first/last
     // entries are not necessarily the real conversation boundaries.
     const hasCompleteConversation = S.minimap.cachedId === conversationId
-      && Boolean(S.minimap.cachedMessages?.mapping);
+      && Boolean(minimapBranchMessages(S.minimap.cachedMessages));
     const resolveTarget = () => {
       // Reuse the DOM adapter's complete ID lookup. Modern ChatGPT layouts
       // can expose message IDs only through data-chatgpt-search-message-ids.
@@ -783,64 +983,77 @@
     return false;
   }
 
-  function syncConversationMinimap() {
-    const id = S.settings.enabled && S.settings.showMinimap && currentConversationId();
-    const previous = document.querySelector('[data-chatgpt-pro-minimap]');
-    if (!id) {
-      previous?.remove();
-      document.querySelector('[data-chatgpt-pro-tool-dock]')?.classList.add('chatgpt-pro-tool-dock-minimap-hidden');
-      updateMinimapDockLayout();
-      S.minimap.id = null;
-      S.minimap.signature = '';
-      S.minimap.entries = [];
-      S.minimap.allEntries = [];
-      S.minimap.active = null;
-      S.minimap.cachedId = null;
-      S.minimap.cachedMessages = null;
-      return;
-    }
-    const dock = ensureCurrentChatToolDock();
-    dock.classList.remove('chatgpt-pro-tool-dock-minimap-hidden');
-    // Do not require role attributes: some ChatGPT views expose message IDs
-    // without the role, and filtering them all previously hid the minimap.
-    const messages = window.ChatGPTDomAdapter.messageElements();
-    checkMinimapCache(id).catch(error => log('Minimap cache lookup failed:', error.message));
-    if (messages.length < 2 && !(S.minimap.cachedId === id && S.minimap.cachedMessages)) {
-      previous?.remove();
+  function collapseMinimapDock(dock, panel = dock?.querySelector('[data-chatgpt-pro-minimap]')) {
+    if (!dock) return;
+    const alreadyCollapsing = panel?.classList.contains('chatgpt-pro-minimap-collapsing');
+    const wasExpanded = !dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden');
+    if (wasExpanded || (panel && !alreadyCollapsing)) {
+      if (S.minimap.transitionTimer !== null) clearTimeout(S.minimap.transitionTimer);
+      S.minimap.transitionTimer = null;
+      S.minimap.transitionToken++;
+      dock.classList.add('chatgpt-pro-dock-animating');
+      // Commit the starting height before changing the compact/expanded
+      // layout; otherwise the browser may batch both states and skip the
+      // transition entirely.
+      void dock.offsetHeight;
       dock.classList.add('chatgpt-pro-tool-dock-minimap-hidden');
-      updateMinimapDockLayout();
-      S.minimap.signature = '';
-      S.minimap.entries = [];
-      S.minimap.allEntries = [];
-      S.minimap.active = null;
+      if (panel) {
+        panel.classList.remove('chatgpt-pro-minimap-entering');
+        panel.classList.add('chatgpt-pro-minimap-collapsing');
+        panel.setAttribute('aria-hidden', 'true');
+        panel.inert = true;
+      }
+      placeCurrentChatExportButton();
+    }
+    if ((!panel && !wasExpanded) || S.minimap.transitionTimer !== null) return;
+    const token = ++S.minimap.transitionToken;
+    S.minimap.transitionTimer = window.setTimeout(() => {
+      S.minimap.transitionTimer = null;
+      if (token !== S.minimap.transitionToken) return;
+      if (dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden')
+          && panel?.isConnected && panel.classList.contains('chatgpt-pro-minimap-collapsing')) panel.remove();
+      dock.classList.remove('chatgpt-pro-dock-animating');
+    }, 1050);
+  }
+
+  function scheduleMinimapSync(delay = 180) {
+    if (!S.settings.enabled) return;
+    if (S.minimap.syncTimer !== null) clearTimeout(S.minimap.syncTimer);
+    S.minimap.syncTimer = window.setTimeout(() => {
+      S.minimap.syncTimer = null;
+      syncConversationMinimap();
+    }, delay);
+  }
+
+  function minimapSpeakerLabel(role) {
+    if (role === 'user') return window.ChatGPTProI18n?.t('ui.user') || 'User';
+    if (role === 'assistant') return 'ChatGPT';
+    return window.ChatGPTProI18n?.t('ui.message') || 'Message';
+  }
+
+  function refreshMinimapPanelLabels() {
+    const panel = document.querySelector('[data-chatgpt-pro-minimap]');
+    if (!panel) return;
+    const total = S.minimap.allEntries.length;
+    for (const entry of S.minimap.entries) {
+      const label = `${entry.index + 1}/${total} · ${minimapSpeakerLabel(entry.role)}`;
+      if (entry.button.title !== label) entry.button.title = label;
+      if (entry.button.getAttribute('aria-label') !== label) entry.button.setAttribute('aria-label', label);
+    }
+    const preview = panel.querySelector('.chatgpt-pro-minimap-preview');
+    if (!preview || preview.hidden) return;
+    const index = Number(preview.dataset.chatgptProMinimapIndex);
+    const entry = S.minimap.entries.find(item => item.index === index);
+    if (!entry) {
+      preview.hidden = true;
       return;
     }
-    const allEntries = minimapMessages(S.minimap.cachedId === id ? S.minimap.cachedMessages : null, messages);
-    const scroller = conversationScrollContainer();
-    const scrollTop = scroller === document.scrollingElement ? window.scrollY : (scroller?.scrollTop || 0);
-    const scrollerTop = scroller === document.scrollingElement ? 0 : (scroller?.getBoundingClientRect().top || 0);
-    for (const entry of allEntries) {
-      if (!entry.target?.isConnected) continue;
-      entry.scrollOffset = scrollTop + entry.target.getBoundingClientRect().top - scrollerTop;
-    }
-    S.minimap.allEntries = allEntries;
-    const seen = messages.findIndex(element => {
-      const r = element.getBoundingClientRect();
-      return r.bottom > window.innerHeight * 0.38;
-    });
-    const nearby = messages[Math.max(0, seen)];
-    const mapped = allEntries.findIndex(entry => entry.target === nearby || entry.targets?.includes(nearby));
-    const activeIndex = mapped >= 0 ? mapped
-      : Math.min(allEntries.length - 1, Math.round(Math.max(0, seen) / Math.max(1, messages.length - 1) * (allEntries.length - 1)));
-    const sampled = minimapSample(allEntries, activeIndex);
-    const signature = `${id}:${allEntries.length}:slots=${minimapSlotCount()}:${sampled.map(item => item.index).join(',')}:${messages.map((element, index) =>
-      window.ChatGPTDomAdapter.messageIds(element).join(',') || `position-${index}`).join('|')}`;
-    if (previous && S.minimap.signature === signature &&
-        S.minimap.entries.length === sampled.length) {
-      updateMinimapDockLayout();
-      updateMinimapActive();
-      return;
-    }
+    const heading = preview.querySelector('.chatgpt-pro-minimap-preview-heading');
+    const label = `${entry.index + 1}/${total} · ${minimapSpeakerLabel(entry.role)}`;
+    if (heading.textContent !== label) heading.textContent = label;
+  }
+
+  function createMinimapPanel(dock) {
     const panel = document.createElement('nav');
     panel.className = 'chatgpt-pro-minimap';
     panel.setAttribute('data-chatgpt-pro-minimap', '1');
@@ -858,38 +1071,14 @@
     const previewText = document.createElement('span');
     previewText.className = 'chatgpt-pro-minimap-preview-text';
     preview.append(previewHeading, previewText);
-    const entries = [];
-    rail.style.gridTemplateRows = `repeat(${sampled.length}, minmax(0, 1fr))`;
-    for (const entry of sampled) {
-      const { target, index, role } = entry;
-      const marker = document.createElement('button');
-      marker.type = 'button';
-      marker.className = `chatgpt-pro-minimap-marker chatgpt-pro-minimap-${role || 'unknown'}`;
-      if (entry.startId || entry.id) marker.dataset.chatgptProMinimapMessageId = entry.startId || entry.id;
-      const speaker = role === 'user' ? '用户' : role === 'assistant' ? 'ChatGPT' : '消息';
-      marker.title = `${index + 1}/${allEntries.length} · ${speaker}`;
-      marker.setAttribute('aria-label', marker.title);
-      if (index === 0) marker.classList.add('chatgpt-pro-minimap-first');
-      if (index === allEntries.length - 1) marker.classList.add('chatgpt-pro-minimap-last');
-      const showPreview = () => {
-        previewHeading.textContent = `${index + 1}/${allEntries.length} · ${speaker}`;
-        previewText.textContent = entry.preview;
-        const markerTop = marker.getBoundingClientRect().top - panel.getBoundingClientRect().top;
-        preview.style.top = `${Math.max(4, Math.min(panel.clientHeight - 155, markerTop - 28))}px`;
-        preview.hidden = false;
-      };
-      marker.addEventListener('pointerenter', showPreview);
-      marker.addEventListener('focus', showPreview);
-      marker.addEventListener('pointerleave', () => { preview.hidden = true; });
-      marker.addEventListener('blur', () => { preview.hidden = true; });
-      marker.addEventListener('click', () => jumpMinimapEntry(entry, allEntries.length));
-      rail.append(marker);
-      entries.push({ ...entry, button: marker });
-    }
+    panel.append(rail, preview);
+
     const locateRailEntry = event => {
+      const entries = S.minimap.entries;
+      if (!entries.length) return null;
       const rect = rail.getBoundingClientRect();
       const fraction = Math.max(0, Math.min(1, (event.clientY - rect.top) / Math.max(1, rect.height)));
-      return sampled[Math.min(sampled.length - 1, Math.floor(fraction * sampled.length))];
+      return entries[Math.min(entries.length - 1, Math.floor(fraction * entries.length))];
     };
     let dragStart = null;
     rail.addEventListener('pointerdown', event => {
@@ -898,40 +1087,246 @@
     });
     rail.addEventListener('pointermove', event => {
       if (!dragStart) return;
-      const nearest = locateRailEntry(event);
-      const marker = entries.find(item => item.index === nearest.index)?.button;
-      marker?.dispatchEvent(new Event('pointerenter'));
+      locateRailEntry(event)?.button?.dispatchEvent(new Event('pointerenter'));
     });
     rail.addEventListener('pointerup', event => {
       if (!dragStart) return;
       const moved = Math.abs(dragStart.y - event.clientY) > 6;
       dragStart = null;
-      if (moved) jumpMinimapEntry(locateRailEntry(event), allEntries.length);
+      const entry = locateRailEntry(event);
+      if (moved && entry) {
+        jumpMinimapEntry(entry, S.minimap.allEntries.length, '', 'start', S.minimap.allEntries);
+      }
     });
     rail.addEventListener('pointercancel', () => { dragStart = null; });
     rail.addEventListener('keydown', event => {
-      const index = event.key === 'Home' ? 0 : event.key === 'End' ? sampled.length - 1
-        : event.key === 'ArrowDown' ? Math.min(sampled.length - 1,
-          entries.findIndex(item => item === S.minimap.active) + 1)
-        : event.key === 'ArrowUp' ? Math.max(0,
-          entries.findIndex(item => item === S.minimap.active) - 1) : -1;
-      if (index < 0) return;
+      const entries = S.minimap.entries;
+      const activeIndex = entries.findIndex(item => item === S.minimap.active);
+      const index = event.key === 'Home' ? 0 : event.key === 'End' ? entries.length - 1
+        : event.key === 'ArrowDown' ? Math.min(entries.length - 1, activeIndex + 1)
+        : event.key === 'ArrowUp' ? Math.max(0, activeIndex - 1) : -1;
+      if (index < 0 || !entries[index]) return;
       event.preventDefault();
-      jumpMinimapEntry(sampled[index], allEntries.length);
+      jumpMinimapEntry(entries[index], S.minimap.allEntries.length, '', 'start', S.minimap.allEntries);
     });
-    panel.append(rail, preview);
-    previous?.remove();
+
     const actions = dock.querySelector('[data-chatgpt-pro-tool-actions]');
     dock.insertBefore(panel, actions || null);
     window.ChatGPTProI18n?.watch(panel);
+    return panel;
+  }
+
+  function updateMinimapPanel(panel, sampled, total) {
+    const rail = panel.querySelector('.chatgpt-pro-minimap-rail');
+    const preview = panel.querySelector('.chatgpt-pro-minimap-preview');
+    const previousActiveIndex = S.minimap.active?.index ?? null;
+    const existingEntries = new Map(S.minimap.entries.map(entry => [entry.index, entry]));
+    const existingButtons = new Map(Array.from(rail.children).map(marker =>
+      [Number(marker.dataset.chatgptProMinimapIndex), marker]));
+    const nextEntries = [];
+    const retainedButtons = new Set();
+
+    for (let position = 0; position < sampled.length; position++) {
+      const item = sampled[position];
+      let marker = existingButtons.get(item.index);
+      let entry = existingEntries.get(item.index) || marker?.__chatgptProMinimapEntry || {};
+      if (!marker) {
+        marker = document.createElement('button');
+        marker.type = 'button';
+        marker.addEventListener('pointerenter', () => {
+          const current = marker.__chatgptProMinimapEntry;
+          if (current) {
+            const heading = preview.querySelector('.chatgpt-pro-minimap-preview-heading');
+            const text = preview.querySelector('.chatgpt-pro-minimap-preview-text');
+            const speaker = minimapSpeakerLabel(current.role);
+            heading.textContent = `${current.index + 1}/${S.minimap.allEntries.length} · ${speaker}`;
+            text.textContent = current.preview;
+            preview.dataset.chatgptProMinimapIndex = String(current.index);
+            const markerTop = marker.getBoundingClientRect().top - panel.getBoundingClientRect().top;
+            preview.style.top = `${Math.max(4, Math.min(panel.clientHeight - 155, markerTop - 28))}px`;
+            preview.hidden = false;
+          }
+        });
+        marker.addEventListener('focus', () => marker.dispatchEvent(new Event('pointerenter')));
+        marker.addEventListener('pointerleave', () => { preview.hidden = true; });
+        marker.addEventListener('blur', () => { preview.hidden = true; });
+        marker.addEventListener('click', () => {
+          const current = marker.__chatgptProMinimapEntry;
+          if (current) jumpMinimapEntry(current, S.minimap.allEntries.length, '', 'start', S.minimap.allEntries);
+        });
+      }
+
+      Object.assign(entry, item);
+      entry.button = marker;
+      marker.__chatgptProMinimapEntry = entry;
+      retainedButtons.add(marker);
+      nextEntries.push(entry);
+
+      const speaker = minimapSpeakerLabel(item.role);
+      const title = `${item.index + 1}/${total} · ${speaker}`;
+      const classes = ['chatgpt-pro-minimap-marker', `chatgpt-pro-minimap-${item.role || 'unknown'}`];
+      if (item.index === 0) classes.push('chatgpt-pro-minimap-first');
+      if (item.index === total - 1) classes.push('chatgpt-pro-minimap-last');
+      if (entry.index === previousActiveIndex) classes.push('chatgpt-pro-minimap-active');
+      const className = classes.join(' ');
+      if (marker.className !== className) marker.className = className;
+      if (marker.dataset.chatgptProMinimapIndex !== String(item.index)) {
+        marker.dataset.chatgptProMinimapIndex = String(item.index);
+      }
+      const messageId = item.startId || item.id || '';
+      if (messageId && marker.dataset.chatgptProMinimapMessageId !== messageId) {
+        marker.dataset.chatgptProMinimapMessageId = messageId;
+      } else if (!messageId && marker.dataset.chatgptProMinimapMessageId) {
+        delete marker.dataset.chatgptProMinimapMessageId;
+      }
+      if (marker.title !== title) marker.title = title;
+      if (marker.getAttribute('aria-label') !== title) marker.setAttribute('aria-label', title);
+      if (entry.index === previousActiveIndex) {
+        if (marker.getAttribute('aria-current') !== 'location') marker.setAttribute('aria-current', 'location');
+      } else if (marker.hasAttribute('aria-current')) marker.removeAttribute('aria-current');
+
+      const currentAtPosition = rail.children[position];
+      if (currentAtPosition !== marker) rail.insertBefore(marker, currentAtPosition || null);
+    }
+
+    for (const marker of Array.from(rail.children)) {
+      if (!retainedButtons.has(marker)) marker.remove();
+    }
+    const gridTemplateRows = `repeat(${sampled.length}, minmax(0, 1fr))`;
+    if (rail.style.gridTemplateRows !== gridTemplateRows) rail.style.gridTemplateRows = gridTemplateRows;
+    S.minimap.entries = nextEntries;
+    S.minimap.active = nextEntries.find(entry => entry.index === previousActiveIndex) || null;
+    if (!preview.hidden) {
+      const previewIndex = Number(preview.dataset.chatgptProMinimapIndex);
+      const previewEntry = nextEntries.find(entry => entry.index === previewIndex);
+      if (!previewEntry) preview.hidden = true;
+      else {
+        const heading = preview.querySelector('.chatgpt-pro-minimap-preview-heading');
+        const text = preview.querySelector('.chatgpt-pro-minimap-preview-text');
+        const speaker = minimapSpeakerLabel(previewEntry.role);
+        const nextHeading = `${previewEntry.index + 1}/${total} · ${speaker}`;
+        if (heading.textContent !== nextHeading) heading.textContent = nextHeading;
+        if (text.textContent !== previewEntry.preview) text.textContent = previewEntry.preview;
+      }
+    }
+  }
+
+  function expandMinimapDock(dock, panel) {
+    const wasHidden = dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden');
+    let transitionToken = S.minimap.transitionToken;
+    if (wasHidden) {
+      if (S.minimap.transitionTimer !== null) clearTimeout(S.minimap.transitionTimer);
+      S.minimap.transitionTimer = null;
+      transitionToken = ++S.minimap.transitionToken;
+      dock.classList.add('chatgpt-pro-dock-animating');
+      // Establish the compact height as the transition's starting point.
+      void dock.offsetHeight;
+    }
+    panel.classList.remove('chatgpt-pro-minimap-collapsing');
+    panel.removeAttribute('aria-hidden');
+    panel.inert = false;
+    if (wasHidden) panel.classList.add('chatgpt-pro-minimap-entering');
+    dock.classList.remove('chatgpt-pro-tool-dock-minimap-hidden');
+    if (wasHidden) {
+      placeCurrentChatExportButton();
+      requestAnimationFrame(() => {
+        if (panel.isConnected) panel.classList.remove('chatgpt-pro-minimap-entering');
+      });
+      S.minimap.transitionTimer = window.setTimeout(() => {
+        S.minimap.transitionTimer = null;
+        if (transitionToken === S.minimap.transitionToken) dock.classList.remove('chatgpt-pro-dock-animating');
+      }, 1050);
+    }
+  }
+
+  function syncConversationMinimap() {
+    const conversationId = currentConversationId();
+    const id = S.settings.enabled && S.settings.showMinimap ? conversationId : null;
+    let previous = document.querySelector('[data-chatgpt-pro-minimap]');
+    if (!conversationId) {
+      if (S.minimap.syncTimer !== null) clearTimeout(S.minimap.syncTimer);
+      S.minimap.syncTimer = null;
+      if (S.minimap.transitionTimer !== null) clearTimeout(S.minimap.transitionTimer);
+      S.minimap.transitionTimer = null;
+      S.minimap.transitionToken++;
+      previous?.remove();
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      dock?.classList.add('chatgpt-pro-tool-dock-minimap-hidden');
+      dock?.classList.remove('chatgpt-pro-dock-animating');
+      S.minimap.id = null;
+      S.minimap.signature = '';
+      S.minimap.entries = [];
+      S.minimap.allEntries = [];
+      S.minimap.active = null;
+      S.minimap.cachedId = null;
+      S.minimap.cachedAccountId = null;
+      S.minimap.cachedMessages = null;
+      S.minimap.dataSignature = '';
+      S.minimap.entriesDataSignature = '';
+      return;
+    }
+
+    const dock = ensureCurrentChatToolDock();
+    if (!id) {
+      collapseMinimapDock(dock, previous);
+      S.minimap.signature = '';
+      S.minimap.entries = [];
+      S.minimap.allEntries = [];
+      S.minimap.entriesDataSignature = '';
+      S.minimap.active = null;
+      return;
+    }
+
+    if (S.minimap.cachedId !== id || !S.minimap.cachedMessages) {
+      collapseMinimapDock(dock, previous);
+      checkMinimapCache(id).catch(error => log('Minimap cache lookup failed:', error.message));
+      return;
+    }
+
+    const data = S.minimap.cachedMessages;
+    const branch = minimapBranchMessages(data);
+    if (!branch) {
+      collapseMinimapDock(dock, previous);
+      if (Date.now() - S.minimap.lastCacheCheck >= 30000) {
+        S.minimap.lastCacheCheck = Date.now();
+        checkMinimapCache(id, { forceNetwork: true })
+          .catch(error => log('Minimap branch refresh failed:', error.message));
+      }
+      return;
+    }
+
+    const messages = window.ChatGPTDomAdapter.messageElements();
+    refreshMinimapForNewRenderedMessages(id, branch);
+    let allEntries;
+    if (S.minimap.id === id && S.minimap.entriesDataSignature === S.minimap.dataSignature
+        && S.minimap.allEntries.length) {
+      allEntries = S.minimap.allEntries;
+      updateMinimapEntryTargets(allEntries, messages);
+    } else {
+      allEntries = minimapMessages(data, messages);
+      S.minimap.entriesDataSignature = S.minimap.dataSignature;
+    }
+    S.minimap.allEntries = allEntries;
+    if (allEntries.length < 6) {
+      collapseMinimapDock(dock, previous);
+      S.minimap.id = id;
+      S.minimap.signature = '';
+      S.minimap.entries = [];
+      S.minimap.active = null;
+      return;
+    }
+
+    const panel = previous || createMinimapPanel(dock);
     S.minimap.id = id;
-    S.minimap.signature = signature;
-    S.minimap.entries = entries;
-    S.minimap.active = null;
-    S.minimap.layoutSlots = minimapSlotCount();
-    if (previous) updateMinimapDockLayout();
-    else placeCurrentChatExportButton();
-    updateMinimapActive();
+    const scroller = conversationScrollContainer();
+    const scrollTop = scroller === document.scrollingElement ? window.scrollY : (scroller?.scrollTop || 0);
+    const scrollerTop = scroller === document.scrollingElement ? 0 : (scroller?.getBoundingClientRect().top || 0);
+    for (const entry of allEntries) {
+      if (!entry.target?.isConnected) continue;
+      entry.scrollOffset = scrollTop + entry.target.getBoundingClientRect().top - scrollerTop;
+    }
+    updateMinimapSampling(true);
+    expandMinimapDock(dock, panel);
   }
 
   function makeBadge(text) {
@@ -1107,11 +1502,14 @@
 
   function setLauncherIcon(expanded) {
     if (!S.launcher) return;
+    const mode = expanded ? 'expanded' : 'collapsed';
+    if (S.launcher.dataset.chatgptProIconMode === mode) return;
     if (expanded) {
       S.launcher.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14"/></svg>';
     } else {
       S.launcher.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg>';
     }
+    S.launcher.dataset.chatgptProIconMode = mode;
   }
 
   function setupOutsideClose() {
@@ -1297,8 +1695,14 @@
     const { minLeft, maxLeft } = toolDockPositionBounds(dock);
     const x = Math.max(0, Math.min(1, Number(S.settings.toolDockPositionX ?? 1)));
     const left = Math.round(minLeft + (maxLeft - minLeft) * x);
-    dock.style.setProperty('left', `${left}px`, 'important');
-    dock.style.setProperty('right', 'auto', 'important');
+    setImportantStyle(dock, 'left', `${left}px`);
+    setImportantStyle(dock, 'right', 'auto');
+  }
+
+  function setImportantStyle(element, property, value) {
+    if (element.style.getPropertyValue(property) === value
+        && element.style.getPropertyPriority(property) === 'important') return;
+    element.style.setProperty(property, value, 'important');
   }
 
   function saveCurrentChatToolDockPosition(left, dock) {
@@ -1314,12 +1718,13 @@
     const alreadyAttached = S.launcher.parentElement === dock;
     if (!alreadyAttached) dock.insertBefore(S.launcher, dock.firstChild);
     S.launcher.classList.add('chatgpt-pro-dock-launcher');
-    S.launcher.style.removeProperty('left');
-    S.launcher.style.removeProperty('top');
-    S.launcher.title = launcherTitle(false);
+    if (S.launcher.style.getPropertyValue('left')) S.launcher.style.removeProperty('left');
+    if (S.launcher.style.getPropertyValue('top')) S.launcher.style.removeProperty('top');
+    const title = launcherTitle(false);
+    if (S.launcher.title !== title) S.launcher.title = title;
     setLauncherIcon(Boolean(S.timeline));
     if (!alreadyAttached) placeCurrentChatToolDock();
-    if (S.timeline) positionTimelinePanel();
+    if (!alreadyAttached && S.timeline) positionTimelinePanel();
   }
 
   function detachLauncherFromToolDock(dock) {
@@ -1337,6 +1742,15 @@
     const header = dock?.querySelector('[data-chatgpt-pro-launcher]');
     const actionHeight = actions.offsetHeight;
     const headerHeight = header?.offsetHeight || 38;
+    const panel = dock?.querySelector('[data-chatgpt-pro-minimap]');
+    const expanded = Boolean(panel && !dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden'));
+    if (!expanded) {
+      return {
+        minTop: headerHeight + VIEWPORT_MARGIN,
+        maxTop: Math.max(headerHeight + VIEWPORT_MARGIN,
+          window.innerHeight - actionHeight - VIEWPORT_MARGIN)
+      };
+    }
     const maxTop = Math.max(VIEWPORT_MARGIN,
       window.innerHeight - actionHeight - VIEWPORT_MARGIN);
     const availablePanelHeight = Math.max(0,
@@ -1355,14 +1769,20 @@
     const header = dock.querySelector('[data-chatgpt-pro-launcher]');
     const headerHeight = header?.offsetHeight || 0;
     const actionHeight = actions.offsetHeight;
-    actions.style.removeProperty('top');
-    panel?.style.removeProperty('height');
+    if (actions.style.getPropertyValue('top')) actions.style.removeProperty('top');
+    if (panel?.style.getPropertyValue('height')) panel.style.removeProperty('height');
 
     if (!panel || dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden')) {
+      const { minTop, maxTop } = toolActionPositionBounds(actions);
+      const defaultActionTop = (window.innerHeight - headerHeight - actionHeight) / 2 + headerHeight;
+      const currentTop = Number.isFinite(requestedActionTop)
+        ? requestedActionTop : actions.getBoundingClientRect().top;
+      const actionTop = Math.max(minTop, Math.min(maxTop,
+        Number.isFinite(currentTop) ? currentTop : defaultActionTop));
       const compactHeight = headerHeight + actionHeight;
-      dock.style.setProperty('top', `${Math.max(VIEWPORT_MARGIN,
-        Math.round((window.innerHeight - compactHeight) / 2))}px`, 'important');
-      dock.style.setProperty('height', `${compactHeight}px`, 'important');
+      setImportantStyle(dock, 'top', `${Math.max(VIEWPORT_MARGIN,
+        Math.round(actionTop - headerHeight))}px`);
+      setImportantStyle(dock, 'height', `${compactHeight}px`);
       return;
     }
 
@@ -1374,8 +1794,8 @@
     const dockBottom = actionTop + actionHeight;
     const dockTop = window.innerHeight - dockBottom;
     const dockHeight = dockBottom - dockTop;
-    dock.style.setProperty('top', `${dockTop}px`, 'important');
-    dock.style.setProperty('height', `${Math.max(headerHeight + actionHeight, dockHeight)}px`, 'important');
+    setImportantStyle(dock, 'top', `${dockTop}px`);
+    setImportantStyle(dock, 'height', `${Math.max(headerHeight + actionHeight, dockHeight)}px`);
     const downloadPopover = dock.querySelector('[data-chatgpt-pro-download-popover]');
     if (downloadPopover && !downloadPopover.hidden) positionDownloadPopover(downloadPopover);
   }
@@ -1387,9 +1807,14 @@
     const { minTop, maxTop } = toolActionPositionBounds(actions);
     const savedY = S.settings.currentExportPositionY;
     const hasSavedPosition = savedY != null && Number.isFinite(Number(savedY));
+    const panel = dock.querySelector('[data-chatgpt-pro-minimap]');
+    const expanded = Boolean(panel && !dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden'));
     const defaultDockHeight = Math.min(window.innerHeight * 0.5,
       window.innerHeight - VIEWPORT_MARGIN * 2);
-    const defaultActionTop = (window.innerHeight + defaultDockHeight) / 2 - actions.offsetHeight;
+    const headerHeight = dock.querySelector('[data-chatgpt-pro-launcher]')?.offsetHeight || 38;
+    const defaultActionTop = expanded
+      ? (window.innerHeight + defaultDockHeight) / 2 - actions.offsetHeight
+      : (window.innerHeight - headerHeight - actions.offsetHeight) / 2 + headerHeight;
     const top = hasSavedPosition
       ? Math.round(minTop + (maxTop - minTop) * Math.max(0, Math.min(1, Number(savedY))))
       : Math.max(minTop, Math.min(maxTop, defaultActionTop));
@@ -1417,6 +1842,7 @@
       S.currentExportMoved = false;
       startY = event.clientY;
       startTop = actions.getBoundingClientRect().top;
+      dock.classList.add('chatgpt-pro-dock-dragging');
       button.setPointerCapture(event.pointerId);
       button.classList.add('chatgpt-pro-dragging');
     });
@@ -1435,6 +1861,7 @@
     const finish = event => {
       if (!dragging) return;
       dragging = false;
+      dock.classList.remove('chatgpt-pro-dock-dragging');
       button.classList.remove('chatgpt-pro-dragging');
       try { button.releasePointerCapture(event.pointerId); } catch (_) {}
       saveCurrentChatExportPosition(actions.getBoundingClientRect().top, actions);
@@ -1446,8 +1873,8 @@
   function updateCurrentChatExportButtonLabel(button) {
     if (!button) return;
     const label = window.ChatGPTProI18n?.t('ui.openExportMenu') || '打开导出菜单';
-    button.title = label;
-    button.setAttribute('aria-label', label);
+    if (button.title !== label) button.title = label;
+    if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
   }
 
   function closeToolPopovers(except = null) {
@@ -1550,10 +1977,14 @@
     attachLauncherToToolDock(dock);
     if (existing) {
       updateCurrentChatExportButtonLabel(existing);
-      ensureCurrentChatToolActions().appendChild(existing);
+      const actions = ensureCurrentChatToolActions();
+      const previousHeight = actions.offsetHeight;
+      if (existing.parentElement !== actions) actions.appendChild(existing);
       ensureCurrentChatImageButton();
-      ensureAutoContinueButton();
-      placeCurrentChatExportButton();
+      const autoButton = ensureAutoContinueButton();
+      if (autoButton.parentElement !== actions) actions.appendChild(autoButton);
+      if (actions.lastElementChild !== existing) actions.appendChild(existing);
+      if (Math.abs(actions.offsetHeight - previousHeight) > 0.5) placeCurrentChatExportButton();
       return;
     }
 
@@ -1660,11 +2091,18 @@
     return i18n.t('ui.currentChatNotStarted');
   }
 
+  function autoContinueTooltipText() {
+    if (S.settings.autoContinueEnabled && S.autoContinue.mode === 'idle') {
+      return window.ChatGPTProI18n.t('ui.autoContinueTooltip');
+    }
+    return autoContinueStatusText();
+  }
+
   function renderAutoContinueUi() {
     const button = document.querySelector('[data-chatgpt-pro-auto-continue]');
     if (button) {
       button.dataset.mode = S.autoContinue.mode;
-      button.title = autoContinueStatusText();
+      button.title = autoContinueTooltipText();
       button.hidden = !S.settings.autoContinueEnabled;
       const badge = button.querySelector('.chatgpt-pro-auto-badge');
       if (badge) {
@@ -1911,7 +2349,9 @@
   function ensureAutoContinueButton() {
     const actions = ensureCurrentChatToolActions();
     let button = actions.querySelector('[data-chatgpt-pro-auto-continue]');
+    let created = false;
     if (!button) {
+      created = true;
       button = document.createElement('button');
       button.type = 'button';
       button.className = 'chatgpt-pro-current-export chatgpt-pro-auto-continue';
@@ -1926,7 +2366,7 @@
       });
       actions.appendChild(button);
     }
-    renderAutoContinueUi();
+    if (created) renderAutoContinueUi();
     return button;
   }
 
@@ -4514,7 +4954,6 @@
 
   function setupObserver() {
     S.observer?.disconnect();
-    let sidebarTimer = null;
     let messageTimer = null;
     S.observer = new MutationObserver(mutations => {
       refreshMessageTimestampsForView();
@@ -4523,13 +4962,7 @@
           node.nodeType === 1 && window.ChatGPTDomAdapter.containsSidebarConversationLink(node)
         )
       );
-      if (sidebarRelevant) {
-        clearTimeout(sidebarTimer);
-        sidebarTimer = setTimeout(() => {
-          stampAll();
-          ensureCurrentChatExportButton();
-        }, 300);
-      }
+      if (sidebarRelevant) stampAll();
 
       const messageRelevant = mutations.some(mutation =>
         (mutation.type === 'attributes' && [
@@ -4544,9 +4977,13 @@
             window.ChatGPTDomAdapter.containsMessageNode(node) ||
             window.ChatGPTDomAdapter.containsMessageDecorationTarget?.(node)
           )
+        ) ||
+        Array.from(mutation.removedNodes).some(node =>
+          node.nodeType === 1 && window.ChatGPTDomAdapter.containsMessageNode(node)
         )
       );
       if (messageRelevant) {
+        scheduleMinimapSync(180);
         clearTimeout(messageTimer);
         messageTimer = setTimeout(() => {
           if (S.settings.showMessageTimestamps) {
@@ -4574,7 +5011,7 @@
   async function loadSettings() {
     const values = await new Promise(resolve => {
       chrome.storage.local.get(
-        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'fontSize', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'toolDockPositionX', 'currentExportPositionY', 'panelSize', 'uiLanguage', 'autoContinueEnabled', 'autoContinueText', 'autoContinueDelaySeconds', 'autoContinueMaxCount'],
+        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'fontSize', 'toolDockOpacity', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'toolDockPositionX', 'currentExportPositionY', 'panelSize', 'uiLanguage', 'autoContinueEnabled', 'autoContinueText', 'autoContinueDelaySeconds', 'autoContinueMaxCount'],
         data => resolve(data || {})
       );
     });
@@ -4594,6 +5031,7 @@
     if (values.autoContinueDelaySeconds) S.settings.autoContinueDelaySeconds = Number(values.autoContinueDelaySeconds) || 120;
     if (values.autoContinueMaxCount) S.settings.autoContinueMaxCount = Number(values.autoContinueMaxCount) || 20;
     applyTimestampFontSize(values.fontSize);
+    applyToolDockOpacity(values.toolDockOpacity);
     if (values.openInBackground !== undefined) S.settings.openInBackground = values.openInBackground;
     if (values.closeOnOutsideClick !== undefined) S.settings.closeOnOutsideClick = values.closeOnOutsideClick;
     if (values.exportFilenameTemplate) S.settings.exportFilenameTemplate = values.exportFilenameTemplate;
@@ -4735,6 +5173,7 @@
         }
       }
       if (changes.fontSize) applyTimestampFontSize(changes.fontSize.newValue);
+      if (changes.toolDockOpacity) applyToolDockOpacity(changes.toolDockOpacity.newValue);
       if (changes.showSidebarTime) {
         S.settings.showSidebarTime = changes.showSidebarTime.newValue;
         if (S.settings.showSidebarTime) {
@@ -4799,6 +5238,7 @@
         window.ChatGPTProI18n?.apply(document.querySelector('[data-chatgpt-pro-current-images]'));
         window.ChatGPTProI18n?.apply(document.querySelector('[data-chatgpt-pro-minimap]'));
         renderAutoContinueUi();
+        refreshMinimapPanelLabels();
       }
       if (changes.panelSize?.newValue) S.settings.panelSize = changes.panelSize.newValue;
       if (restamp && S.settings.enabled) {
@@ -4867,6 +5307,21 @@
     // Never leave the old signed-in user's directory or timestamps visible.
     S.apiData.clear();
     S.apiLoaded = false;
+    S.minimap.cachedId = null;
+    S.minimap.cachedAccountId = null;
+    S.minimap.cachedMessages = null;
+    S.minimap.dataSignature = '';
+    S.minimap.entriesDataSignature = '';
+    S.minimap.lastCacheCheck = 0;
+    S.minimap.renderedRefreshSignature = '';
+    S.minimap.renderedRefreshAt = 0;
+    S.minimap.wasGenerating = false;
+    if (S.minimap.syncTimer !== null) clearTimeout(S.minimap.syncTimer);
+    S.minimap.syncTimer = null;
+    S.minimap.signature = '';
+    S.messageConversationRefreshId = null;
+    S.messageConversationRefreshPromise = null;
+    syncConversationMinimap();
     removeAllBadges();
     removeMessageTimestamps();
     closeTimeline();

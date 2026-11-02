@@ -27,6 +27,23 @@ const BODY = '<!doctype html><html><head><meta charset="utf-8"><title>S6 isolate
   `<div data-chatgpt-selection-message-id="fallback-assistant" data-message-author-role="assistant"><p>legacy assistant fixture</p></div>` +
   `<div class="turn-action-controls"><button type="button">Copy</button></div></div>` +
   `</main></body></html>`;
+function makeConversationFromMessages(entries, updateTime = 1770000000) {
+  const mapping = { root: { id: 'root', parent: null, children: [] } };
+  let parent = 'root';
+  entries.forEach((entry, index) => {
+    const id = entry.id;
+    mapping[parent].children.push(id);
+    mapping[id] = { id, parent, children: [], message: {
+      id, author: { role: entry.role },
+      content: { content_type: 'text', parts: [entry.text || id] },
+      create_time: updateTime + index,
+      ...(entry.channel ? { channel: entry.channel } : {})
+    } };
+    parent = id;
+  });
+  return { id: CHAT_ID, title: 'Offline acceptance test', update_time: updateTime,
+    current_node: parent, mapping };
+}
 const CHAT = { id: CHAT_ID, title: 'Offline acceptance test', update_time: 1770000000,
   current_node: 'answer', mapping: {
     root: { id: 'root', parent: null, children: ['question'], message: null },
@@ -39,6 +56,41 @@ const CHAT = { id: CHAT_ID, title: 'Offline acceptance test', update_time: 17700
         content: { content_type: 'text', parts: ['legacy assistant fixture'] }, create_time: 1770000002 } }
   }
 };
+const CHAT_FIVE = makeConversationFromMessages([
+  { id: 'question', role: 'user', text: 's6 acceptance unique phrase' },
+  { id: 'answer', role: 'assistant', text: 'hello from controlled fixture' },
+  { id: 'question-2', role: 'user', text: 'second user message' },
+  { id: 'answer-2', role: 'assistant', text: 'second assistant reply' },
+  { id: 'question-3', role: 'user', text: 'third user message' }
+], 1770000004);
+function makeSixMessageConversation(updateTime) {
+  const conversation = makeConversationFromMessages([
+    { id: 'question', role: 'user', text: 's6 acceptance unique phrase' },
+    { id: 'answer', role: 'assistant', text: 'hello from controlled fixture' },
+    { id: 'question-2', role: 'user', text: 'second user message' },
+    { id: 'answer-2', role: 'assistant', text: 'second assistant reply' },
+    { id: 'question-3', role: 'user', text: 'third user message' },
+    { id: 'answer-3', role: 'assistant', text: 'third assistant reply' }
+  ], updateTime);
+  conversation.mapping.answer.children.push('fallback-assistant');
+  conversation.mapping['fallback-assistant'] = {
+    id: 'fallback-assistant', parent: 'answer', children: [],
+    message: { id: 'fallback-assistant', author: { role: 'assistant' },
+      content: { content_type: 'text', parts: ['legacy assistant fixture'] }, create_time: updateTime + 1 }
+  };
+  return conversation;
+}
+const CHAT_SIX = makeSixMessageConversation(1770000005);
+const CHAT_FIVE_AFTER_EXPAND = makeConversationFromMessages([
+  { id: 'question', role: 'user', text: 's6 acceptance unique phrase' },
+  { id: 'answer', role: 'assistant', text: 'hello from controlled fixture' },
+  { id: 'question-2', role: 'user', text: 'second user message' },
+  { id: 'answer-2', role: 'assistant', text: 'second assistant reply' },
+  { id: 'question-3', role: 'user', text: 'third user message' }
+], 1770000006);
+const CHAT_SIX_AFTER_SHRINK = makeSixMessageConversation(1770000007);
+const CHAT_SIX_AFTER_LOGICAL = makeSixMessageConversation(1770000011);
+const CHAT_SIX_AFTER_LONG = makeSixMessageConversation(1770000123);
 let detailResponse = CHAT;
 const pad2 = value => String(value).padStart(2, '0');
 const fixtureDateTime = (() => {
@@ -118,9 +170,42 @@ async function main() {
     '--remote-debugging-pipe', 'about:blank'
   ], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
   const cdp = new PipeCDP(chrome);
-  const requests = { session: 0, directory: 0, projectList: 0, details: 0 };
+  const requests = { session: 0, directory: 0, projectList: 0, details: 0, detailLog: [] };
   let pageSession;
   let extensionId;
+  const armDockHeightTransition = () => cdp.eval(pageSession, `(() => {
+    const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+    window.__dockHeightSamples = [];
+    window.__dockHeightTransitionHandler = event => {
+      if (event.propertyName !== 'height' || window.__dockHeightSampling) return;
+      window.__dockHeightSampling = true;
+      window.__dockHeightTransitionDuration = getComputedStyle(dock).transitionDuration;
+      window.__dockHeightSamples.push(dock.getBoundingClientRect().height);
+      window.__dockHeightSampleTimer = setInterval(() =>
+        window.__dockHeightSamples.push(dock.getBoundingClientRect().height), 20);
+    };
+    window.__dockHeightTransitionEndHandler = event => {
+      if (event.propertyName !== 'height') return;
+      clearInterval(window.__dockHeightSampleTimer);
+      dock.removeEventListener('transitionrun', window.__dockHeightTransitionHandler);
+      dock.removeEventListener('transitionend', window.__dockHeightTransitionEndHandler);
+    };
+    dock.addEventListener('transitionrun', window.__dockHeightTransitionHandler);
+    dock.addEventListener('transitionend', window.__dockHeightTransitionEndHandler);
+  })()`);
+  const readDockHeightTransition = () => cdp.eval(pageSession, `(() => {
+    const samples = window.__dockHeightSamples || [];
+    const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+    const duration = window.__dockHeightTransitionDuration || getComputedStyle(dock).transitionDuration;
+    clearInterval(window.__dockHeightSampleTimer);
+    delete window.__dockHeightSamples;
+    delete window.__dockHeightTransitionDuration;
+    delete window.__dockHeightSampling;
+    delete window.__dockHeightSampleTimer;
+    delete window.__dockHeightTransitionHandler;
+    delete window.__dockHeightTransitionEndHandler;
+    return { samples, duration };
+  })()`);
   const browserErrors = [];
   cdp.listeners.add(message => {
     if (message.method === 'Runtime.exceptionThrown') {
@@ -142,6 +227,8 @@ async function main() {
       response = { items: [] };
     } else if (url.pathname === `/backend-api/conversation/${CHAT_ID}`) {
       requests.details++;
+      requests.detailLog.push({ at: Date.now(), initiator: message.params.initiator?.type,
+        frames: message.params.initiator?.stack?.callFrames?.slice(0, 3).map(frame => frame.functionName) });
       response = detailResponse;
     }
     const isJson = Boolean(response);
@@ -166,6 +253,9 @@ async function main() {
     pageSession = (await cdp.send('Target.attachToTarget', { targetId: fixtureTarget, flatten: true })).sessionId;
     await cdp.send('Runtime.enable', {}, pageSession);
     await cdp.send('Page.enable', {}, pageSession);
+    await cdp.send('Emulation.setEmulatedMedia', {
+      features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }]
+    }, pageSession);
     await cdp.send('Fetch.enable', { patterns: [
       { urlPattern: 'https://chatgpt.com/*', requestStage: 'Request' }
     ] }, pageSession);
@@ -190,16 +280,30 @@ async function main() {
       const manager = document.querySelector('#taskManager');
       return { advancedOpen: advanced.open, managerOpen: manager.open,
         exportVisible: document.querySelector('#filenamePreset').checkVisibility(),
+        opacityVisible: document.querySelector('#toolDockOpacity').checkVisibility(),
+        timestampSizeVisible: document.querySelector('#size').checkVisibility(),
         togglePresent: !!advanced.querySelector('#toggle'),
         taskPresent: !!manager.querySelector('#taskList') };
     })()`);
     assert.deepEqual(collapsedLayout, { advancedOpen: false, managerOpen: false,
-      exportVisible: false, togglePresent: true, taskPresent: true },
+      exportVisible: false, opacityVisible: false, timestampSizeVisible: false,
+      togglePresent: true, taskPresent: true },
     'compact Popup keeps advanced settings and tasks in separate collapsed sections');
     await cdp.eval(popupSession, `document.querySelector('#advancedSettings summary').click()`);
     assert.equal(await cdp.eval(popupSession,
       `document.querySelector('#advancedSettings').open && document.querySelector('#filenamePreset').getClientRects().length > 0`),
       true, 'advanced disclosure reveals export naming and behavior controls');
+    const advancedDisplayControls = await cdp.eval(popupSession, `(() => ({
+      opacityVisible: document.querySelector('#toolDockOpacity').checkVisibility(),
+      timestampSizeVisible: document.querySelector('#size').checkVisibility(),
+      opacityValue: document.querySelector('#toolDockOpacityValue').textContent,
+      opacityMin: document.querySelector('#toolDockOpacity').min,
+      opacityMax: document.querySelector('#toolDockOpacity').max,
+      opacityStep: document.querySelector('#toolDockOpacity').step
+    }))()`);
+    assert.deepEqual(advancedDisplayControls, { opacityVisible: true, timestampSizeVisible: true,
+      opacityValue: '50%', opacityMin: '1', opacityMax: '100', opacityStep: '1' },
+    'advanced settings contain the default 50% toolbar opacity slider with 1% minimum precision and timestamp font size');
     await cdp.eval(popupSession, `document.querySelector('#advancedSettings summary').click()`);
     await cdp.eval(popupSession, `document.querySelector('#taskManager summary').click()`);
     const indexControls = await cdp.eval(popupSession, `(() => ({
@@ -224,7 +328,31 @@ async function main() {
         `document.querySelector('.section .label').textContent`), 'Local data');
       assert.equal(await cdp.eval(popupSession,
         `document.querySelector('#advancedSettings .summary-hint').textContent`),
-        'Background tabs, panel behavior, export filenames');
+        'Display, background tabs, panel behavior, export filenames');
+      assert.equal(await cdp.eval(popupSession,
+        `document.querySelector('#languageSelect option[value="auto"]').textContent`),
+        'Follow browser');
+      assert.equal(await cdp.eval(popupSession,
+        `Math.round(document.querySelector('#languageSelect').getBoundingClientRect().width)`), 142,
+      'language selector uses a compact fixed width');
+      await cdp.eval(popupSession, `(() => {
+        const slider = document.querySelector('#toolDockOpacity');
+        slider.value = '75'; slider.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+      await eventually(async () => cdp.eval(popupSession, `new Promise(resolve =>
+        chrome.storage.local.get('toolDockOpacity', values => resolve(values.toolDockOpacity === 75)))`),
+      'toolbar opacity is persisted immediately when its slider moves');
+      assert.equal(await cdp.eval(popupSession,
+        `document.querySelector('#toolDockOpacityValue').textContent`), '75%');
+      await cdp.eval(popupSession, `(() => {
+        const slider = document.querySelector('#toolDockOpacity');
+        slider.value = '1'; slider.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+      await eventually(async () => cdp.eval(popupSession, `new Promise(resolve =>
+        chrome.storage.local.get('toolDockOpacity', values => resolve(values.toolDockOpacity === 1)))`),
+      'toolbar opacity supports and persists the new 1% minimum');
+      assert.equal(await cdp.eval(popupSession,
+        `document.querySelector('#toolDockOpacityValue').textContent`), '1%');
       assert.equal(await cdp.eval(popupSession, `document.querySelector('#size').disabled`), false,
         'timestamp size remains editable independently of timestamp toggles');
       await cdp.eval(popupSession, `(() => {
@@ -236,6 +364,8 @@ async function main() {
       'Japanese Popup renders model-reviewed advanced settings text');
       assert.equal(await cdp.eval(popupSession,
         `document.querySelector('.section .label').textContent`), 'ローカルデータ');
+      assert.equal(await cdp.eval(popupSession,
+        `document.querySelector('#toolDockOpacity').getAttribute('aria-label')`), 'ツールバーの不透明度');
       await cdp.eval(popupSession, `(() => {
         const select = document.querySelector('#languageSelect');
         select.value = 'ar'; select.dispatchEvent(new Event('change', { bubbles: true }));
@@ -245,7 +375,7 @@ async function main() {
       'Arabic Popup renders model-reviewed advanced settings text');
       assert.equal(await cdp.eval(popupSession, `document.documentElement.dir`), 'rtl',
         'Arabic uses RTL layout after language switch');
-      console.log('POPUP_LAYOUT_PASS: compact defaults, collapsible advanced/index sections, English/Japanese/Arabic labels, numeric timestamp control');
+      console.log('POPUP_LAYOUT_PASS: compact defaults, advanced display controls, live opacity persistence, compact language selector, English/Japanese/Arabic labels');
       return;
     }
     // Keep the real ChatGPT fixture as the active tab while inspecting the
@@ -255,10 +385,153 @@ async function main() {
     await eventually(async () => cdp.eval(popupSession,
       `document.querySelector('#indexStartArea').hidden === false`),
     'popup received real content-script task dashboard');
-    // Even a short chat with two rendered messages has a minimap when enabled.
+    // The first full JSON fetch is automatic and is persisted before Minimap
+    // state is decided. Two messages must keep the compact three-action dock.
+    await eventually(async () => requests.details === 1 && cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      const header = dock?.querySelector('[data-chatgpt-pro-launcher]');
+      const actions = dock?.querySelector('[data-chatgpt-pro-tool-actions]');
+      return dock?.classList.contains('chatgpt-pro-tool-dock-minimap-hidden') &&
+        !dock.querySelector('[data-chatgpt-pro-minimap]') &&
+        Math.abs(dock.getBoundingClientRect().height - header.getBoundingClientRect().height -
+          actions.getBoundingClientRect().height) <= 2;
+    })()`), 'two-message conversation uses the compact dock after full JSON is cached');
+    const compactDockSize = await cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      const header = dock.querySelector('[data-chatgpt-pro-launcher]').getBoundingClientRect();
+      const actions = dock.querySelector('[data-chatgpt-pro-tool-actions]').getBoundingClientRect();
+      return { height: dock.getBoundingClientRect().height,
+        expected: header.height + actions.height,
+        hasLauncher: Boolean(dock.querySelector('[data-chatgpt-pro-launcher]')),
+        hasAuto: Boolean(dock.querySelector('[data-chatgpt-pro-auto-continue]')),
+        hasExport: Boolean(dock.querySelector('[data-chatgpt-pro-current-export]')) };
+    })()`);
+    assert(compactDockSize.hasLauncher && compactDockSize.hasAuto && compactDockSize.hasExport &&
+      Math.abs(compactDockSize.height - compactDockSize.expected) <= 2,
+    `short conversations retain the three controls in a compact unified dock: ${JSON.stringify(compactDockSize)}`);
+    assert.equal(await cdp.eval(pageSession,
+      `getComputedStyle(document.querySelector('[data-chatgpt-pro-tool-dock]')).opacity`), '0.5',
+    'new tool dock uses the default 50% opacity');
+    await cdp.eval(popupSession, `(() => {
+      const slider = document.querySelector('#toolDockOpacity');
+      slider.value = '75'; slider.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
     await eventually(async () => cdp.eval(pageSession,
-      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
-    'minimap visible without requiring eight messages');
+      `getComputedStyle(document.querySelector('[data-chatgpt-pro-tool-dock]')).opacity === '0.75'`),
+    'changing the popup opacity slider updates the live tool dock');
+    const toolbarHoverPoint = await cdp.eval(pageSession, `(() => {
+      const rect = document.querySelector('[data-chatgpt-pro-launcher]').getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    })()`);
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved', x: toolbarHoverPoint.x, y: toolbarHoverPoint.y
+    }, pageSession);
+    await eventually(async () => cdp.eval(pageSession,
+      `getComputedStyle(document.querySelector('[data-chatgpt-pro-tool-dock]')).opacity === '1'`),
+    'hovering the toolbar restores full opacity');
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 }, pageSession);
+    await eventually(async () => cdp.eval(pageSession,
+      `getComputedStyle(document.querySelector('[data-chatgpt-pro-tool-dock]')).opacity === '0.75'`),
+    'moving away restores the configured toolbar opacity');
+    await cdp.eval(popupSession, `(() => {
+      const slider = document.querySelector('#toolDockOpacity');
+      slider.value = '50'; slider.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `getComputedStyle(document.querySelector('[data-chatgpt-pro-tool-dock]')).opacity === '0.5'`),
+    'toolbar opacity can be restored to its default value');
+    await cdp.eval(popupSession, `(() => {
+      const slider = document.querySelector('#toolDockOpacity');
+      slider.value = '1'; slider.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `getComputedStyle(document.querySelector('[data-chatgpt-pro-tool-dock]')).opacity === '0.01'`),
+    'toolbar opacity applies the 1% minimum to the live dock');
+    await cdp.eval(popupSession, `(() => {
+      const slider = document.querySelector('#toolDockOpacity');
+      slider.value = '50'; slider.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `getComputedStyle(document.querySelector('[data-chatgpt-pro-tool-dock]')).opacity === '0.5'`),
+    'toolbar opacity returns to its default after minimum-value verification');
+    const firstMinimapCache = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
+      action: 'localDataGetConversation', accountId: 's6-isolated-account', id: '${CHAT_ID}'
+    })`);
+    assert(firstMinimapCache?.success && firstMinimapCache.hit &&
+      firstMinimapCache.raw?.current_node === CHAT.current_node &&
+      Object.keys(firstMinimapCache.raw?.mapping || {}).length === Object.keys(CHAT.mapping).length,
+    'Minimap initial fetch is persisted as complete raw conversation JSON in IndexedDB before display decisions');
+
+    // Five logical messages remain compact. The sixth must expand the same
+    // dock smoothly, with the panel generated from the persisted full JSON.
+    detailResponse = CHAT_FIVE;
+    await cdp.eval(pageSession, `(() => {
+      const main = document.querySelector('main');
+      for (const [id, role, text] of [
+        ['question-2', 'user', 'second user message'],
+        ['answer-2', 'assistant', 'second assistant reply'],
+        ['question-3', 'user', 'third user message']
+      ]) {
+        const section = document.createElement('section');
+        section.setAttribute('data-message-id', id);
+        section.setAttribute('data-message-author-role', role);
+        section.textContent = text;
+        main.append(section);
+      }
+    })()`);
+    await eventually(async () => cdp.eval(pageSession, `
+      !document.querySelector('[data-chatgpt-pro-minimap]') &&
+      document.querySelector('[data-chatgpt-pro-tool-dock]')
+        .classList.contains('chatgpt-pro-tool-dock-minimap-hidden')`),
+    'five logical messages stay in compact mode');
+    await eventually(async () => cdp.eval(pageSession,
+      `!document.querySelector('[data-chatgpt-pro-tool-dock]').classList.contains('chatgpt-pro-dock-animating')`),
+    'initial compact-mode transition finishes before the expansion test');
+    const fiveMessageDockHeight = await cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-tool-dock]').getBoundingClientRect().height`);
+    detailResponse = CHAT_SIX;
+    await armDockHeightTransition();
+    await cdp.eval(pageSession, `(() => {
+      const section = document.createElement('section');
+      section.setAttribute('data-message-id', 'answer-3');
+      section.setAttribute('data-message-author-role', 'assistant');
+      section.textContent = 'third assistant reply';
+      document.querySelector('main').append(section);
+    })()`);
+    try {
+      await eventually(async () => requests.details === 2 && cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      return document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6 &&
+        !dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden') &&
+        Math.abs(dock.getBoundingClientRect().height - innerHeight * 0.5) <= 2;
+      })()`), 'sixth logical message expands the dock and reveals the Minimap');
+    } catch (error) {
+      const state = await cdp.eval(pageSession, `(() => {
+        const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+        return { markers: document.querySelectorAll('.chatgpt-pro-minimap-marker').length,
+          hidden: dock?.classList.contains('chatgpt-pro-tool-dock-minimap-hidden'),
+          dockHeight: dock?.getBoundingClientRect().height,
+          panel: Boolean(dock?.querySelector('[data-chatgpt-pro-minimap]')),
+        rendered: [...document.querySelectorAll('main [data-message-id]')].map(element =>
+            [element.getAttribute('data-message-author-role'), element.getAttribute('data-message-id')]) };
+      })()`);
+      const cached = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
+        action: 'localDataGetConversation', accountId: 's6-isolated-account', id: '${CHAT_ID}'
+      })`);
+      throw Error(`${error.message}; details=${requests.details}; state=${JSON.stringify(state)}; ` +
+        `cache=${JSON.stringify({ hit: cached?.hit, current_node: cached?.raw?.current_node,
+          mappingCount: Object.keys(cached?.raw?.mapping || {}).length,
+          update_time: cached?.raw?.update_time })}; logs=${JSON.stringify(browserErrors)}`);
+    }
+    await sleep(350);
+    const expandTransition = await readDockHeightTransition();
+    const expandedDockHeight = await cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-tool-dock]').getBoundingClientRect().height`);
+    assert(expandTransition.duration.includes('1s') &&
+      expandTransition.samples.some(height => height > fiveMessageDockHeight + 5 && height < expandedDockHeight - 5),
+    `sixth message expands the toolbar through an intermediate height instead of an abrupt jump: ${JSON.stringify({
+      fiveMessageDockHeight, expandedDockHeight, transition: expandTransition
+    })}`);
     const minimapSize = await cdp.eval(pageSession, `(() => {
       const el = document.querySelector('.chatgpt-pro-minimap');
       const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
@@ -275,6 +548,40 @@ async function main() {
       `minimap fills the flexible middle section between the dock header and action footer: ${JSON.stringify(minimapSize)}`);
     assert(minimapSize.dockWidth === 38 && minimapSize.rail > minimapSize.height * 0.85,
       'desktop dock restores the original 38px width with a full-height navigation rail');
+    await eventually(async () => cdp.eval(pageSession, `!document.querySelector('[data-chatgpt-pro-tool-dock]')
+      .classList.contains('chatgpt-pro-dock-animating')`), 'initial Minimap expansion animation finishes');
+    await cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      window.__s6StablePanel = dock.querySelector('[data-chatgpt-pro-minimap]');
+      window.__s6StableDockRect = dock.getBoundingClientRect().toJSON();
+      window.__s6DockTransitionRuns = 0;
+      window.__s6DockTransitionListener = () => { window.__s6DockTransitionRuns++; };
+      dock.addEventListener('transitionrun', window.__s6DockTransitionListener);
+      const sidebar = document.createElement('nav');
+      sidebar.id = 's6-sidebar-fixture';
+      const existing = document.createElement('a');
+      existing.href = ${JSON.stringify(CHAT_URL)};
+      existing.textContent = 'Current conversation';
+      sidebar.append(existing);
+      document.body.append(sidebar);
+      const added = document.createElement('a');
+      added.href = '/c/s6-new-sidebar-conversation';
+      added.textContent = 'New conversation';
+      sidebar.append(added);
+    })()`);
+    await sleep(500);
+    const sidebarStability = await cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      const before = window.__s6StableDockRect;
+      const after = dock.getBoundingClientRect().toJSON();
+      const stable = window.__s6StablePanel === dock.querySelector('[data-chatgpt-pro-minimap]');
+      dock.removeEventListener('transitionrun', window.__s6DockTransitionListener);
+      return { stablePanel: stable, transitionRuns: window.__s6DockTransitionRuns,
+        delta: Object.fromEntries(['top', 'left', 'width', 'height'].map(key => [key, after[key] - before[key]])) };
+    })()`);
+    assert(sidebarStability.stablePanel && sidebarStability.transitionRuns === 0 &&
+      Object.values(sidebarStability.delta).every(value => Math.abs(value) < 0.5),
+    `adding a sidebar conversation does not move or rebuild the toolbar: ${JSON.stringify(sidebarStability)}`);
     assert.equal(await cdp.eval(popupSession,
       `document.querySelector('#minimapToggle').getAttribute('aria-checked')`), 'true');
     await cdp.eval(popupSession, `document.querySelector('#minimapToggle').click()`);
@@ -282,11 +589,69 @@ async function main() {
       `!document.querySelector('[data-chatgpt-pro-minimap]')`), 'minimap switch hides navigation');
     await cdp.eval(popupSession, `document.querySelector('#minimapToggle').click()`);
     await eventually(async () => cdp.eval(pageSession,
-      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6`),
     'minimap switch immediately restores navigation');
+    await eventually(async () => cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      return Math.abs(dock.getBoundingClientRect().height - innerHeight * 0.5) <= 2;
+    })()`), 'restored Minimap dock finishes its expansion before the shrink test');
+    detailResponse = CHAT_FIVE_AFTER_EXPAND;
+    await armDockHeightTransition();
+    await cdp.eval(pageSession, `(() => {
+      const trigger = document.createElement('section');
+      trigger.setAttribute('data-message-id', 'refresh-trigger');
+      trigger.setAttribute('data-message-author-role', 'user');
+      trigger.textContent = 'temporary branch refresh trigger';
+      document.querySelector('main').append(trigger);
+    })()`);
+    await eventually(async () => requests.details === 3 && cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      return !document.querySelector('[data-chatgpt-pro-minimap]') &&
+        dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden') &&
+        Math.abs(dock.getBoundingClientRect().height - ${compactDockSize.height}) <= 2;
+    })()`), 'when the current branch falls below six messages, the dock collapses to compact mode');
+    await sleep(350);
+    const collapseTransition = await readDockHeightTransition();
+    const collapsedAfterSix = await cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-tool-dock]').getBoundingClientRect().height`);
+    assert(collapseTransition.duration.includes('1s') &&
+      collapseTransition.samples.some(height => height < expandedDockHeight - 5 && height > collapsedAfterSix + 5),
+    `dropping below six messages collapses the dock through intermediate heights: ${JSON.stringify({
+      expandedDockHeight, collapsedAfterSix, transition: collapseTransition
+    })}`);
+    await eventually(async () => cdp.eval(pageSession,
+      `!document.querySelector('[data-chatgpt-pro-tool-dock]').classList.contains('chatgpt-pro-dock-animating')`),
+    'collapse transition finishes before the re-expansion test');
+    detailResponse = CHAT_SIX_AFTER_SHRINK;
+    await armDockHeightTransition();
+    await cdp.eval(pageSession, `document.querySelector('[data-message-id="refresh-trigger"]').remove()`);
+    try {
+      await eventually(async () => requests.details === 4 && cdp.eval(pageSession, `(() => {
+        const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+        return document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6 &&
+          !dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden') &&
+          Math.abs(dock.getBoundingClientRect().height - innerHeight * 0.5) <= 2;
+      })()`), 'returning to six messages expands the dock again');
+    } catch (error) {
+      const cache = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
+        action: 'localDataGetConversation', accountId: 's6-isolated-account', id: '${CHAT_ID}' })`);
+      const state = await cdp.eval(pageSession, `(() => ({
+        rendered: [...document.querySelectorAll('main [data-message-id]')].map(node => node.dataset.messageId),
+        markers: [...document.querySelectorAll('.chatgpt-pro-minimap-marker')].map(node => node.title),
+        hidden: document.querySelector('[data-chatgpt-pro-tool-dock]')?.classList.contains('chatgpt-pro-tool-dock-minimap-hidden')
+      }))()`);
+      throw Error(`${error.message}; details=${requests.details}; state=${JSON.stringify(state)}; ` +
+        `cache=${JSON.stringify({ hit: cache?.hit, current_node: cache?.raw?.current_node,
+          mappingCount: Object.keys(cache?.raw?.mapping || {}).length })}`);
+    }
+    await sleep(350);
+    const reexpandTransition = await readDockHeightTransition();
+    assert(reexpandTransition.duration.includes('1s') &&
+      reexpandTransition.samples.some(height => height > collapsedAfterSix + 5 && height < expandedDockHeight - 5),
+    `returning to six messages animates the Minimap back into view: ${JSON.stringify(reexpandTransition)}`);
     await cdp.eval(pageSession, `(() => {
       const main = document.querySelector('main');
-      const answer = document.querySelector('[data-message-id="answer"]');
+      const answer = document.querySelector('[data-message-id="answer-3"]');
       const lastMarker = document.querySelector('.chatgpt-pro-minimap-last');
       answer.style.minHeight = '1500px';
       window.__manualScrollTargetCalls = 0;
@@ -309,11 +674,11 @@ async function main() {
     await cdp.eval(pageSession, `(() => {
       delete window.__manualScrollPosition;
       delete window.__manualScrollTargetCalls;
-      document.querySelector('[data-message-id="answer"]').style.minHeight = '';
+      document.querySelector('[data-message-id="answer-3"]').style.minHeight = '';
       window.scrollTo({ top: 0, behavior: 'auto' });
     })()`);
     await eventually(async () => cdp.eval(pageSession,
-      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6`),
     'minimap restored after manual-scroll cancellation test');
     await cdp.eval(pageSession, `(() => {
       const answer = document.querySelector('[data-message-id="answer"]');
@@ -330,12 +695,12 @@ async function main() {
       window.scrollTo({ top: 0, behavior: 'auto' });
     })()`);
     await eventually(async () => cdp.eval(pageSession,
-      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6`),
     'minimap ready for delayed last-message test');
     await cdp.eval(pageSession, `(() => {
       const main = document.querySelector('main');
       const question = document.querySelector('[data-message-id="question"]');
-      const answer = document.querySelector('[data-message-id="answer"]');
+      const answer = document.querySelector('[data-message-id="answer-3"]');
       const lastMarker = [...document.querySelectorAll('.chatgpt-pro-minimap-marker')].at(-1);
       question.style.minHeight = '1500px';
       answer.style.minHeight = '1500px';
@@ -345,18 +710,18 @@ async function main() {
       window.setTimeout(() => main.append(answer), 5000);
     })()`);
     await eventually(async () => cdp.eval(pageSession,
-      `(() => { const target = document.querySelector('[data-message-id="answer"]');
+      `(() => { const target = document.querySelector('[data-message-id="answer-3"]');
         const anchor = target?.closest('[data-chatgpt-search-unit-key], [data-content-search-unit-key], [data-turn-key], section[data-turn-id]') || target;
         const preferred = Math.max(64, Math.min(150, innerHeight * 0.22));
         return Boolean(anchor && Math.abs(anchor.getBoundingClientRect().top - preferred) <= 12); })()`),
     'clicking an unloaded last message keeps retrying through a 5-second delay and aligns it automatically', 15000);
     await cdp.eval(pageSession, `(() => {
       document.querySelector('[data-message-id="question"]').style.minHeight = '';
-      document.querySelector('[data-message-id="answer"]').style.minHeight = '';
+      document.querySelector('[data-message-id="answer-3"]').style.minHeight = '';
       window.scrollTo({ top: 0, behavior: 'auto' });
     })()`);
     await eventually(async () => cdp.eval(pageSession,
-      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6`),
     'minimap restored after delayed last-message load');
     await cdp.eval(pageSession, `(() => {
       const main = document.querySelector('main');
@@ -402,6 +767,15 @@ async function main() {
       document.querySelector('[data-message-id="answer"]').style.minHeight = '';
       window.scrollTo({ top: 0, behavior: 'auto' });
     })()`);
+    const logicalMessages = [];
+    for (let turn = 1; turn <= 6; turn++) {
+      logicalMessages.push({ id: 'logical-user-' + turn, role: 'user', text: 'User message ' + turn });
+      for (let part = 1; part <= 3; part++) {
+        logicalMessages.push({ id: 'logical-assistant-' + turn + '-' + part, role: 'assistant',
+          text: part === 3 ? 'Final assistant reply ' + turn : 'Intermediate assistant part ' + turn + '-' + part });
+      }
+    }
+    detailResponse = makeConversationFromMessages(logicalMessages, 1770000010);
     await cdp.eval(pageSession, `(() => {
       const main = document.querySelector('main');
       main.querySelectorAll('[data-message-id]').forEach(node => node.remove());
@@ -457,27 +831,39 @@ async function main() {
     assert.equal(await cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-minimap-preview-text').textContent`),
     'Final assistant reply 1', 'grouped assistant preview uses the final reply, not an intermediate chunk');
+    detailResponse = CHAT_SIX_AFTER_LOGICAL;
     await cdp.eval(pageSession, `document.querySelectorAll('[data-minimap-logical-test]').forEach(node => node.remove());
       const main = document.querySelector('main');
-      const question = document.createElement('section');
-      question.setAttribute('data-message-id', 'question');
-      question.setAttribute('data-message-author-role', 'user');
-      question.textContent = 's6 acceptance unique phrase';
-      const answer = document.createElement('section');
-      answer.setAttribute('data-message-id', 'answer');
-      answer.setAttribute('data-message-author-role', 'assistant');
-      answer.textContent = 'hello from controlled fixture';
-      main.append(question, answer);`);
-    await eventually(async () => cdp.eval(pageSession,
-      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
-    'short fixture restored after logical-turn grouping test');
+      for (const [id, role, text] of [
+        ['question', 'user', 's6 acceptance unique phrase'],
+        ['answer', 'assistant', 'hello from controlled fixture'],
+        ['question-2', 'user', 'second user message'],
+        ['answer-2', 'assistant', 'second assistant reply'],
+        ['question-3', 'user', 'third user message'],
+        ['answer-3', 'assistant', 'third assistant reply']
+      ]) {
+        const section = document.createElement('section');
+        section.setAttribute('data-message-id', id);
+        section.setAttribute('data-message-author-role', role);
+        section.textContent = text;
+        main.append(section);
+      }`);
+    await eventually(async () => requests.details === 6 && cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6`),
+    'six-message fixture restored after logical-turn grouping test');
+    const longMessages = Array.from({ length: 122 }, (_, index) => ({
+      id: 'minimap-test-' + index, role: index % 2 ? 'assistant' : 'user',
+      text: 'Message number ' + index
+    }));
+    detailResponse = makeConversationFromMessages(longMessages, 1770000122);
     await cdp.eval(pageSession, `(() => {
       const main = document.querySelector('main');
+      main.querySelectorAll('[data-message-id]').forEach(node => node.remove());
       const topSpacer = document.createElement('div');
       topSpacer.dataset.lazyWindowSpacer = 'top';
       topSpacer.style.height = '1400px';
       main.insertBefore(topSpacer, main.firstChild);
-      for (let index = 0; index < 120; index++) {
+      for (let index = 0; index < 122; index++) {
         const section = document.createElement('section');
         section.setAttribute('data-message-id', 'minimap-test-' + index);
         section.setAttribute('data-message-author-role', index % 2 ? 'assistant' : 'user');
@@ -500,8 +886,47 @@ async function main() {
     })()`);
     assert(minimapAnchors.count <= 49 && minimapAnchors.first.startsWith('1/122') &&
       minimapAnchors.last.startsWith('122/122'), 'first and last chat messages remain pinned on a long rail');
-    assert.equal(requests.details, 0,
-      'lazy-window edge regression runs without a full conversation JSON cache');
+    assert.equal(requests.details, 7,
+      'long Minimap navigation is built from a complete conversation JSON persisted in IndexedDB');
+    await cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      window.__s6LazyPanel = dock.querySelector('[data-chatgpt-pro-minimap]');
+      window.__s6LazyDockRect = dock.getBoundingClientRect().toJSON();
+      const main = document.querySelector('main');
+      const nodes = [...main.querySelectorAll('[data-minimap-test]')];
+      window.__s6LazyNodes = nodes;
+      nodes.forEach(node => node.remove());
+      const first = nodes[0];
+      const bottomSpacer = main.querySelector('[data-lazy-window-spacer="bottom"]');
+      main.insertBefore(first, bottomSpacer);
+    })()`);
+    await sleep(400);
+    await eventually(async () => cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      return window.__s6LazyPanel === dock.querySelector('[data-chatgpt-pro-minimap]') &&
+        document.querySelector('[data-message-id="minimap-test-0"]') &&
+        document.querySelectorAll('.chatgpt-pro-minimap-marker').length >= 10;
+    })()`), 'a newly mounted lazy-loaded message updates Minimap targets without rebuilding its panel');
+    const lazyLoadStability = await cdp.eval(pageSession, `(() => {
+      const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+      const before = window.__s6LazyDockRect;
+      const after = dock.getBoundingClientRect().toJSON();
+      return { stablePanel: window.__s6LazyPanel === dock.querySelector('[data-chatgpt-pro-minimap]'),
+        delta: Object.fromEntries(['top', 'left', 'width', 'height'].map(key => [key, after[key] - before[key]])) };
+    })()`);
+    assert(lazyLoadStability.stablePanel &&
+      Object.values(lazyLoadStability.delta).every(value => Math.abs(value) < 0.5),
+    `lazy-loading a message updates navigation targets without moving the toolbar: ${JSON.stringify(lazyLoadStability)}`);
+    await cdp.eval(pageSession, `(() => {
+      const main = document.querySelector('main');
+      const fragment = document.createDocumentFragment();
+      window.__s6LazyNodes.slice(1).forEach(node => fragment.append(node));
+      main.insertBefore(fragment, main.querySelector('[data-lazy-window-spacer="bottom"]'));
+      delete window.__s6LazyNodes;
+    })()`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelectorAll('[data-minimap-test]').length === 122`),
+    'full lazy-load fixture is restored after the incremental Minimap update');
     for (const edge of ['first', 'last']) {
       const delayedWindowEdge = await cdp.eval(pageSession, `(() => {
         const marker = document.querySelector('.chatgpt-pro-minimap-${edge}');
@@ -515,16 +940,6 @@ async function main() {
         const anchor = '${edge}' === 'first'
           ? document.querySelector('[data-lazy-window-spacer="bottom"]')
           : target.nextSibling;
-        const scroller = document.scrollingElement;
-        const nativeScrollTo = scroller.scrollTo.bind(scroller);
-        window.__restoreLazyWindowScrollTo = nativeScrollTo;
-        window.__lazyWindowBoundaryScrolls = [];
-        scroller.scrollTo = options => {
-          const top = typeof options === 'number' ? options : options?.top;
-          window.__lazyWindowBoundaryScrolls.push({ top,
-            max: Math.max(0, scroller.scrollHeight - scroller.clientHeight) });
-          return nativeScrollTo(options);
-        };
         removed.forEach(node => node.remove());
         marker.click();
         window.setTimeout(() => {
@@ -539,17 +954,6 @@ async function main() {
         const preferred = Math.max(64, Math.min(150, innerHeight * 0.22));
         return Boolean(target && Math.abs(target.getBoundingClientRect().top - preferred) <= 12);
       })()`), `${edge} marker in a partial DOM window waits for its exact lazy-loaded target`, 15000);
-      const boundaryScrolls = await cdp.eval(pageSession, `(() => {
-        const calls = window.__lazyWindowBoundaryScrolls || [];
-        document.scrollingElement.scrollTo = window.__restoreLazyWindowScrollTo;
-        delete window.__lazyWindowBoundaryScrolls;
-        delete window.__restoreLazyWindowScrollTo;
-        return calls;
-      })()`);
-      const hitGlobalBoundary = boundaryScrolls.some(call => edge === 'first'
-        ? call.top <= 1 : call.top >= call.max - 1);
-      assert(!hitGlobalBoundary,
-        `${edge} marker from a partial DOM window must not jump to the global document boundary: ${JSON.stringify(boundaryScrolls)}`);
       await eventually(async () => cdp.eval(pageSession,
         `document.querySelectorAll('.chatgpt-pro-minimap-marker').length >= 10`),
       `${edge} lazy-load fixture restored before the next navigation case`, 6000);
@@ -699,11 +1103,13 @@ async function main() {
       const exportButton = actionsElement.querySelector('[data-chatgpt-pro-current-export]').getBoundingClientRect();
       return { height: rect.height, viewport: innerHeight,
         actionsBottom: actions.bottom, dockBottom: rect.bottom,
+        panelHeight: dock.querySelector('[data-chatgpt-pro-minimap]').getBoundingClientRect().height,
         actionsWidth: actions.width, autoTop: auto.top, autoBottom: auto.bottom,
         exportTop: exportButton.top, exportBottom: exportButton.bottom,
         autoWidth: auto.width, exportWidth: exportButton.width };
     })()`);
-    assert(Math.abs(enabledDockHeight.height - enabledDockHeight.viewport * 0.5) <= 2 &&
+    assert(enabledDockHeight.height <= enabledDockHeight.viewport * 0.5 + 2 &&
+      enabledDockHeight.panelHeight >= 48 &&
       Math.abs(enabledDockHeight.actionsBottom - enabledDockHeight.dockBottom) <= 1 &&
       enabledDockHeight.autoTop < enabledDockHeight.exportTop &&
       enabledDockHeight.autoBottom - enabledDockHeight.autoTop === 38 &&
@@ -857,12 +1263,28 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `innerWidth === ${minimapSize.viewportWidth} && innerHeight === ${minimapSize.viewport}`),
     'original viewport restored');
+    detailResponse = CHAT_SIX_AFTER_LONG;
     await cdp.eval(pageSession, `(() => {
-      document.querySelectorAll('[data-minimap-test], [data-lazy-window-spacer]').forEach(item => item.remove());
+      document.querySelectorAll('[data-minimap-test], [data-lazy-window-spacer], [data-message-id]').forEach(item => item.remove());
+      const main = document.querySelector('main');
+      for (const [id, role, text] of [
+        ['question', 'user', 's6 acceptance unique phrase'],
+        ['answer', 'assistant', 'hello from controlled fixture'],
+        ['question-2', 'user', 'second user message'],
+        ['answer-2', 'assistant', 'second assistant reply'],
+        ['question-3', 'user', 'third user message'],
+        ['answer-3', 'assistant', 'third assistant reply']
+      ]) {
+        const section = document.createElement('section');
+        section.setAttribute('data-message-id', id);
+        section.setAttribute('data-message-author-role', role);
+        section.textContent = text;
+        main.append(section);
+      }
     })()`);
-    await eventually(async () => cdp.eval(pageSession,
-      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
-    'minimap restores compact message count after DOM changes');
+    await eventually(async () => requests.details === 8 && cdp.eval(pageSession,
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6`),
+    'Minimap restores the six-message fixture after long-conversation navigation');
     if (process.argv.includes('--minimap-only')) {
       console.log('MINIMAP_PASS: bounded window, pinned and clickable first/last, hover preview, draggable auto-shrinking dock');
       return;
@@ -937,10 +1359,21 @@ async function main() {
       `document.querySelector('[data-chatgpt-pro-current-export]').click()`);
     await cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-minimap-user')?.dispatchEvent(new Event('pointerenter'))`);
-    await eventually(async () => cdp.eval(pageSession,
-      `document.querySelector('.chatgpt-pro-minimap-user')?.title === '1/2 · User' &&
-       document.querySelector('.chatgpt-pro-minimap-preview-heading')?.textContent === '1/2 · User'`),
-    'minimap marker and hover heading speaker labels translated');
+    try {
+      await eventually(async () => cdp.eval(pageSession,
+        `document.querySelector('.chatgpt-pro-minimap-user')?.title === '1/6 · User' &&
+         document.querySelector('.chatgpt-pro-minimap-preview-heading')?.textContent === '1/6 · User'`),
+      'minimap marker and hover heading speaker labels translated');
+    } catch (error) {
+      const labels = await cdp.eval(pageSession, `(() => {
+        const marker = document.querySelector('.chatgpt-pro-minimap-user');
+        return { language: window.ChatGPTProI18n?.language, userLabel: window.ChatGPTProI18n?.t('ui.user'),
+          title: marker?.title, heading: document.querySelector('.chatgpt-pro-minimap-preview-heading')?.textContent,
+          preview: document.querySelector('.chatgpt-pro-minimap-preview-text')?.textContent,
+          entry: marker?.__chatgptProMinimapEntry?.role };
+      })()`);
+      throw Error(`${error.message}; labels=${JSON.stringify(labels)}`);
+    }
     const minimapPreviewTextBeforeLocaleChange = await cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-minimap-preview-text')?.textContent || ''`);
     assert(minimapPreviewTextBeforeLocaleChange,
@@ -994,7 +1427,8 @@ async function main() {
     await cdp.eval(popupSession,
       `window.confirm = () => false; document.querySelector('#indexStart').click();`);
     await sleep(250);
-    assert.equal(requests.details, 0, 'denied initial authorization must not fetch conversation body');
+    assert.equal(requests.details, 8,
+      `Minimap has already fetched and cached the current conversation independently of index consent: ${JSON.stringify(requests.detailLog)}`);
 
     // Directory export does not depend on full-text indexing or its consent.
     // Check that our checkbox style survives the host's appearance reset.
@@ -1044,12 +1478,12 @@ async function main() {
     await eventually(async () => fs.existsSync(path.join(downloadPath,
       `${fixtureDateTime}_Offline acceptance test.json`)),
       'raw JSON exported with sortable create timestamp and no full-text index');
-    assert.equal(requests.details, 1, 'unindexed single exports fetch uncached original JSON only once');
+    assert.equal(requests.details, 8, 'unindexed single exports reuse the Minimap-cached original JSON');
     await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-row-checkbox').click()`);
     await cdp.eval(pageSession, `document.querySelector('[data-batch-format="json"]').click()`);
     await eventually(async () => fs.readdirSync(downloadPath).some(name => name.endsWith('.zip')),
       'unindexed selection produced JSON ZIP', 24000);
-    assert.equal(requests.details, 1, 'unindexed batch export reuses the single-export cache');
+    assert.equal(requests.details, 8, 'unindexed batch export reuses the single-export cache');
     for (const name of fs.readdirSync(downloadPath).filter(name => name.endsWith('.zip'))) {
       fs.rmSync(path.join(downloadPath, name));
     }
@@ -1064,7 +1498,7 @@ async function main() {
       return (await cdp.eval(popupSession,
         `document.querySelector('#indexConsentStatus').textContent`)).includes('已完成');
     }, 'initial index completion persisted in real MV3 IndexedDB', 24000);
-    assert.equal(requests.details, 1, 'first index reused the complete raw JSON cached before consent');
+    assert.equal(requests.details, 8, 'first index reused the complete raw JSON cached before consent');
     assert(requests.directory > 0 && requests.projectList > 0, 'real strict scan covered normal and project listings');
 
     // R8 original settings: switches propagate to the real content script and
@@ -1072,7 +1506,11 @@ async function main() {
     await cdp.eval(pageSession, `(() => {
       for (const [id, key] of [
         ['question', 'fallback-turn-0:0:user'],
-        ['answer', 'fallback-turn-0:2:assistant']
+        ['answer', 'fallback-turn-0:2:assistant'],
+        ['question-2', 'fallback-turn-1:0:user'],
+        ['answer-2', 'fallback-turn-1:2:assistant'],
+        ['question-3', 'fallback-turn-2:0:user'],
+        ['answer-3', 'fallback-turn-2:2:assistant']
       ]) {
         const message = document.querySelector('[data-message-id="' + id + '"]');
         const unit = document.createElement('div');
@@ -1083,7 +1521,7 @@ async function main() {
     })()`);
     await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
     await eventually(async () => cdp.eval(pageSession,
-      `document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').length === 2`),
+      `document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').length === 6`),
     'user + assistant timestamps render from persisted JSON');
     assert.deepEqual(await cdp.eval(pageSession, `(() => {
       const unit = document.querySelector('[data-chatgpt-search-unit-key$=":assistant"]');
@@ -1113,7 +1551,7 @@ async function main() {
     })()`);
     assert.equal(await cdp.eval(popupSession, `document.querySelector('#size').value`), '24',
       'custom font size remains within the supported range');
-    assert.equal(requests.details, 1, 'timestamp decoration reuses cached JSON');
+    assert.equal(requests.details, 8, 'timestamp decoration reuses cached JSON');
     await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').length === 0`),
@@ -1157,7 +1595,7 @@ async function main() {
       'Markdown contains user and assistant text');
     assert.equal(singleJson.conversation.mapping.question.message.id, 'question',
       'JSON preserves complete original conversation mapping');
-    assert.equal(requests.details, 1, 'both single exports share cached full JSON');
+    assert.equal(requests.details, 8, 'both single exports share cached full JSON');
     // Custom templates can also sort by exact update timestamp. Saved older
     // date-only presets remain valid and were covered above.
     await cdp.eval(popupSession, `(() => {
@@ -1234,64 +1672,9 @@ async function main() {
     await cdp.eval(popupSession, `new Promise(resolve =>
       chrome.storage.local.set({ showMinimap: true }, resolve))`);
     await eventually(async () => cdp.eval(pageSession,
-      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 2`),
+      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6`),
     'minimap restores after a delayed full-text target is restored');
-    assert.equal(requests.details, 1, 'searching the persisted index did not refetch JSON');
-
-    await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
-    await eventually(async () => cdp.eval(pageSession,
-      `document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').length === 2`),
-    'message timestamps re-enabled for stale-cache regression');
-    // A newly rendered message can be newer than the locally cached raw
-    // conversation. Its real DOM ID must win over fallback-turn-N, and one
-    // forced network refresh must replace the stale cache without request loops.
-    const freshMessageTime = 1770004321;
-    detailResponse = {
-      ...CHAT,
-      update_time: freshMessageTime,
-      current_node: 'fresh-user',
-      mapping: {
-        ...CHAT.mapping,
-        'fresh-user': {
-          id: 'fresh-user', parent: 'answer', children: [],
-          message: { id: 'fresh-user', author: { role: 'user' },
-            content: { content_type: 'text', parts: ['fresh message fixture'] },
-            create_time: freshMessageTime }
-        }
-      }
-    };
-    await cdp.eval(pageSession, `(() => {
-      document.querySelector('[data-message-id="question"]')
-        .setAttribute('data-chatgpt-search-unit-key', 'fallback-turn-0:0:user');
-      document.querySelector('[data-message-id="answer"]')
-        .setAttribute('data-chatgpt-search-unit-key', 'fallback-turn-0:2:assistant');
-      const message = document.createElement('section');
-      message.setAttribute('data-message-id', 'fresh-user');
-      message.setAttribute('data-message-author-role', 'user');
-      message.setAttribute('data-chatgpt-search-unit-key', 'fallback-turn-0:0:user');
-      message.innerHTML = '<p>fresh message fixture</p>';
-      document.querySelector('main').append(message);
-    })()`);
-    await eventually(async () => cdp.eval(pageSession, `(() => {
-      const date = new Date(${freshMessageTime} * 1000);
-      const pad = value => String(value).padStart(2, '0');
-      const expected = date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' +
-        pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' +
-        pad(date.getSeconds());
-      return document.querySelector('[data-message-id="fresh-user"] > [data-chatgpt-pro-message-timestamp]')?.textContent === expected;
-    })()`), 'fresh real message ID resolves to its own server timestamp');
-    await sleep(1200);
-    assert.equal(requests.details, 2,
-      'a stale cached conversation triggers exactly one forced refresh for the new rendered message set');
-    await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
-    await eventually(async () => cdp.eval(pageSession,
-      `document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').length === 0`),
-    'message timestamps disabled after stale-cache regression');
-    await cdp.eval(pageSession, `(() => {
-      document.querySelector('[data-message-id="fresh-user"]')?.remove();
-      document.querySelector('[data-message-id="question"]')?.removeAttribute('data-chatgpt-search-unit-key');
-      document.querySelector('[data-message-id="answer"]')?.removeAttribute('data-chatgpt-search-unit-key');
-    })()`);
+    assert.equal(requests.details, 8, 'searching the persisted index did not refetch JSON');
 
     await cdp.eval(pageSession,
       `document.querySelector('#fallback-assistant-wrapper').style.display = 'block'`);
@@ -1303,7 +1686,7 @@ async function main() {
         && timestamp.nextElementSibling === controls.querySelector('button')
         && getComputedStyle(timestamp).display === 'inline-flex');
     })()`), 'legacy assistant timestamp uses compact inline styling inside its action-controls fallback');
-    assert.equal(requests.details, 2,
+    assert.equal(requests.details, 8,
       'legacy timestamp placement reuses the already cached conversation JSON');
     await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
     await eventually(async () => cdp.eval(pageSession,
@@ -1316,13 +1699,13 @@ async function main() {
     // partial; a confirmed local-only result never fetches an online detail.
     await cdp.eval(pageSession, `(() => {
       const input = document.querySelector('.chatgpt-pro-fulltext-input');
-      input.value = 'hello from controlled fixture';
+      input.value = 'third assistant reply';
       input.dispatchEvent(new Event('input', { bubbles: true }));
     })()`);
     await eventually(async () => cdp.eval(pageSession,
-      `document.querySelector('.chatgpt-pro-search-results').textContent.includes('hello from controlled fixture')`),
+      `document.querySelector('.chatgpt-pro-search-results').textContent.includes('third assistant reply')`),
     'typing searches without explicit submit after debounce');
-    assert.equal(requests.details, 2, 'debounced search does not call remote API');
+    assert.equal(requests.details, 8, 'debounced search does not call remote API');
 
     const markLocal = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
       action: 'localDataMarkOfficialGone', accountId: 's6-isolated-account', id: '${CHAT_ID}'
@@ -1377,7 +1760,7 @@ async function main() {
       `Array.from(document.querySelectorAll('.chatgpt-pro-search-result button'))
         .some(button => button.textContent.includes('Eliminar copia local'))`),
     'local-only cleanup action uses the active locale');
-    assert.equal(requests.details, 2, 'local-only preview did not reach official conversation endpoint');
+    assert.equal(requests.details, 8, 'local-only preview did not reach official conversation endpoint');
     await cdp.eval(popupSession, `new Promise(resolve =>
       chrome.storage.local.set({ uiLanguage: 'zh-CN' }, resolve))`);
     await eventually(async () => cdp.eval(pageSession,
@@ -1391,7 +1774,7 @@ async function main() {
     await cdp.eval(pageSession, `document.querySelector('[data-batch-format="json"]').click()`);
     await eventually(async () => fs.readdirSync(downloadPath).some(name => name.endsWith('.zip')),
       'real browser saved the cached JSON ZIP volume', 24000);
-    assert.equal(requests.details, 2, 'ZIP export reused the indexed original JSON without extra details');
+    assert.equal(requests.details, 8, 'ZIP export reused the indexed original JSON without extra details');
     const zipName = fs.readdirSync(downloadPath).find(name => name.endsWith('.zip'));
     const bytes = fs.readFileSync(path.join(downloadPath, zipName));
     assert.equal(bytes.readUInt32LE(0), 0x04034b50, 'real Chrome download is a valid ZIP container');
@@ -1437,7 +1820,7 @@ async function main() {
     await cdp.eval(pageSession, `document.querySelector('[data-batch-format="md"]').click()`);
     await eventually(async () => fs.readdirSync(downloadPath).filter(name => name.endsWith('.zip')).length >= 3,
       'both Markdown ZIP volumes downloaded independently', 24000);
-    assert.equal(requests.details, 2, '56 cached records exported without further detail requests');
+    assert.equal(requests.details, 8, '56 cached records exported without further detail requests');
     const volumeFiles = fs.readdirSync(downloadPath).filter(name => name.endsWith('.zip'));
     const secondVolume = volumeFiles.find(name => name.includes('_MD_part002.zip'));
     assert(secondVolume, `second independent Markdown ZIP present: ${volumeFiles.join(', ')}`);
@@ -1481,7 +1864,7 @@ async function main() {
     assert.equal(await cdp.eval(pageSession,
       `document.querySelectorAll('.chatgpt-pro-row').length`), 1,
     'title filter composes with project navigation');
-    assert.equal(requests.details, 2, 'filtering cached directory never calls conversation detail API');
+    assert.equal(requests.details, 8, 'filtering cached directory never calls conversation detail API');
     const unverifiedSeed = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
       action: 'localDataUpsertDirectory', accountId: 's6-isolated-account',
       records: [{ id: 'r8-unverified-status', title: 'Unverified status fixture',
@@ -1511,7 +1894,7 @@ async function main() {
       `document.querySelector('[data-panel-view="directory"]').textContent.toLocaleLowerCase('es').includes('conversaciones')`),
     'Spanish conversation panel translated without remounting');
     assert.equal(await cdp.eval(pageSession,
-      `document.querySelector('.chatgpt-pro-minimap-user')?.title`), '1/2 · Usuario',
+      `document.querySelector('.chatgpt-pro-minimap-user')?.title`), '1/6 · Usuario',
     'Spanish minimap speaker tooltip translates after a live language change');
     assert.equal(await cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-project-filter option[value="g-p-r8-project"]')?.textContent`),
@@ -1549,7 +1932,7 @@ async function main() {
        document.querySelector('[data-panel-view="search"]').textContent.includes('البحث')`),
     'Arabic RTL panel and UI labels applied');
     assert.equal(await cdp.eval(pageSession,
-      `document.querySelector('.chatgpt-pro-minimap-user')?.title`), '1/2 · المستخدم',
+      `document.querySelector('.chatgpt-pro-minimap-user')?.title`), '1/6 · المستخدم',
     'Arabic minimap speaker tooltip translates after a live language change');
     assert.equal(await cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-project-filter option[value="g-p-r8-project"]')?.textContent`),
@@ -1586,6 +1969,20 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `Boolean(document.querySelector('[data-chatgpt-pro-auto-continue]'))`),
     'auto-continue control appears when enabled');
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-auto-continue]').title`),
+    'Automatically send the specified message',
+    'idle Auto Continue toolbar tooltip describes its automatic message-sending function');
+    await cdp.eval(popupSession, `new Promise(resolve =>
+      chrome.storage.local.set({ uiLanguage: 'zh-CN' }, resolve))`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-auto-continue]').title === '自动发送指定消息'`),
+    'Auto Continue toolbar tooltip uses the matching Chinese translation');
+    await cdp.eval(popupSession, `new Promise(resolve =>
+      chrome.storage.local.set({ uiLanguage: 'en' }, resolve))`);
+    await eventually(async () => cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-auto-continue]').title === 'Automatically send the specified message'`),
+    'Auto Continue toolbar tooltip returns to English with the active locale');
     await eventually(async () => cdp.eval(popupSession, `new Promise(resolve =>
       chrome.storage.local.get('autoContinueText', values => resolve(!Object.hasOwn(values, 'autoContinueText'))))`),
     'legacy built-in Chinese continuation text is removed from stored settings');
@@ -1594,6 +1991,10 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `!document.querySelector('[data-chatgpt-pro-auto-popover]')?.hidden`),
     'auto-continue settings popover opens');
+    assert.equal(await cdp.eval(pageSession,
+      `document.querySelector('[data-chatgpt-pro-auto-popover] [data-auto-status]')?.textContent`),
+    'Current chat not started',
+    'changing the toolbar tooltip does not alter the Auto Continue popover status');
     const autoContinueDefaults = await cdp.eval(pageSession, `(() => {
       const input = document.querySelector('[data-chatgpt-pro-auto-popover] [data-auto-text]');
       const start = document.querySelector('[data-chatgpt-pro-auto-popover] [data-auto-start]');

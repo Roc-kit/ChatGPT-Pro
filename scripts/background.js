@@ -7,6 +7,7 @@ const DEFAULT_SETTINGS = {
   showSidebarTime: false,
   showMessageTimestamps: false,
   fontSize: 11,
+  toolDockOpacity: 50,
   openInBackground: true,
   closeOnOutsideClick: true,
   launcherPosition: { x: 0.94, y: 0.76 },

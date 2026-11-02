@@ -22,6 +22,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const outsideCloseToggle = document.getElementById('outsideCloseToggle');
   const autoContinueToggle = document.getElementById('autoContinueToggle');
   const size = document.getElementById('size');
+  const toolDockOpacityInput = document.getElementById('toolDockOpacity');
+  const toolDockOpacityValue = document.getElementById('toolDockOpacityValue');
   const filenamePreset = document.getElementById('filenamePreset');
   const customTemplateWrap = document.getElementById('customTemplateWrap');
   const filenameTemplate = document.getElementById('filenameTemplate');
@@ -450,7 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
     filenamePreview.textContent = previewFilename(value);
   }
 
-  chrome.storage.local.get(['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'openInBackground', 'closeOnOutsideClick', 'fontSize', 'exportFilenameTemplate', 'uiLanguage', 'autoContinueEnabled', 'autoContinueText', 'autoContinueDelaySeconds', 'autoContinueMaxCount'], values => {
+  chrome.storage.local.get(['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'openInBackground', 'closeOnOutsideClick', 'fontSize', 'toolDockOpacity', 'exportFilenameTemplate', 'uiLanguage', 'autoContinueEnabled', 'autoContinueText', 'autoContinueDelaySeconds', 'autoContinueMaxCount'], values => {
     languageSelect.value = values.uiLanguage || 'auto';
     i18n.setLanguage(languageSelect.value);
     i18n.setDirection(document.documentElement);
@@ -465,6 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const autoEnabled = values.autoContinueEnabled === true;
     setToggle(autoContinueToggle, autoEnabled);
     size.value = normalizeTimestampFontSize(values.fontSize);
+    updateToolDockOpacity(values.toolDockOpacity);
     updateFilenameUi(values.exportFilenameTemplate || '{created_datetime}_{title}');
   });
 
@@ -537,6 +540,20 @@ document.addEventListener('DOMContentLoaded', () => {
     return Number.isFinite(parsed) && parsed > 0
       ? Math.max(8, Math.min(24, Math.round(parsed))) : 11;
   }
+  function normalizeToolDockOpacity(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed)
+      ? Math.max(1, Math.min(100, Math.round(parsed))) : 50;
+  }
+  function updateToolDockOpacity(value, persist = false) {
+    const opacity = normalizeToolDockOpacity(value);
+    toolDockOpacityInput.value = String(opacity);
+    toolDockOpacityValue.textContent = `${opacity}%`;
+    if (persist) chrome.storage.local.set({ toolDockOpacity: opacity });
+  }
+  toolDockOpacityInput.addEventListener('input', () => {
+    updateToolDockOpacity(toolDockOpacityInput.value, true);
+  });
   size.addEventListener('change', () => {
     const fontSize = normalizeTimestampFontSize(size.value);
     size.value = fontSize;

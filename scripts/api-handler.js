@@ -673,8 +673,13 @@ const APIHandler = (function () {
       if (await getAccountId() !== accountId) throw new Error('登录账号已切换，已取消详情缓存写入');
       status = 200;
       try {
+        // The directory snapshot can lag behind the detail response. Using
+        // its older updateTime here would make every refreshed raw record
+        // look stale and cause IndexedDB to reject the newer JSON revision.
+        const rawUpdateTime = raw.update_time ?? raw.updated_at;
+        const cacheUpdateTime = timestampValue(rawUpdateTime) ? rawUpdateTime : updateTime;
         await localDataMessage({ action: 'localDataPutConversation', accountId,
-          record: { id: conversationId, raw, updateTime: updateTime ?? raw.update_time ?? raw.updated_at }
+          record: { id: conversationId, raw, updateTime: cacheUpdateTime }
         });
       } catch (error) {
         console.warn('[ChatGPT Pro] Detail cache write skipped:', error.message);
