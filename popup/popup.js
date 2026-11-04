@@ -187,8 +187,8 @@ document.addEventListener('DOMContentLoaded', () => {
     count.textContent = Number.isInteger(data.stats?.directory) ? data.stats.directory : '–';
     rawCount.textContent = Number.isInteger(data.stats?.complete) ? data.stats.complete : '–';
     indexedCount.textContent = Number.isInteger(data.stats?.indexed) ? data.stats.indexed : '–';
-    autoIndexToggle.disabled = !initialDone;
-    setToggle(autoIndexToggle, initialDone && policy.autoEnabled !== false);
+    autoIndexToggle.disabled = false;
+    setToggle(autoIndexToggle, policy.autoEnabled === true);
     clearIndex.disabled = clearRaw.disabled = false;
     const unfinishedIndexTask = (data.tasks || []).find(task => task.type === 'index' &&
       ['pending', 'running', 'paused'].includes(task.status));
@@ -351,7 +351,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const enabled = autoIndexToggle.getAttribute('aria-checked') !== 'true';
     try {
       await sendToActiveChatGPT({ action: 'indexAutoSet', enabled });
-      taskFeedback.textContent = enabled ? '自动增量索引已开启' : '自动增量索引已关闭；已有任务不受影响';
+      taskFeedback.textContent = enabled
+        ? '自动更新已开启；首次索引完成后开始生效'
+        : '自动更新已关闭；已有任务不受影响';
     } catch (error) {
       taskFeedback.textContent = `自动更新设置失败：${error.message}`;
     } finally {

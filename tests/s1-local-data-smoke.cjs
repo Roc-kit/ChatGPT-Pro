@@ -639,6 +639,11 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     const policyBefore = await send({ action: 'indexPolicyGet', accountId: consentId });
     check(policyBefore.success && !policyBefore.result.consentAt && !policyBefore.result.initialCompletedAt,
       'new accounts do not grant initial full index consent automatically');
+    const preIndexAutoEnabled = await send({ action: 'indexPolicySetAuto', accountId: consentId, enabled: true });
+    check(preIndexAutoEnabled.success && preIndexAutoEnabled.result.autoEnabled,
+      'automatic-index preference can be enabled independently before first index completion');
+    check((await send({ action: 'indexPolicyGet', accountId: consentId })).result.autoEnabled,
+      'pre-index automatic-index preference persists');
     check(!(await send({ action: 'indexPolicyFinishInitial', accountId: consentId })).success,
       'unconsented account cannot claim initial index completion');
     const consentGrant = await send({ action: 'indexPolicyConsent', accountId: consentId });
@@ -674,8 +679,9 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check(finishedIndex.result.completed && finishedIndex.result.total === 2,
       'verified snapshot indexes complete despite an unrelated paused index task');
     const completedPolicy = (await send({ action: 'indexPolicyGet', accountId: consentId })).result;
-    check(completedPolicy.initialCompletedAt > 0 && !completedPolicy.initialSnapshotReady,
-      'initial completion flag persists and the temporary snapshot is retired');
+    check(completedPolicy.initialCompletedAt > 0 && !completedPolicy.initialSnapshotReady
+      && completedPolicy.autoEnabled,
+      'initial completion flag persists, preserves the independent auto-update preference and retires the temporary snapshot');
     check(!(await send({ action: 'indexPolicyGet', accountId: 'acct-b' })).result.consentAt,
       'another account never inherits consent');
     const historical = await storage.getDirectoryRecord(consentId, 'historical-local-only');

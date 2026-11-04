@@ -383,7 +383,7 @@ globalThis.ChatGPTProLocalData = (() => {
       initialCompletedAt: account?.initialIndexCompletedAt || null,
       initialSnapshotReady: Array.isArray(account?.firstIndexSnapshot),
       initialSnapshotAt: account?.fullDirectoryScannedAt || null,
-      autoEnabled: Boolean(account?.initialIndexCompletedAt && account.autoIncrementalIndex !== false),
+      autoEnabled: account?.autoIncrementalIndex === true,
       setupPhase: account?.indexSetupUntil > Date.now() ? (account.indexSetupPhase || null) : null,
       skippedIndexIds: Array.isArray(account?.skippedIndexIds) ? account.skippedIndexIds : []
     };
@@ -403,8 +403,7 @@ globalThis.ChatGPTProLocalData = (() => {
     if (typeof enabled !== 'boolean') throw new Error('自动更新开关必须是布尔值');
     return transaction([STORES.accounts], 'readwrite', async stores => {
       const store = stores[STORES.accounts];
-      const account = await requested(store.get(accountId));
-      if (!account?.initialIndexCompletedAt) throw new Error('请先完成首次全文索引');
+      const account = await requested(store.get(accountId)) || { id: accountId };
       account.autoIncrementalIndex = enabled;
       await requested(store.put(account));
       return { autoEnabled: enabled };
@@ -525,7 +524,7 @@ globalThis.ChatGPTProLocalData = (() => {
       if (missing.length) return { completed: false, remaining: missing.length, total: directory.length };
       if (!account.initialIndexCompletedAt) {
         account.initialIndexCompletedAt = Date.now();
-        account.autoIncrementalIndex = true;
+        if (typeof account.autoIncrementalIndex !== 'boolean') account.autoIncrementalIndex = true;
       }
       delete account.firstIndexSnapshot;
       await requested(accountStore.put(account));

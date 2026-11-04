@@ -73,11 +73,8 @@ const mock = `<script>
           tasks.find(item => item.id === msg.id).savedVolumes = 0;
           callback({ success: true, deleted: 1 });
         } else if (msg.action === 'indexAutoSet') {
-          if (!indexPolicy.initialCompletedAt) callback({ success: false, error: '尚未完成索引' });
-          else {
-            indexPolicy.autoEnabled = msg.enabled;
-            callback({ success: true, autoEnabled: msg.enabled });
-          }
+          indexPolicy.autoEnabled = msg.enabled;
+          callback({ success: true, autoEnabled: msg.enabled });
         } else if (msg.action === 'clearAccountLocalData') {
           const key = msg.kind === 'index' ? 'indexed' : 'complete';
           const removed = stats[key];
@@ -246,6 +243,14 @@ server.listen(0, '127.0.0.1', async () => {
         'open action reuses and activates existing ChatGPT tab');
       document.querySelector('#taskRefresh').click();
       await new Promise(resolve => setTimeout(resolve, 50));
+      check(!document.querySelector('#autoIndexToggle').disabled &&
+        document.querySelector('#autoIndexToggle').getAttribute('aria-checked') === 'false',
+        'auto index preference remains independently controllable before first index completion');
+      document.querySelector('#autoIndexToggle').click();
+      await new Promise(resolve => setTimeout(resolve, 50));
+      check(indexPolicy.autoEnabled === true &&
+        window.__testState.calls.some(msg => msg.action === 'indexAutoSet' && msg.enabled === true),
+        'auto index can be enabled before initial indexing is complete');
       check(document.querySelector('#count').textContent === '120' &&
         document.querySelector('#rawCount').textContent === '71' &&
         document.querySelector('#indexedCount').textContent === '43',
