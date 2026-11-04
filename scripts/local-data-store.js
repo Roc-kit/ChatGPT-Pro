@@ -381,6 +381,8 @@ globalThis.ChatGPTProLocalData = (() => {
     return {
       consentAt: account?.fullIndexConsentAt || null,
       initialCompletedAt: account?.initialIndexCompletedAt || null,
+      initialSnapshotReady: Array.isArray(account?.firstIndexSnapshot),
+      initialSnapshotAt: account?.fullDirectoryScannedAt || null,
       autoEnabled: Boolean(account?.initialIndexCompletedAt && account.autoIncrementalIndex !== false),
       setupPhase: account?.indexSetupUntil > Date.now() ? (account.indexSetupPhase || null) : null,
       skippedIndexIds: Array.isArray(account?.skippedIndexIds) ? account.skippedIndexIds : []

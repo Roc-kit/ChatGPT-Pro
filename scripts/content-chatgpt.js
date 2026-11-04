@@ -3552,6 +3552,18 @@
     return response.result;
   }
 
+  async function finishInitialIndexIfReady(accountId) {
+    try {
+      const policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
+      if (policy?.initialCompletedAt) return { completed: true, remaining: 0 };
+      if (!policy?.initialSnapshotReady) return null;
+      return (await runtimeMessage({ action: 'indexPolicyFinishInitial', accountId })).result || null;
+    } catch (error) {
+      log('Initial index completion check deferred:', error.message);
+      return null;
+    }
+  }
+
   async function runIndexTask(accountId, taskId, onProgress) {
     if (indexRunners.has(taskId)) return { busy: true };
     indexRunners.add(taskId);
@@ -3658,6 +3670,7 @@
             onProgress, { ...progress, phase: groupEnd ? 'group-wait' : 'pacing', done: index + 1 });
         }
       }
+      await finishInitialIndexIfReady(accountId);
       return {
         indexedCount: latest.successCount,
         skippedCount: latest.skippedCount || 0,
@@ -3694,10 +3707,13 @@
       return !existing || existing.schemaVersion !== SEARCH_INDEX_SCHEMA_VERSION
         || Number(existing.updateTime || 0) < timestampValue(record.updateTime);
     });
-    if (!pending.length) return {
-      indexedCount: 0, skippedCount,
-      alreadyIndexedCount: records.length - skippedCount, failures: []
-    };
+    if (!pending.length) {
+      await finishInitialIndexIfReady(accountId);
+      return {
+        indexedCount: 0, skippedCount,
+        alreadyIndexedCount: records.length - skippedCount, failures: []
+      };
+    }
     const task = await indexTaskMessage('taskCreate', accountId, {
       type: 'index', items: pending, options: { automatic: options.automatic === true }
     });
@@ -3756,11 +3772,6 @@
       }
     }
     const result = await updateFullTextIndex(targetRecords, onProgress);
-    if (!policy.initialCompletedAt && !result.paused && !result.busy) {
-      const finished = (await runtimeMessage({ action: 'indexPolicyFinishInitial', accountId })).result;
-      result.initialCompleted = finished.completed;
-      result.initialRemaining = finished.remaining || 0;
-    }
     return result;
   }
 
@@ -3781,6 +3792,7 @@
   }
 
   let recoveringIndexTasks = false;
+  const initialIndexCompletionRecoveryChecks = new Set();
   async function recoverIndexTasks() {
     if (recoveringIndexTasks || !S.settings.enabled) return;
     recoveringIndexTasks = true;
@@ -3808,6 +3820,17 @@
         if (task.status === 'running' && task.lease?.expiresAt > Date.now()) continue;
         // The lease is acquired atomically. Another active tab wins safely.
         await runIndexTask(accountId, task.id).catch(error => log('Index recovery skipped:', error.message));
+      }
+      const policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
+      const hasActiveIndexTask = tasks.some(task => task.type === 'index'
+        && ['pending', 'running', 'paused'].includes(task.status));
+      const hasCompletedIndexTask = tasks.some(task => task.type === 'index' && task.status === 'completed');
+      const snapshotKey = `${accountId}:${policy?.initialSnapshotAt || 0}`;
+      if (policy?.initialSnapshotReady && !policy.initialCompletedAt
+          && !hasActiveIndexTask && hasCompletedIndexTask
+          && !initialIndexCompletionRecoveryChecks.has(snapshotKey)) {
+        initialIndexCompletionRecoveryChecks.add(snapshotKey);
+        await finishInitialIndexIfReady(accountId);
       }
     } finally {
       recoveringIndexTasks = false;
@@ -4541,7 +4564,7 @@
               const accountId = await window.APIHandler.getAccountId(true);
               await runtimeMessage({ action: 'indexSkipConversation', accountId,
                 taskId: failureTask.id, conversationId: failure.id });
-              await runtimeMessage({ action: 'indexPolicyFinishInitial', accountId }).catch(() => {});
+              await finishInitialIndexIfReady(accountId);
               await refreshSearchIndexStatus();
             } catch (error) {
               skip.disabled = false;
@@ -4763,7 +4786,6 @@
           searchIndexStatus.textContent = '执行中';
           delete searchIndexUpdate.dataset.resumeTaskId;
           await runIndexTask(accountId, resumeTaskId);
-          await runtimeMessage({ action: 'indexPolicyFinishInitial', accountId }).catch(() => {});
           await refreshSearchIndexStatus();
           return;
         }

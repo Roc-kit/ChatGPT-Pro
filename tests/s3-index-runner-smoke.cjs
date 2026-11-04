@@ -26,9 +26,13 @@ let pauseAfterFirst = false;
 let cooldownUntil = 0;
 const accountId = 'account-A';
 let consentApproved = false;
-let policy = { consentAt: null, initialCompletedAt: null, skippedIndexIds: [] };
+let policy = { consentAt: null, initialCompletedAt: null, initialSnapshotReady: false,
+  initialSnapshotAt: null, skippedIndexIds: [] };
 let strictFullScans = 0;
-const initialScanItems = [{ id: 'first-consented', title: 'Full scan item', updateTime: 11 }];
+const initialScanItems = [
+  { id: 'first-consented', title: 'Full scan item', updateTime: 11 },
+  { id: 'second-consented', title: 'Second full scan item', updateTime: 12 }
+];
 const context = {
   console,
   Date,
@@ -86,9 +90,16 @@ const context = {
         return { success: true, result: { ...policy } };
       case 'indexPolicyDirectoryVerified':
         assert.deepEqual(msg.records.map(record => record.id), initialScanItems.map(record => record.id));
+        policy.initialSnapshotReady = true;
+        policy.initialSnapshotAt = Date.now();
         return { success: true, result: { total: initialScanItems.length } };
       case 'indexPolicyFinishInitial':
+        if ([...jobs.values()].some(task => task.type === 'index'
+            && ['pending', 'running', 'paused'].includes(task.status))) {
+          throw Error('首次索引任务仍在执行或暂停');
+        }
         policy.initialCompletedAt ||= Date.now();
+        policy.initialSnapshotReady = false;
         return { success: true, result: { completed: true, remaining: 0 } };
       case 'searchIndexMetadata':
         return { success: true, records: [...indexed.entries()].map(([id, updateTime]) => ({
@@ -231,10 +242,25 @@ async function main() {
   assert.equal(denied.consentDeclined, true, 'first index requires explicit user approval');
   assert.equal(strictFullScans, 0, 'declined initial index cannot scan all conversations');
   consentApproved = true;
-  const first = await context.runner.updateIndexWithConsent(initialScanItems);
-  assert.equal(first.initialCompleted, true);
+  pauseAfterFirst = true;
+  await assert.rejects(() => context.runner.updateIndexWithConsent(initialScanItems), /任务租约/,
+    'interrupted first index leaves its task resumable');
+  const firstTask = [...jobs.values()].find(task => task.items?.some(item => item.id === 'first-consented'));
+  assert.equal(firstTask.status, 'paused');
+  assert.equal(policy.initialCompletedAt, null,
+    'a paused first index cannot enable automatic updates prematurely');
+  await context.runner.recoverIndexTasks();
+  assert.equal(firstTask.status, 'paused', 'manual pauses are not silently resumed');
+  pauseAfterFirst = false;
+  await context.runtimeMessage({ action: 'taskControl', accountId, id: firstTask.id, operation: 'resume' });
+  await context.runner.recoverIndexTasks();
+  assert.equal(firstTask.status, 'completed');
+  assert.ok(policy.initialCompletedAt,
+    'resuming the first index through task recovery persists its completion and unlocks auto updates');
+  assert.equal(policy.initialSnapshotReady, false,
+    'completed first index retires its temporary full-directory snapshot');
   assert.equal(strictFullScans, 1, 'first consent triggers exact full directory scan');
-  assert.equal(fetched.at(-1), 'first-consented');
+  assert.deepEqual(fetched.slice(-2), ['first-consented', 'second-consented']);
   const newRecord = [{ id: 'post-consent', title: 'Incremental item', updateTime: 12 }];
   const automatic = await context.runner.maybeAutoIncrementalIndex(newRecord);
   assert.equal(automatic.automatic, true);
@@ -356,6 +382,18 @@ async function main() {
   assert.equal(authTask.status, 'paused');
   assert.equal(authTask.phase, 'auth-error');
   assert.equal(authTask.nextIndex, 0, 'authentication failure does not consume the current item');
+  jobs.clear();
+  policy = { consentAt: Date.now(), initialCompletedAt: null, initialSnapshotReady: true,
+    initialSnapshotAt: Date.now() + 1000, skippedIndexIds: [] };
+  const legacyCompletedTask = { id: randomUUID(), accountId, type: 'index',
+    items: [{ id: 'legacy-completed-initial-item' }], nextIndex: 1,
+    status: 'completed', lease: null, successCount: 1, failureCount: 0, errors: [] };
+  jobs.set(legacyCompletedTask.id, legacyCompletedTask);
+  await context.runner.recoverIndexTasks();
+  assert.ok(policy.initialCompletedAt,
+    'startup recovery finalizes an already-completed initial task left by an older runner');
+  assert.equal(policy.initialSnapshotReady, false,
+    'one-time reconciliation retires the stale first-index snapshot');
   console.log('S3_S4_PASS: checkpoints, pause/resume, first consent, verified full scan, auto incremental, persistent skip, single-item retry, rate-limit auto recovery, auth pause');
 }
 

@@ -654,6 +654,9 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     ];
     check((await send({ action: 'indexPolicyDirectoryVerified', accountId: consentId,
       records: snapshot })).result.total === 2, 'only explicitly scanned remote items enter the initial snapshot');
+    const snapshotPolicy = (await send({ action: 'indexPolicyGet', accountId: consentId })).result;
+    check(snapshotPolicy.initialSnapshotReady && snapshotPolicy.initialSnapshotAt > 0,
+      'verified first-directory snapshot is exposed for safe completion recovery');
     await storage.putConversation(consentId, { id: 'consent-a', updateTime: 1700000011,
       raw: { id: 'consent-a', mapping: {} },
       searchRecord: { id: 'consent-a', messages: [] } });
@@ -666,8 +669,9 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     const finishedIndex = await send({ action: 'indexPolicyFinishInitial', accountId: consentId });
     check(finishedIndex.result.completed && finishedIndex.result.total === 2,
       'verified snapshot indexes complete without requiring historical unverified directory');
-    check((await send({ action: 'indexPolicyGet', accountId: consentId })).result.initialCompletedAt > 0,
-      'initial completion flag persists for automatic incremental eligibility');
+    const completedPolicy = (await send({ action: 'indexPolicyGet', accountId: consentId })).result;
+    check(completedPolicy.initialCompletedAt > 0 && !completedPolicy.initialSnapshotReady,
+      'initial completion flag persists and the temporary snapshot is retired');
     check(!(await send({ action: 'indexPolicyGet', accountId: 'acct-b' })).result.consentAt,
       'another account never inherits consent');
     const historical = await storage.getDirectoryRecord(consentId, 'historical-local-only');
