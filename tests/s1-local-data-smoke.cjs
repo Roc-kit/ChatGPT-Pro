@@ -657,6 +657,10 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     const snapshotPolicy = (await send({ action: 'indexPolicyGet', accountId: consentId })).result;
     check(snapshotPolicy.initialSnapshotReady && snapshotPolicy.initialSnapshotAt > 0,
       'verified first-directory snapshot is exposed for safe completion recovery');
+    const unrelatedIndexTask = await send({ action: 'taskCreate', accountId: consentId,
+      type: 'index', items: [{ id: 'not-in-initial-snapshot' }] });
+    await send({ action: 'taskControl', accountId: consentId, id: unrelatedIndexTask.result.id,
+      operation: 'pause' });
     await storage.putConversation(consentId, { id: 'consent-a', updateTime: 1700000011,
       raw: { id: 'consent-a', mapping: {} },
       searchRecord: { id: 'consent-a', messages: [] } });
@@ -668,7 +672,7 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
       searchRecord: { id: 'consent-b', messages: [] } });
     const finishedIndex = await send({ action: 'indexPolicyFinishInitial', accountId: consentId });
     check(finishedIndex.result.completed && finishedIndex.result.total === 2,
-      'verified snapshot indexes complete without requiring historical unverified directory');
+      'verified snapshot indexes complete despite an unrelated paused index task');
     const completedPolicy = (await send({ action: 'indexPolicyGet', accountId: consentId })).result;
     check(completedPolicy.initialCompletedAt > 0 && !completedPolicy.initialSnapshotReady,
       'initial completion flag persists and the temporary snapshot is retired');

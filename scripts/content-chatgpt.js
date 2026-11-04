@@ -3792,7 +3792,6 @@
   }
 
   let recoveringIndexTasks = false;
-  const initialIndexCompletionRecoveryChecks = new Set();
   async function recoverIndexTasks() {
     if (recoveringIndexTasks || !S.settings.enabled) return;
     recoveringIndexTasks = true;
@@ -3822,14 +3821,7 @@
         await runIndexTask(accountId, task.id).catch(error => log('Index recovery skipped:', error.message));
       }
       const policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
-      const hasActiveIndexTask = tasks.some(task => task.type === 'index'
-        && ['pending', 'running', 'paused'].includes(task.status));
-      const hasCompletedIndexTask = tasks.some(task => task.type === 'index' && task.status === 'completed');
-      const snapshotKey = `${accountId}:${policy?.initialSnapshotAt || 0}`;
-      if (policy?.initialSnapshotReady && !policy.initialCompletedAt
-          && !hasActiveIndexTask && hasCompletedIndexTask
-          && !initialIndexCompletionRecoveryChecks.has(snapshotKey)) {
-        initialIndexCompletionRecoveryChecks.add(snapshotKey);
+      if (policy?.initialSnapshotReady && !policy.initialCompletedAt) {
         await finishInitialIndexIfReady(accountId);
       }
     } finally {

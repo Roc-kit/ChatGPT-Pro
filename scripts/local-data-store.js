@@ -519,10 +519,9 @@ globalThis.ChatGPTProLocalData = (() => {
           ? entry.dataVersion !== null
           : !Number.isFinite(entry.dataVersion) || entry.dataVersion < directoryVersion);
       });
-      const openTasks = await requested(stores[STORES.tasks].index('byAccount').getAll(IDBKeyRange.only(accountId)));
-      if (openTasks.some(task => task.type === 'index' && ['pending', 'running', 'paused'].includes(task.status))) {
-        throw new Error('首次索引任务仍在执行或暂停');
-      }
+      // The verified snapshot plus per-record index versions are authoritative.
+      // Unrelated paused/pending index tasks must not block completion when every
+      // snapshot item is already indexed (or explicitly skipped).
       if (missing.length) return { completed: false, remaining: missing.length, total: directory.length };
       if (!account.initialIndexCompletedAt) {
         account.initialIndexCompletedAt = Date.now();

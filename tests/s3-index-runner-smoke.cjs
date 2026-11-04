@@ -94,10 +94,6 @@ const context = {
         policy.initialSnapshotAt = Date.now();
         return { success: true, result: { total: initialScanItems.length } };
       case 'indexPolicyFinishInitial':
-        if ([...jobs.values()].some(task => task.type === 'index'
-            && ['pending', 'running', 'paused'].includes(task.status))) {
-          throw Error('首次索引任务仍在执行或暂停');
-        }
         policy.initialCompletedAt ||= Date.now();
         policy.initialSnapshotReady = false;
         return { success: true, result: { completed: true, remaining: 0 } };
@@ -389,9 +385,13 @@ async function main() {
     items: [{ id: 'legacy-completed-initial-item' }], nextIndex: 1,
     status: 'completed', lease: null, successCount: 1, failureCount: 0, errors: [] };
   jobs.set(legacyCompletedTask.id, legacyCompletedTask);
+  const unrelatedPausedTask = { id: randomUUID(), accountId, type: 'index',
+    items: [{ id: 'unrelated-item' }], nextIndex: 0,
+    status: 'paused', lease: null, successCount: 0, failureCount: 0, errors: [] };
+  jobs.set(unrelatedPausedTask.id, unrelatedPausedTask);
   await context.runner.recoverIndexTasks();
   assert.ok(policy.initialCompletedAt,
-    'startup recovery finalizes an already-completed initial task left by an older runner');
+    'startup recovery finalizes an already-completed initial task even when another unrelated index task is paused');
   assert.equal(policy.initialSnapshotReady, false,
     'one-time reconciliation retires the stale first-index snapshot');
   console.log('S3_S4_PASS: checkpoints, pause/resume, first consent, verified full scan, auto incremental, persistent skip, single-item retry, rate-limit auto recovery, auth pause');
