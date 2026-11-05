@@ -454,10 +454,16 @@ globalThis.ChatGPTProLocalData = (() => {
     return transaction([STORES.accounts], 'readwrite', async stores => {
       const store = stores[STORES.accounts];
       const account = await requested(store.get(accountId)) || { id: accountId };
-      account.fullIndexConsentAt ||= Date.now();
+      if (!account.fullIndexConsentAt) {
+        account.fullIndexConsentAt = Date.now();
+        // The first explicit full-index consent also opts the account into
+        // automatic updates. Later user changes are never overwritten.
+        account.autoIncrementalIndex = true;
+      }
       await requested(store.put(account));
       return { consentAt: account.fullIndexConsentAt,
-        initialCompletedAt: account.initialIndexCompletedAt || null };
+        initialCompletedAt: account.initialIndexCompletedAt || null,
+        autoEnabled: account.autoIncrementalIndex === true };
     });
   }
 

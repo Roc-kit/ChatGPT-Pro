@@ -639,18 +639,18 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     const policyBefore = await send({ action: 'indexPolicyGet', accountId: consentId });
     check(policyBefore.success && !policyBefore.result.consentAt && !policyBefore.result.initialCompletedAt,
       'new accounts do not grant initial full index consent automatically');
-    const preIndexAutoEnabled = await send({ action: 'indexPolicySetAuto', accountId: consentId, enabled: true });
-    check(preIndexAutoEnabled.success && preIndexAutoEnabled.result.autoEnabled,
-      'automatic-index preference can be enabled independently before first index completion');
-    check((await send({ action: 'indexPolicyGet', accountId: consentId })).result.autoEnabled,
-      'pre-index automatic-index preference persists');
     check(!(await send({ action: 'indexPolicyFinishInitial', accountId: consentId })).success,
       'unconsented account cannot claim initial index completion');
     const consentGrant = await send({ action: 'indexPolicyConsent', accountId: consentId });
-    check(consentGrant.success && consentGrant.result.consentAt > 0, 'explicit initial consent persists');
+    check(consentGrant.success && consentGrant.result.consentAt > 0 && consentGrant.result.autoEnabled,
+      'first explicit full-index consent also enables automatic updates');
+    check((await send({ action: 'indexPolicyGet', accountId: consentId })).result.autoEnabled,
+      'automatic updates are enabled immediately when first-index consent is granted');
     const consentAgain = await send({ action: 'indexPolicyConsent', accountId: consentId });
     check(consentAgain.result.consentAt === consentGrant.result.consentAt,
       'repeated consent request does not reset the original authorization timestamp');
+    check(consentAgain.result.autoEnabled,
+      'repeated consent preserves the existing automatic-update preference');
     check(!(await send({ action: 'indexPolicyFinishInitial', accountId: consentId })).success,
       'consent alone never marks full index complete');
     const snapshot = [
