@@ -3778,6 +3778,8 @@
 
   const autoIndexLastCheckedByAccount = new Map();
   const AUTO_INDEX_MIN_CHECK_MS = 5 * 60 * 1000;
+  const initialIndexKickoffByAccount = new Map();
+  const INITIAL_INDEX_KICKOFF_RETRY_MS = 60 * 1000;
   async function maybeAutoIncrementalIndex(records, options = {}) {
     if (!S.settings.enabled || document.hidden || !records?.length) return { skipped: 'inactive' };
     const accountId = await window.APIHandler.getAccountId();
@@ -3824,6 +3826,29 @@
       const policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
       if (policy?.initialSnapshotReady && !policy.initialCompletedAt) {
         await finishInitialIndexIfReady(accountId);
+      }
+      // The auto-update preference is independent from initial completion.
+      // Once the user has granted full-index consent, use the same durable
+      // index queue to finish the initial snapshot without requiring a Popup click.
+      if (policy?.autoEnabled === true && policy?.consentAt && !policy?.initialCompletedAt) {
+        const activeInitialTask = tasks.some(task => task.type === 'index'
+          && ['pending', 'running', 'paused'].includes(task.status));
+        const lastKickoff = initialIndexKickoffByAccount.get(accountId) || 0;
+        if (!activeInitialTask && Date.now() - lastKickoff >= INITIAL_INDEX_KICKOFF_RETRY_MS) {
+          initialIndexKickoffByAccount.set(accountId, Date.now());
+          try {
+            const records = await window.APIHandler.getCachedConversationList();
+            if (policy.initialSnapshotReady) {
+              await updateFullTextIndex(records, null, { automatic: true, initial: true });
+            } else {
+              await updateIndexWithConsent(records, null, true);
+            }
+          } catch (error) {
+            log('Automatic initial index continuation failed:', error.message);
+            await runtimeMessage({ action: 'indexSetupLog', accountId,
+              message: `自动补齐首次索引失败：${error.message}` }).catch(() => {});
+          }
+        }
       }
     } finally {
       recoveringIndexTasks = false;
