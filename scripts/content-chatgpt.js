@@ -16,6 +16,7 @@
   const EXPORT_VOLUME_MAX_BYTES = 24 * 1024 * 1024;
   const EXPORT_REQUEST_GAP_MS = 900;
   const EXPORT_GROUP_GAP_MS = 10 * 1000;
+  const INDEX_REQUEST_GAP_MS = 3 * 1000;
   const EXPORT_RATE_LIMIT_DEFAULT_MS = 60 * 1000;
   const EXPORT_MAX_RETRIES = 3;
   const EXPORT_RETRY_DELAYS_MS = [1000, 3000, 8000];
@@ -3661,7 +3662,7 @@
         const isLast = index === total - 1;
         const groupEnd = (index + 1) % EXPORT_GROUP_SIZE === 0;
         if (!isLast && usedNetwork) {
-          const delay = groupEnd ? EXPORT_GROUP_GAP_MS : EXPORT_REQUEST_GAP_MS;
+          const delay = groupEnd ? EXPORT_GROUP_GAP_MS : INDEX_REQUEST_GAP_MS;
           await indexTaskMessage('taskPhase', accountId, {
             id: taskId, owner: INDEX_EXECUTOR_ID, token,
             phase: 'waiting', waitUntil: Date.now() + delay

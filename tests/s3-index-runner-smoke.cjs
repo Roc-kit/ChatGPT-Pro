@@ -19,6 +19,7 @@ assert(start >= 0 && end > start, 'production task runner functions are present'
 const jobs = new Map();
 const fetched = [];
 const indexed = new Map();
+const pacingWaits = [];
 const failOnce = new Set();
 const failWithStatus = new Map();
 let allowRetryPacing = false;
@@ -38,7 +39,7 @@ const context = {
   Date,
   crypto: { randomUUID },
   EXPORT_GROUP_SIZE: 50,
-  EXPORT_REQUEST_GAP_MS: 900,
+  INDEX_REQUEST_GAP_MS: 3000,
   EXPORT_GROUP_GAP_MS: 10000,
   S: { settings: { enabled: true } },
   document: { hidden: false },
@@ -69,10 +70,12 @@ const context = {
     }
     if (failOnce.delete(record.id)) throw Error('mock temporary failure');
     return { data: { id: record.id, title: record.title, mapping: {},
-      ...(record.rawUpdateTime ? { update_time: record.rawUpdateTime } : {}) }, source: 'cache' };
+      ...(record.rawUpdateTime ? { update_time: record.rawUpdateTime } : {}) },
+      source: record.network ? 'network' : 'cache' };
   },
   buildSearchIndexRecord: (data, record) => ({ id: record.id, updateTime: record.updateTime, messages: [] }),
-  waitForExport: async () => {
+  waitForExport: async ms => {
+    pacingWaits.push(ms);
     if (!allowRetryPacing) throw new Error('local records should not incur network pacing');
   },
   async runtimeMessage(msg) {
@@ -306,6 +309,14 @@ async function main() {
     { id: 'retry-success', title: 'Keep success', updateTime: 18 }
   ];
   allowRetryPacing = true;
+  const beforeNetworkPacing = pacingWaits.length;
+  await context.runner.updateFullTextIndex([
+    { id: 'network-paced-1', title: 'Network paced 1', updateTime: 170, network: true },
+    { id: 'network-paced-2', title: 'Network paced 2', updateTime: 171, network: true }
+  ]);
+  assert.deepEqual(pacingWaits.slice(beforeNetworkPacing), [3000],
+    'network-backed index requests wait exactly 3 seconds between conversations');
+
   failOnce.add('retry-once');
   const beforeFirstAttempt = fetched.length;
   const firstAttempt = await context.runner.updateFullTextIndex(retryRecords);
