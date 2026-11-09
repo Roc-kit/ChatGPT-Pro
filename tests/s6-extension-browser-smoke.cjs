@@ -2100,8 +2100,8 @@ async function main() {
       `document.querySelector('[data-chatgpt-pro-auto-continue]').title === 'Automatically send the specified message'`),
     'Auto Continue toolbar tooltip returns to English with the active locale');
     await eventually(async () => cdp.eval(popupSession, `new Promise(resolve =>
-      chrome.storage.local.get('autoContinueText', values => resolve(!Object.hasOwn(values, 'autoContinueText'))))`),
-    'legacy built-in Chinese continuation text is removed from stored settings');
+      chrome.storage.local.get('autoContinueText', values => resolve(values.autoContinueText === '继续')))`),
+    'user-specified Chinese continuation text remains in stored settings');
     await cdp.eval(pageSession,
       `document.querySelector('[data-chatgpt-pro-auto-continue]').click()`);
     await eventually(async () => cdp.eval(pageSession,
@@ -2117,8 +2117,8 @@ async function main() {
       return { value: input?.value, placeholder: input?.placeholder, startDisabled: start?.disabled };
     })()`);
     assert.deepEqual(autoContinueDefaults, {
-      value: '', placeholder: 'Enter a message to send', startDisabled: true
-    }, 'auto-continue starts with an empty message and cannot send until the user enters one');
+      value: '继续', placeholder: 'Enter a message to send', startDisabled: false
+    }, 'auto-continue preserves a saved Chinese message and enables Start');
     await cdp.eval(pageSession, `(() => {
       const input = document.querySelector('[data-chatgpt-pro-auto-popover] [data-auto-text]');
       input.value = 'Continue'; input.dispatchEvent(new Event('input', { bubbles: true }));

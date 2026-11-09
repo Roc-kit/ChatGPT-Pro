@@ -5592,12 +5592,8 @@
     S.settings.contextBudgetTokens = window.ChatGPTProContextBudget.normalizeBudget(values.contextBudgetTokens);
     S.settings.autoContinueEnabled = values.autoContinueEnabled === true;
     if (typeof values.autoContinueText === 'string') {
-      if (values.autoContinueText.trim() === '继续') {
-        // The previous release supplied this as a built-in default. Remove
-        // that legacy value so the message field starts empty after upgrade.
-        S.settings.autoContinueText = '';
-        chrome.storage.local.remove('autoContinueText');
-      } else S.settings.autoContinueText = values.autoContinueText;
+      // “继续” is a valid user message. Do not treat it as a legacy default.
+      S.settings.autoContinueText = values.autoContinueText;
     }
     if (values.autoContinueDelaySeconds) S.settings.autoContinueDelaySeconds = Number(values.autoContinueDelaySeconds) || 120;
     if (values.autoContinueMaxCount) S.settings.autoContinueMaxCount = Number(values.autoContinueMaxCount) || 20;
@@ -5787,8 +5783,7 @@
       if (changes.autoContinueText) {
         const value = typeof changes.autoContinueText.newValue === 'string'
           ? changes.autoContinueText.newValue : '';
-        S.settings.autoContinueText = value.trim() === '继续' ? '' : value;
-        if (value.trim() === '继续') chrome.storage.local.remove('autoContinueText');
+        S.settings.autoContinueText = value;
         const textInput = document.querySelector('[data-chatgpt-pro-auto-popover] [data-auto-text]');
         if (textInput && document.activeElement !== textInput) textInput.value = S.settings.autoContinueText;
         renderAutoContinueUi();
