@@ -46,6 +46,10 @@ const inactiveLegacyKeys = [
   'ui.legacyIndexOnlineLinkAndCompleteExportUnverified',
   'ui.cannotReadIndexStatus',
   'ui.anExplicitAccountIDIsRequiredLegacyIndex',
+  'ui.automaticIncrementalIndexingEnabled',
+  'ui.automaticIndexingDisabledRunningTasksUnaffected',
+  'ui.completeInitialIndexingFirst',
+  'ui.initialIndexingTaskStillRunningOrPaused',
 ]
 for (const key of inactiveLegacyKeys) {
   assert(!keys.includes(key), `${key} is not an active user-facing UI string`);
@@ -185,7 +189,6 @@ const samples = [
     'La primera indexación de texto completo requiere tu autorización expresa'],
   ['fr', 'ui.repeatedProjectCursorStoppedToPreventALoop',
     'Le curseur de pagination du projet se répète ; opération arrêtée pour éviter une boucle'],
-  ['zh-TW', 'ui.completeInitialIndexingFirst', '請先完成首次全文索引'],
   ['es', 'ui.bulkExportFailed', 'Error en la exportación por lotes'],
   ['fr', 'ui.cancelOrFinishTheTaskBeforeClearingSaved',
     'Annulez ou terminez la tâche avant de supprimer les parties ZIP enregistrées'],

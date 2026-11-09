@@ -44,6 +44,10 @@
     'ui.legacyIndexOnlineLinkAndCompleteExportUnverified',
     'ui.cannotReadIndexStatus',
     'ui.anExplicitAccountIDIsRequiredLegacyIndex',
+    'ui.automaticIncrementalIndexingEnabled',
+    'ui.automaticIndexingDisabledRunningTasksUnaffected',
+    'ui.completeInitialIndexingFirst',
+    'ui.initialIndexingTaskStillRunningOrPaused',
 
     'ui.expandMinimap',
     'ui.collapseMinimap'
