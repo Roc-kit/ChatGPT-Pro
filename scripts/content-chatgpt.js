@@ -242,6 +242,7 @@
   }
 
   async function stampMessageTimestamps() {
+    if (document.hidden) return 0;
     if (!S.settings.enabled || !S.settings.showMessageTimestamps) {
       removeMessageTimestamps();
       return 0;
@@ -351,6 +352,7 @@
   }
 
   function refreshMessageTimestampsForView() {
+    if (document.hidden) return;
     if (refreshMessageTimestampsForRoute(false)) return;
     if (!S.settings.enabled || !S.settings.showMessageTimestamps || !S.observedConversationId) return;
 
@@ -396,7 +398,7 @@
     for (const delay of MESSAGE_ROUTE_RETRY_DELAYS_MS) {
       const timer = window.setTimeout(() => {
         S.messageRouteRetryTimers = S.messageRouteRetryTimers.filter(item => item !== timer);
-        if (currentConversationId() !== conversationId) return;
+        if (document.hidden || currentConversationId() !== conversationId) return;
         if (S.settings.showMessageTimestamps) {
           stampMessageTimestamps().catch(error => log('Message timestamp route refresh failed:', error.message));
         }
@@ -613,6 +615,7 @@
   }
 
   function checkMinimapGenerationState() {
+    if (document.hidden) return;
     if (!S.settings.enabled || !currentConversationId()) {
       S.minimap.wasGenerating = false;
       S.autoIndexWasGenerating = false;
@@ -1049,7 +1052,7 @@
   }
 
   function scheduleMinimapSync(delay = 180) {
-    if (!S.settings.enabled) return;
+    if (!S.settings.enabled || document.hidden) return;
     if (S.minimap.syncTimer !== null) clearTimeout(S.minimap.syncTimer);
     S.minimap.syncTimer = window.setTimeout(() => {
       S.minimap.syncTimer = null;
@@ -1272,6 +1275,7 @@
   }
 
   function syncConversationMinimap() {
+    if (document.hidden) return;
     const conversationId = currentConversationId();
     const id = S.settings.enabled && S.settings.showMinimap ? conversationId : null;
     let previous = document.querySelector('[data-chatgpt-pro-minimap]');
@@ -2345,6 +2349,7 @@
   }
 
   async function syncContextBudget(forceNetwork = false) {
+    if (document.hidden) return;
     const id = currentConversationId();
     if (!S.settings.enabled || !S.settings.showContextBudget || !id) return;
     const state = S.contextBudget;
@@ -2396,7 +2401,7 @@
   }
 
   function tickContextBudget() {
-    if (!S.settings.enabled || !S.settings.showContextBudget) return;
+    if (document.hidden || !S.settings.enabled || !S.settings.showContextBudget) return;
     const id = currentConversationId();
     if (!id) return;
     if (S.contextBudget.id !== id) {
@@ -5516,6 +5521,9 @@
     S.observer?.disconnect();
     let messageTimer = null;
     S.observer = new MutationObserver(mutations => {
+      // Preserve DOM observers for route/task compatibility, but avoid doing
+      // UI work or scheduling automatic indexing in background tabs.
+      if (document.hidden) return;
       const sidebarRelevant = mutations.some(mutation =>
         Array.from(mutation.addedNodes).some(node =>
           node.nodeType === 1 && window.ChatGPTDomAdapter.containsSidebarConversationLink(node)
@@ -5544,6 +5552,7 @@
       if (messageRelevant) {
         clearTimeout(messageTimer);
         messageTimer = setTimeout(() => {
+          if (document.hidden) return;
           refreshMessageTimestampsForView();
           scheduleMinimapSync(180);
           resumePendingSearchJump().catch(error => log('Search result jump failed:', error.message));
@@ -5839,7 +5848,7 @@
       S.observedConversationId = currentConversationId();
     }
     setInterval(() => {
-      if (!S.settings.enabled) return;
+      if (!S.settings.enabled || document.hidden) return;
       ensureFloatingButton();
       ensureCurrentChatExportButton();
       stampAll();
@@ -5851,6 +5860,11 @@
     setInterval(backgroundSyncConversationList, BACKGROUND_SYNC_MS);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) {
+        // One foreground reconciliation replaces missed background mutations.
+        refreshMessageTimestampsForView();
+        stampAll();
+        syncConversationMinimap();
+        syncContextBudget();
         scheduleAutomaticIndexRefresh(AUTO_INDEX_POST_MESSAGE_DELAY_MS);
         recoverIndexTasks().catch(error => log('Visible index recovery failed:', error.message));
       }
