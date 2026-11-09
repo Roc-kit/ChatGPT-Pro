@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const minimapToggle = document.getElementById('minimapToggle');
   const contextBudgetToggle = document.getElementById('contextBudgetToggle');
   const contextBudgetInput = document.getElementById('contextBudgetInput');
+  const contextBudgetOptions = document.getElementById('contextBudgetOptions');
   const openInBackgroundToggle = document.getElementById('openInBackgroundToggle');
   const outsideCloseToggle = document.getElementById('outsideCloseToggle');
   const autoContinueToggle = document.getElementById('autoContinueToggle');
@@ -467,8 +468,9 @@ document.addEventListener('DOMContentLoaded', () => {
     setToggle(messageTimeToggle, values.showMessageTimestamps === true);
     setToggle(minimapToggle, values.showMinimap !== false);
     setToggle(contextBudgetToggle, values.showContextBudget !== false);
+    contextBudgetOptions.hidden = values.showContextBudget === false;
     contextBudgetInput.value = Number.isFinite(Number(values.contextBudgetTokens)) && Number(values.contextBudgetTokens) >= 10000
-      && Number(values.contextBudgetTokens) <= 2000000 ? Math.round(Number(values.contextBudgetTokens) / 1000) : 100;
+      && Number(values.contextBudgetTokens) <= 2000000 ? Math.round(Number(values.contextBudgetTokens) / 1000) : 256;
     setToggle(openInBackgroundToggle, values.openInBackground !== false);
     setToggle(outsideCloseToggle, values.closeOnOutsideClick !== false);
     const autoEnabled = values.autoContinueEnabled === true;
@@ -522,6 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
   contextBudgetToggle.addEventListener('click', () => {
     const showContextBudget = !contextBudgetToggle.classList.contains('active');
     setToggle(contextBudgetToggle, showContextBudget);
+    contextBudgetOptions.hidden = !showContextBudget;
     chrome.storage.local.set({ showContextBudget });
   });
   contextBudgetToggle.addEventListener('keydown', event => {
@@ -533,8 +536,8 @@ document.addEventListener('DOMContentLoaded', () => {
   contextBudgetInput.addEventListener('change', () => {
     const valueK = Number(contextBudgetInput.value);
     if (!Number.isFinite(valueK) || valueK < 10 || valueK > 2000) {
-      contextBudgetInput.value = 100;
-      chrome.storage.local.set({ contextBudgetTokens: 100000 });
+      contextBudgetInput.value = 256;
+      chrome.storage.local.set({ contextBudgetTokens: 256000 });
       return;
     }
     const normalizedK = Math.round(valueK);

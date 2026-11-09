@@ -7,7 +7,7 @@ const DEFAULT_SETTINGS = {
   showSidebarTime: false,
   showMessageTimestamps: false,
   showContextBudget: true,
-  contextBudgetTokens: 100000,
+  contextBudgetTokens: 256000,
   fontSize: 11,
   toolDockOpacity: 50,
   openInBackground: true,

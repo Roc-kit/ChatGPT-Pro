@@ -38,8 +38,17 @@ assert(stats.tokens > 1000 && stats.tokens < 10000, 'tool output is counted but 
 assert.equal(stats.incomplete, false);
 assert.equal(budget.percent(stats.tokens, 100000), Math.round(stats.tokens / 1000));
 assert.equal(budget.normalizeBudget('200000'), 200000);
-assert.equal(budget.normalizeBudget('banana'), 100000);
-assert.equal(budget.normalizeBudget(-1), 100000);
+assert.equal(budget.normalizeBudget('banana'), 256000);
+assert.equal(budget.normalizeBudget(-1), 256000);
+const popupHtml = fs.readFileSync(path.join(root, 'popup/popup.html'), 'utf8');
+const popupJs = fs.readFileSync(path.join(root, 'popup/popup.js'), 'utf8');
+assert.match(popupHtml, /id="contextBudgetOptions"/);
+assert.match(popupHtml, /id="contextBudgetInput"[^>]*value="256"/);
+assert.match(popupJs, /contextBudgetOptions\.hidden = !showContextBudget/);
+assert.match(popupJs, /contextBudgetOptions\.hidden = values\.showContextBudget === false/);
+assert(popupHtml.indexOf('id="outsideCloseToggle"') < popupHtml.indexOf('id="toolDockOpacity"'));
+assert(popupHtml.indexOf('id="toolDockOpacity"') < popupHtml.indexOf('id="size" type="number"'));
+assert(popupHtml.indexOf('id="size" type="number"') < popupHtml.indexOf('id="filenamePreset"'));
 assert.equal(budget.percent(125000, 100000), 125, 'over-budget values are not clamped');
 
 const missing = { ...data, current_node: 'not-found' };

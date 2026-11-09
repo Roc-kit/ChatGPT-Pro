@@ -5104,7 +5104,6 @@ status.refreshOutdatedIndexCount`.split('\n');
     ].map(locale => [locale, [scope.ChatGPTProLocalePacks[locale]['ui.openExportMenu']]]))
   });
   const popupDisplayKeys = `ui.followBrowserLanguage
-ui.interfaceDisplay
 ui.toolbarOpacity
 ui.restoreOpacityOnHover
 ui.behaviorSettings`.split('\n');

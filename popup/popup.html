@@ -29,21 +29,20 @@
     .toggle::after { content:""; position:absolute; width:19px; height:19px; left:2px; top:2px; border-radius:50%; background:#fff; box-shadow:0 1px 3px #0003; transition:.15s; }
     .toggle.active { background:#10a37f; }
     .toggle.active::after { transform:translateX(19px); }
-    .setting-row { min-height:38px; }
-    .setting-row + .setting-row { border-top:1px solid #f0f2f1; }
+    .setting-row { min-height:46px; }
     .setting-row > span:first-child { line-height:1.3; }
     .local-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
     .local-stats > span { display:flex; flex-direction:column-reverse; align-items:center; gap:3px; padding:10px 3px; border-radius:8px; background:#f5f8f7; font-size:10px; color:#76857e; }
     .local-stats strong { color:#1f2937; font-size:20px; line-height:1.2; }
     .inline-select { width:auto; max-width:155px; padding:6px 9px; font-size:11px; }
     .timestamp-size-control { display:flex; align-items:center; gap:5px; flex:0 0 auto; }
-    .timestamp-size-control input { width:68px; padding:6px 8px; text-align:center; font-size:12px; }
+    .timestamp-size-control input { width:82px; padding:6px 8px; text-align:right; font-size:12px; }
     .timestamp-size-control span { font-size:11px; color:#6b7280; }
     .context-budget-control { display:flex; align-items:center; gap:6px; flex:0 0 auto; }
     .context-budget-input { width:82px; flex:0 0 82px; padding:6px 8px; text-align:right; }
     .context-budget-unit { min-width:12px; font-size:11px; color:#6b7280; }
     #languageSelect { width:142px; max-width:142px; height:32px; }
-    .opacity-setting { display:flex; flex-direction:column; gap:7px; padding:8px 0 3px; }
+    .opacity-setting { display:flex; flex-direction:column; gap:7px; padding:6px 0 8px; }
     .opacity-setting .row { min-height:0; }
     .opacity-setting output { min-width:42px; color:#0d9373; font-size:12px; font-weight:600; text-align:right; }
     .opacity-setting input[type="range"] { width:100%; height:18px; margin:0; padding:0; border:0; background:transparent; accent-color:#10a37f; cursor:pointer; }
@@ -92,6 +91,20 @@
     [dir="rtl"] .management:not([open]) .management-summary::after { transform:rotate(135deg); }
     .management-body { padding:6px 16px 15px; background:#fff; border-top:1px solid #edf1ef; }
     .management-body .row { margin-top:10px; }
+    #advancedSettings .management-body .row { margin-top:0; }
+    #advancedSettings .subsection { margin-top:12px; padding-top:12px; }
+    #advancedSettings .subsection:first-child { margin-top:0; border-top:0; }
+    #advancedSettings .subsection .label { margin-bottom:4px; }
+    #advancedSettings .setting-row > span:first-child,
+    #advancedSettings .setting-row > label:first-child { flex:1 1 auto; min-width:0; line-height:1.4; }
+    #advancedSettings .setting-row .toggle,
+    #advancedSettings .setting-row .timestamp-size-control,
+    #advancedSettings .setting-row .context-budget-control { margin-left:auto; }
+    #advancedSettings .setting-row .timestamp-size-control,
+    #advancedSettings .setting-row .context-budget-control { width:104px; justify-content:flex-end; }
+    #advancedSettings .setting-row input[type="number"] { height:32px; }
+    #advancedSettings .hint { margin-top:4px; }
+    #advancedSettings [hidden] { display:none !important; }
     .management-body #refresh { margin-top:10px; }
     .subsection { margin-top:15px; padding-top:12px; border-top:1px solid #edf1ef; }
     .subsection .label { margin-bottom:8px; }
@@ -154,23 +167,27 @@
     </select></div>
   </div>
   <details id="advancedSettings" class="management">
-    <summary class="management-summary"><span class="summary-copy"><strong>高级设置</strong><span class="summary-hint">界面显示、后台打开、弹窗行为、导出文件名</span></span></summary>
+    <summary class="management-summary"><span class="summary-copy"><strong>高级设置</strong><span class="summary-hint">上下文预算、显示、行为、导出文件名</span></span></summary>
     <div class="management-body">
-    <div class="subsection"><div class="label">界面显示</div>
+    <div class="subsection"><div class="label">上下文预算</div>
+      <div class="row setting-row"><span>显示上下文预算进度</span><div class="toggle active" id="contextBudgetToggle" role="switch" aria-checked="true" tabindex="0" aria-label="显示上下文预算进度"></div></div>
+      <div id="contextBudgetOptions">
+        <div class="row setting-row"><label for="contextBudgetInput">单对话 Token 预算</label><div class="context-budget-control"><input id="contextBudgetInput" class="context-budget-input" type="number" min="10" max="2000" step="1" value="256" aria-label="单对话 Token 预算（K）"><span class="context-budget-unit" aria-hidden="true">K</span></div></div>
+        <div class="hint">默认 256K；百分比表示当前分支文本估算量占自定义预算的比例，不是模型官方窗口或订阅额度。</div>
+      </div>
+    </div>
+    <div class="subsection"><div class="label">行为设置</div>
+    <div class="row setting-row"><span>启用扩展</span><div class="toggle active" id="toggle" role="switch" aria-checked="true"></div></div>
+    <div class="row setting-row"><span>后台新标签页打开</span><div class="toggle active" id="openInBackgroundToggle" role="switch" aria-checked="true"></div></div>
+    <div class="row setting-row"><span>点击弹窗外关闭</span><div class="toggle active" id="outsideCloseToggle" role="switch" aria-checked="true"></div></div>
+    </div>
+    <div class="subsection">
       <div class="opacity-setting">
         <div class="row"><span>工具栏透明度</span><output id="toolDockOpacityValue" for="toolDockOpacity">50%</output></div>
         <input id="toolDockOpacity" type="range" min="1" max="100" step="1" value="50" aria-label="工具栏透明度">
         <div class="hint">鼠标悬停时恢复为 100%</div>
       </div>
       <div class="row setting-row"><span>时间戳字号</span><div class="timestamp-size-control"><input id="size" type="number" min="8" max="24" step="1" value="11" aria-label="时间戳字号（侧边栏及消息）"><span>px</span></div></div>
-      <div class="row setting-row"><span>显示上下文预算进度</span><div class="toggle active" id="contextBudgetToggle" role="switch" aria-checked="true" tabindex="0" aria-label="显示上下文预算进度"></div></div>
-      <div class="row setting-row"><label for="contextBudgetInput">单对话 Token 预算</label><div class="context-budget-control"><input id="contextBudgetInput" class="context-budget-input" type="number" min="10" max="2000" step="1" value="100" aria-label="单对话 Token 预算（K）"><span class="context-budget-unit" aria-hidden="true">K</span></div></div>
-      <div class="hint">默认 100K；百分比表示当前分支文本估算量占自定义预算的比例，不是模型官方窗口或订阅额度。</div>
-    </div>
-    <div class="subsection"><div class="label">行为设置</div>
-    <div class="row setting-row"><span>启用扩展</span><div class="toggle active" id="toggle" role="switch" aria-checked="true"></div></div>
-    <div class="row setting-row"><span>后台新标签页打开</span><div class="toggle active" id="openInBackgroundToggle" role="switch" aria-checked="true"></div></div>
-    <div class="row setting-row"><span>点击弹窗外关闭</span><div class="toggle active" id="outsideCloseToggle" role="switch" aria-checked="true"></div></div>
     </div>
     <div class="subsection"><div class="label">导出文件名</div>
     <select id="filenamePreset">

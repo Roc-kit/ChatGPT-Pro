@@ -2,7 +2,7 @@
 globalThis.ChatGPTProContextBudget = (() => {
   'use strict';
 
-  const DEFAULT_BUDGET = 100000;
+  const DEFAULT_BUDGET = 256000;
   const MIN_BUDGET = 10000;
   const MAX_BUDGET = 2000000;
 

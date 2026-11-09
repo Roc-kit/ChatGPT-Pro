@@ -74,7 +74,7 @@
       showMessageTimestamps: false,
       showMinimap: true,
       showContextBudget: true,
-      contextBudgetTokens: 100000,
+      contextBudgetTokens: 256000,
       autoContinueEnabled: false,
       autoContinueText: '',
       autoContinueDelaySeconds: 120,
