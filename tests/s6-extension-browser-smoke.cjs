@@ -487,8 +487,8 @@ async function main() {
     'Minimap initial fetch is persisted as complete raw conversation JSON in IndexedDB before display decisions');
 
     if (process.argv.includes('--context-budget-only')) {
-      assert(await cdp.eval(popupSession, "(() => { const advanced = document.querySelector('#advancedSettings'); const input = document.querySelector('#contextBudgetInput'); const toggle = document.querySelector('#contextBudgetToggle'); return advanced.contains(input) && advanced.contains(toggle) && input.value === '100' && input.nextElementSibling?.textContent === 'K'; })()"),
-      'context budget settings live in Advanced Settings and display the budget in K');
+      assert(await cdp.eval(popupSession, "(() => { const advanced = document.querySelector('#advancedSettings'); const input = document.querySelector('#contextBudgetInput'); const toggle = document.querySelector('#contextBudgetToggle'); return advanced.contains(input) && advanced.contains(toggle) && input.value === '256' && input.nextElementSibling?.textContent === 'K'; })()"),
+      'context budget settings live in Advanced Settings and default to 256K');
       await eventually(async () => cdp.eval(pageSession, `(() => {
         const ring = document.querySelector('[data-chatgpt-pro-context-budget]');
         return Boolean(ring?.dataset.percent) && ring.nextElementSibling?.matches('[data-chatgpt-pro-auto-continue]');
@@ -496,7 +496,7 @@ async function main() {
       await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-context-budget]').click()`);
       await eventually(async () => cdp.eval(pageSession, `(() => {
         const pop = document.querySelector('[data-chatgpt-pro-context-popover]');
-        return pop && !pop.hidden && pop.querySelector('[data-context-summary]').textContent.includes('100,000') &&
+        return pop && !pop.hidden && pop.querySelector('[data-context-summary]').textContent.includes('256,000') &&
           pop.querySelector('[data-context-note]').textContent.length > 20;
       })()`), 'context popover shows one total without per-role breakdown');
       await cdp.eval(popupSession, `(() => {

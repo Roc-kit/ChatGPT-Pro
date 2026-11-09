@@ -140,6 +140,7 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     let simulateMissingId = null;
     let simulateInvalidJsonId = null;
     let detailRequests = 0;
+    let updatedRemoteDetailB = false;
     const sentUrls = [];
     window.fetch = async (input, options) => {
       const url = String(input);
@@ -168,7 +169,11 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
           const status = id === simulateGoneId ? 410 : 404;
           return { ok: false, status, json: async () => ({}), headers: { get() { return null; } } };
         }
-        json = { id, title: 'remote-details', update_time: 1700000003,
+        const updateTime = id === 'cached-0' &&
+          ((activeAccount === 'acct-b' && updatedRemoteDetailB) ||
+            (activeAccount === 'acct-a' && changedRemoteAccountA))
+          ? 1700000004 : 1700000003;
+        json = { id, title: 'remote-details', update_time: updateTime,
           mapping: { m: { message: { id: 'm', author: { role: 'user' }, content: { parts: ['details'] } } } } };
       } else throw Error('Unexpected request ' + url);
       return { ok: true, status: 200, json: async () => json, headers: { get() { return null; } } };
@@ -254,6 +259,7 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check((await window.APIHandler.getConversation('cached-0')).title === 'remote-details' && detailRequests === 1,
       'subsequent B cache hit is network-free');
     await storage.upsertDirectory('acct-b', [{ id: 'cached-0', updateTime: 1700000004 }]);
+    updatedRemoteDetailB = true;
     await window.APIHandler.getConversation('cached-0');
     check(detailRequests === 2, 'directory version change triggers exactly one detail fetch');
     check((await storage.getConversation('acct-b', 'cached-0', 1700000004)).hit,
@@ -682,6 +688,9 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
     check(completedPolicy.initialCompletedAt > 0 && !completedPolicy.initialSnapshotReady
       && completedPolicy.autoEnabled,
       'initial completion flag persists, preserves the independent auto-update preference and retires the temporary snapshot');
+    check((await send({ action: 'taskControl', accountId: consentId,
+      id: unrelatedIndexTask.result.id, operation: 'cancel' })).success,
+      'retire the paused first-index fixture before testing later automatic tasks');
     check(!(await send({ action: 'indexPolicyGet', accountId: 'acct-b' })).result.consentAt,
       'another account never inherits consent');
     const historical = await storage.getDirectoryRecord(consentId, 'historical-local-only');
@@ -818,8 +827,11 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
       'other account data survives both clear operations');
     check(!(await send({ action: 'localDataClearAccount', kind: 'index' })).success,
       'unknown account cannot clear arbitrary local data');
-    check(!(await send({ action: 'indexPolicySetAuto', accountId: 'acct-new', enabled: true })).success,
-      'new unindexed account cannot enable automatic harvesting');
+    check((await send({ action: 'indexPolicySetAuto', accountId: 'acct-new', enabled: true })).result.autoEnabled,
+      'new account can configure the independent auto-index switch before initial completion');
+    check(!(await send({ action: 'taskCreate', accountId: 'acct-new', type: 'index',
+      items: automaticItem, options: { automatic: true } })).success,
+      'enabling the switch before initial completion does not authorize automatic harvesting');
     // Only a newly requested initial scan, not reopening a tab, re-enables auto-update.
     check((await send({ action: 'indexPolicyDirectoryVerified', accountId: consentId,
       records: snapshot })).success, 'consented account may manually scan again');
@@ -838,8 +850,8 @@ const harness = `<!doctype html><meta charset="utf-8"><pre id="result">RUNNING</
         raw: { id: item.id, mapping: {} }, searchRecord: { id: item.id, messages: [] } });
     }
     check((await send({ action: 'indexPolicyFinishInitial', accountId: consentId })).result.completed &&
-      (await send({ action: 'indexPolicyGet', accountId: consentId })).result.autoEnabled,
-      'fresh user-initiated full indexing restores auto-update default');
+      (await send({ action: 'indexPolicyGet', accountId: consentId })).result.autoEnabled === false,
+      'rebuilding the index does not override the auto-update preference reset by index clearing');
 
     // Batch B: directory 429 and detail share the same account-scoped gate.
     const sharedCooldown = await send({ action: 'directoryRateLimited', accountId: 'batch-b-a', retryAfterMs: 120 });
