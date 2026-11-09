@@ -1,5 +1,15 @@
 /** fr offline UI translations. */
 window.ChatGPTProLocalePacks["fr"] = {
+  "ui.contextBudgetName": "Budget de contexte",
+  "ui.showContextBudget": "Afficher le budget de contexte",
+  "ui.contextBudgetLimit": "Budget de tokens par discussion",
+  "ui.contextBudgetHelp": "100K par défaut. Le pourcentage compare le texte estimé de cette branche à votre budget, et non à la fenêtre officielle du modèle ou au quota du forfait.",
+  "ui.contextBudgetUnavailable": "Budget de contexte : aucune donnée",
+  "ui.contextBudgetLoading": "Lecture de la conversation…",
+  "ui.contextBudgetNote": "Estimation du texte lisible de cette branche (outils compris), pas de l'utilisation réelle du contexte par le modèle.",
+  "ui.contextBudgetIncomplete": "Estimation du texte lisible de cette branche (outils compris) ; images, audio, vidéo et pièces jointes non comptés. Ce n'est pas l'utilisation réelle du contexte.",
+  "ui.contextBudgetTitle": "Budget de contexte : ~{used} / {total} Tokens ({percent}%)",
+  "ui.contextBudgetSummary": "~{used} / {total} Tokens · {percent}%",
   "ui.openChatGPT": "Ouvrir ChatGPT ↗",
   "ui.initializing": "Initialisation",
   "ui.extensionReady": "Extension prête",

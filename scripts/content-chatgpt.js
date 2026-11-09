@@ -66,11 +66,15 @@
       renderedRefreshSignature: '', renderedRefreshAt: 0,
       wasGenerating: false,
       syncTimer: null, transitionTimer: null, transitionToken: 0 },
+    contextBudget: { id: null, accountId: null, snapshot: null, stats: null,
+      pending: null, lastNetworkAt: 0, wasGenerating: false, pendingRefresh: false },
     settings: {
       enabled: true,
       showSidebarTime: false,
       showMessageTimestamps: false,
       showMinimap: true,
+      showContextBudget: true,
+      contextBudgetTokens: 100000,
       autoContinueEnabled: false,
       autoContinueText: '',
       autoContinueDelaySeconds: 120,
@@ -667,6 +671,9 @@
     S.minimap.cachedMessages = data;
     S.minimap.dataSignature = expectedFingerprint;
     S.minimap.signature = '';
+    // Reuse the already-fetched and verified snapshot for the budget meter.
+    // Do not issue a second conversation-detail request for the same data.
+    if (S.settings.showContextBudget) syncContextBudget();
     return true;
   }
 
@@ -1534,6 +1541,13 @@
 
   function setupOutsideClose() {
     document.addEventListener('pointerdown', event => {
+      const contextPopover = document.querySelector('[data-chatgpt-pro-context-popover]');
+      const contextButton = document.querySelector('[data-chatgpt-pro-context-budget]');
+      if (contextPopover && !contextPopover.hidden && !contextPopover.contains(event.target)
+          && !contextButton?.contains(event.target)) {
+        contextPopover.hidden = true;
+        contextButton?.setAttribute('aria-expanded', 'false');
+      }
       if (!S.timeline || !S.settings.closeOnOutsideClick) return;
       const target = event.target;
       if (!(target instanceof Node)) return;
@@ -1775,7 +1789,9 @@
       window.innerHeight - actionHeight - VIEWPORT_MARGIN);
     const availablePanelHeight = Math.max(0,
       window.innerHeight - actionHeight - headerHeight - VIEWPORT_MARGIN * 2);
-    const minPanelHeight = Math.min(48, availablePanelHeight);
+    // Keep at least six Minimap markers visible even after an extra action
+    // (the context-budget ring) makes the footer taller.
+    const minPanelHeight = Math.min(80, availablePanelHeight);
     const minTop = Math.min(maxTop, Math.max(VIEWPORT_MARGIN,
       Math.ceil((window.innerHeight - actionHeight + headerHeight + minPanelHeight) / 2)));
     return { minTop, maxTop };
@@ -1899,7 +1915,12 @@
 
   function closeToolPopovers(except = null) {
     document.querySelectorAll('.chatgpt-pro-tool-popover').forEach(element => {
-      if (element !== except) element.hidden = true;
+      if (element !== except) {
+        element.hidden = true;
+        if (element.matches('[data-chatgpt-pro-context-popover]')) {
+          document.querySelector('[data-chatgpt-pro-context-budget]')?.setAttribute('aria-expanded', 'false');
+        }
+      }
     });
   }
 
@@ -2003,6 +2024,7 @@
       ensureCurrentChatImageButton();
       const autoButton = ensureAutoContinueButton();
       if (autoButton.parentElement !== actions) actions.appendChild(autoButton);
+      ensureContextBudgetButton();
       if (actions.lastElementChild !== existing) actions.appendChild(existing);
       if (Math.abs(actions.offsetHeight - previousHeight) > 0.5) placeCurrentChatExportButton();
       return;
@@ -2034,6 +2056,7 @@
     ensureCurrentChatToolActions().appendChild(button);
     setupCurrentChatExportDrag(button);
     ensureAutoContinueButton();
+    ensureContextBudgetButton();
     // Keep the primary download action at the bottom of the minimap dock.
     ensureCurrentChatToolActions().appendChild(button);
     placeCurrentChatExportButton();
@@ -2041,6 +2064,192 @@
 
   function ensureCurrentChatImageButton() {
     document.querySelector('[data-chatgpt-pro-current-images]')?.remove();
+  }
+
+  function resetContextBudget(id = null) {
+    const state = S.contextBudget;
+    state.id = id;
+    state.accountId = null;
+    state.snapshot = null;
+    state.stats = null;
+    state.pending = null;
+    state.lastNetworkAt = 0;
+    state.wasGenerating = false;
+    state.pendingRefresh = false;
+    const popover = document.querySelector('[data-chatgpt-pro-context-popover]');
+    if (popover) popover.hidden = true;
+    renderContextBudget();
+  }
+
+  function renderContextBudget() {
+    const button = document.querySelector('[data-chatgpt-pro-context-budget]');
+    if (!button) return;
+    const { stats, id } = S.contextBudget;
+    const ready = id === currentConversationId() && stats !== null;
+    const tokens = ready ? stats.tokens : 0;
+    const limit = S.settings.contextBudgetTokens;
+    const percentage = ready ? window.ChatGPTProContextBudget.percent(tokens, limit) : 0;
+    const tier = !ready ? 'unknown' : percentage >= 100 ? 'over'
+      : percentage >= 90 ? 'high' : percentage >= 70 ? 'medium' : 'normal';
+    button.dataset.tier = tier;
+    button.dataset.percent = ready ? String(percentage) : '';
+    const arc = button.querySelector('[data-context-ring-progress]');
+    const circumference = 2 * Math.PI * 13.5;
+    arc?.setAttribute('stroke-dasharray', String(circumference));
+    arc?.setAttribute('stroke-dashoffset', String(circumference * (1 - Math.min(100, percentage) / 100)));
+    const center = button.querySelector('[data-context-ring-value]');
+    if (center) center.textContent = ready ? (percentage > 999 ? '999+' : String(percentage)) : '—';
+    const i18n = window.ChatGPTProI18n;
+    const values = { used: tokens.toLocaleString(), total: limit.toLocaleString(), percent: percentage };
+    const label = ready ? i18n.format('ui.contextBudgetTitle', values) : i18n.t('ui.contextBudgetUnavailable');
+    button.title = label;
+    button.setAttribute('aria-label', label);
+
+    const popover = document.querySelector('[data-chatgpt-pro-context-popover]');
+    if (!popover) return;
+    const summary = popover.querySelector('[data-context-summary]');
+    if (summary) summary.textContent = ready
+      ? i18n.format('ui.contextBudgetSummary', values) : i18n.t('ui.contextBudgetLoading');
+    const note = popover.querySelector('[data-context-note]');
+    if (note) note.textContent = i18n.t(ready && stats.incomplete
+      ? 'ui.contextBudgetIncomplete' : 'ui.contextBudgetNote');
+  }
+
+  function ensureContextBudgetPopover() {
+    const dock = ensureCurrentChatToolDock();
+    let popover = dock.querySelector('[data-chatgpt-pro-context-popover]');
+    if (popover) return popover;
+    popover = document.createElement('div');
+    popover.className = 'chatgpt-pro-tool-popover chatgpt-pro-context-popover';
+    popover.setAttribute('data-chatgpt-pro-context-popover', '1');
+    popover.hidden = true;
+    popover.innerHTML = `<strong>${window.ChatGPTProI18n.t('ui.contextBudgetName')}</strong><div data-context-summary></div><small data-context-note></small>`;
+    dock.appendChild(popover);
+    renderContextBudget();
+    return popover;
+  }
+
+  function ensureContextBudgetButton() {
+    const actions = ensureCurrentChatToolActions();
+    let button = actions.querySelector('[data-chatgpt-pro-context-budget]');
+    if (!S.settings.showContextBudget) {
+      button?.remove();
+      actions.closest('[data-chatgpt-pro-tool-dock]')?.querySelector('[data-chatgpt-pro-context-popover]')?.remove();
+      return;
+    }
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'chatgpt-pro-current-export chatgpt-pro-context-budget';
+      button.setAttribute('data-chatgpt-pro-context-budget', '1');
+      button.innerHTML = '<svg viewBox="0 0 38 38" aria-hidden="true"><circle cx="19" cy="19" r="13.5" class="chatgpt-pro-context-track"/><circle cx="19" cy="19" r="13.5" class="chatgpt-pro-context-progress" data-context-ring-progress/><text x="19" y="22.5" data-context-ring-value>—</text></svg>';
+      button.addEventListener('click', () => {
+        const popover = ensureContextBudgetPopover();
+        const opening = popover.hidden;
+        closeToolPopovers(popover);
+        popover.hidden = !opening;
+        button.setAttribute('aria-expanded', String(opening));
+        if (opening) {
+          const buttonRect = button.getBoundingClientRect();
+          const dockRect = button.closest('[data-chatgpt-pro-tool-dock]').getBoundingClientRect();
+          const above = Math.max(10, Math.min(window.innerHeight - 125, buttonRect.top - 20));
+          popover.style.setProperty('top', `${above - dockRect.top}px`, 'important');
+          popover.style.setProperty('bottom', 'auto', 'important');
+          if (dockRect.left < 320) {
+            popover.style.setProperty('right', 'auto', 'important');
+            popover.style.setProperty('left', '46px', 'important');
+          } else {
+            popover.style.setProperty('right', '46px', 'important');
+            popover.style.setProperty('left', 'auto', 'important');
+          }
+        }
+      });
+    }
+    const autoButton = actions.querySelector('[data-chatgpt-pro-auto-continue]');
+    if (button.parentNode !== actions || button.nextElementSibling !== autoButton) {
+      actions.insertBefore(button, autoButton || actions.firstChild);
+    }
+    renderContextBudget();
+  }
+
+  async function syncContextBudget(forceNetwork = false) {
+    const id = currentConversationId();
+    if (!S.settings.enabled || !S.settings.showContextBudget || !id) return;
+    const state = S.contextBudget;
+    if (state.id !== id) resetContextBudget(id);
+    if (state.pending) return state.pending;
+    const pending = (async () => {
+      const accountId = await window.APIHandler.getAccountId();
+      if (id !== currentConversationId() || !S.settings.enabled || !S.settings.showContextBudget) return;
+      if (state.accountId !== accountId) {
+        state.accountId = accountId;
+        state.snapshot = null;
+        state.stats = null;
+        renderContextBudget();
+      }
+      let data = S.minimap.cachedId === id && S.minimap.cachedAccountId === accountId
+        ? S.minimap.cachedMessages : null;
+      if (!data && S.messageConversationId === id) data = S.messageConversation;
+      if (S.settings.showMinimap && !data) return; // Minimap already owns the fetch.
+      if (!S.settings.showMinimap && forceNetwork && !window.ChatGPTDomAdapter.isGenerating()
+          && Date.now() - state.lastNetworkAt >= 30000) {
+        state.lastNetworkAt = Date.now();
+        state.pendingRefresh = false;
+        data = await refreshConversationFromNetwork(id);
+      }
+      if (!data) data = await window.APIHandler.getConversation(id);
+      // An independent timestamp/minimap cache can lag behind a just-refreshed
+      // budget snapshot. Never overwrite the latter with an older revision.
+      if (state.snapshot && data && data !== state.snapshot
+          && timestampValue(data.update_time ?? data.updated_at)
+            < timestampValue(state.snapshot.update_time ?? state.snapshot.updated_at)) {
+        data = state.snapshot;
+      }
+      if (id !== currentConversationId() || state.accountId !== accountId
+          || !S.settings.enabled || !S.settings.showContextBudget) return;
+      if (data !== state.snapshot || !state.stats) {
+        state.stats = window.ChatGPTProContextBudget.estimateConversation(data);
+        state.snapshot = data;
+      }
+      renderContextBudget();
+    })().catch(error => {
+      log('Context budget data unavailable:', error.message);
+      renderContextBudget();
+    }).finally(() => {
+      if (state.pending === pending) state.pending = null;
+    });
+    state.pending = pending;
+    return pending;
+  }
+
+  function tickContextBudget() {
+    if (!S.settings.enabled || !S.settings.showContextBudget) return;
+    const id = currentConversationId();
+    if (!id) return;
+    if (S.contextBudget.id !== id) {
+      resetContextBudget(id);
+      syncContextBudget();
+      return;
+    }
+    const generating = window.ChatGPTDomAdapter.isGenerating();
+    const finished = S.contextBudget.wasGenerating && !generating;
+    S.contextBudget.wasGenerating = generating;
+    if (finished) {
+      if (S.settings.showMinimap) {
+        syncContextBudget();
+        return;
+      }
+      S.contextBudget.pendingRefresh = true;
+    }
+    if (S.settings.showMinimap) return; // The existing Minimap refresh is authoritative.
+    // Delayed search jumps and ChatGPT virtualization temporarily mount
+    // placeholder message IDs. They must not trigger a network refetch.
+    // A completed response is the authoritative refresh signal here. If a
+    // second reply finishes within the 30s cooldown, refresh once it elapses.
+    if (!generating && S.contextBudget.pendingRefresh && !S.contextBudget.pending
+        && Date.now() - S.contextBudget.lastNetworkAt >= 30000) {
+      syncContextBudget(true);
+    }
   }
 
   function autoContinueSnapshot() {
@@ -5189,7 +5398,7 @@
   async function loadSettings() {
     const values = await new Promise(resolve => {
       chrome.storage.local.get(
-        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'fontSize', 'toolDockOpacity', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'toolDockPositionX', 'currentExportPositionY', 'panelSize', 'uiLanguage', 'autoContinueEnabled', 'autoContinueText', 'autoContinueDelaySeconds', 'autoContinueMaxCount'],
+        ['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'showContextBudget', 'contextBudgetTokens', 'fontSize', 'toolDockOpacity', 'openInBackground', 'closeOnOutsideClick', 'exportFilenameTemplate', 'launcherPosition', 'toolDockPositionX', 'currentExportPositionY', 'panelSize', 'uiLanguage', 'autoContinueEnabled', 'autoContinueText', 'autoContinueDelaySeconds', 'autoContinueMaxCount'],
         data => resolve(data || {})
       );
     });
@@ -5197,6 +5406,8 @@
     if (values.showSidebarTime !== undefined) S.settings.showSidebarTime = values.showSidebarTime;
     if (values.showMessageTimestamps !== undefined) S.settings.showMessageTimestamps = values.showMessageTimestamps;
     S.settings.showMinimap = values.showMinimap !== false;
+    S.settings.showContextBudget = values.showContextBudget !== false;
+    S.settings.contextBudgetTokens = window.ChatGPTProContextBudget.normalizeBudget(values.contextBudgetTokens);
     S.settings.autoContinueEnabled = values.autoContinueEnabled === true;
     if (typeof values.autoContinueText === 'string') {
       if (values.autoContinueText.trim() === '继续') {
@@ -5374,6 +5585,16 @@
         S.settings.showMinimap = changes.showMinimap.newValue !== false;
         syncConversationMinimap();
       }
+      if (changes.showContextBudget) {
+        S.settings.showContextBudget = changes.showContextBudget.newValue !== false;
+        ensureCurrentChatExportButton();
+        if (S.settings.showContextBudget) syncContextBudget();
+        placeCurrentChatExportButton();
+      }
+      if (changes.contextBudgetTokens) {
+        S.settings.contextBudgetTokens = window.ChatGPTProContextBudget.normalizeBudget(changes.contextBudgetTokens.newValue);
+        renderContextBudget();
+      }
       if (changes.autoContinueEnabled) {
         S.settings.autoContinueEnabled = changes.autoContinueEnabled.newValue === true;
         if (!S.settings.autoContinueEnabled) stopAutoContinue();
@@ -5416,6 +5637,8 @@
         window.ChatGPTProI18n?.apply(document.querySelector('[data-chatgpt-pro-current-images]'));
         window.ChatGPTProI18n?.apply(document.querySelector('[data-chatgpt-pro-minimap]'));
         renderAutoContinueUi();
+        document.querySelector('[data-chatgpt-pro-context-popover]')?.remove();
+        renderContextBudget();
         refreshMinimapPanelLabels();
       }
       if (changes.panelSize?.newValue) S.settings.panelSize = changes.panelSize.newValue;
@@ -5453,6 +5676,7 @@
       if (S.settings.showMessageTimestamps) {
         stampMessageTimestamps().catch(error => log('Message timestamp refresh failed:', error.message));
       }
+      syncContextBudget();
     }, RECHECK_MS);
     setInterval(backgroundSyncConversationList, BACKGROUND_SYNC_MS);
     document.addEventListener('visibilitychange', () => {
@@ -5462,6 +5686,7 @@
       }
     });
     window.setInterval(tickAutoContinue, 1000);
+    window.setInterval(tickContextBudget, 2000);
     // Resume ordinary incremental indexing automatically only AFTER the user
     // authorized and completed the first full index. Never auto-consent.
     window.setTimeout(() => backgroundSyncConversationList(), 3000);
@@ -5480,6 +5705,7 @@
     S.ready = true;
     ensureCurrentChatExportButton();
     syncConversationMinimap();
+    syncContextBudget();
     window.setTimeout(() => resumePendingSearchJump().catch(error => log('Search result jump failed:', error.message)), 600);
   }
 
@@ -5497,6 +5723,8 @@
     S.minimap.renderedRefreshSignature = '';
     S.minimap.renderedRefreshAt = 0;
     S.minimap.wasGenerating = false;
+    resetContextBudget(currentConversationId());
+    syncContextBudget();
     if (S.minimap.syncTimer !== null) clearTimeout(S.minimap.syncTimer);
     S.minimap.syncTimer = null;
     S.minimap.signature = '';

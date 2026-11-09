@@ -1,5 +1,15 @@
 /** ar offline UI translations. */
 window.ChatGPTProLocalePacks["ar"] = {
+  "ui.contextBudgetName": "ميزانية السياق",
+  "ui.showContextBudget": "إظهار ميزانية السياق",
+  "ui.contextBudgetLimit": "ميزانية الرموز لكل محادثة",
+  "ui.contextBudgetHelp": "الافتراضي 100K. تقارن النسبة النص المقدّر في هذا الفرع بميزانيتك، وليس بسعة النموذج الرسمية أو حصة الاشتراك.",
+  "ui.contextBudgetUnavailable": "ميزانية السياق: لا توجد بيانات",
+  "ui.contextBudgetLoading": "جارٍ قراءة المحادثة الحالية…",
+  "ui.contextBudgetNote": "تقدير للنص المقروء في هذا الفرع (بما في ذلك الأدوات)، وليس استخدام السياق الفعلي للنموذج.",
+  "ui.contextBudgetIncomplete": "تقدير للنص المقروء في هذا الفرع (بما في ذلك الأدوات)؛ لا يشمل الصور والصوت والفيديو والمرفقات. ليس استخدام السياق الفعلي للنموذج.",
+  "ui.contextBudgetTitle": "ميزانية السياق: نحو {used} / {total} Tokens ({percent}%)",
+  "ui.contextBudgetSummary": "نحو {used} / {total} Tokens · {percent}%",
   "ui.openChatGPT": "فتح ChatGPT ↗",
   "ui.initializing": "جارٍ التهيئة",
   "ui.extensionReady": "الإضافة جاهزة",

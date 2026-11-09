@@ -38,6 +38,7 @@
         "scripts/locales/reviewed-ui.js",
         "scripts/i18n.js",
         "scripts/chatgpt-dom-adapter.js",
+        "scripts/context-budget.js",
         "scripts/api-handler.js",
         "scripts/content-chatgpt.js"
       ],

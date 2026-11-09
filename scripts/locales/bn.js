@@ -1,5 +1,15 @@
 /** bn offline UI translations. */
 window.ChatGPTProLocalePacks["bn"] = {
+  "ui.contextBudgetName": "কনটেক্সট বাজেট",
+  "ui.showContextBudget": "কনটেক্সট বাজেট দেখান",
+  "ui.contextBudgetLimit": "প্রতি চ্যাট টোকেন বাজেট",
+  "ui.contextBudgetHelp": "ডিফল্ট 100K। শতাংশটি এই শাখার অনুমান করা টেক্সটকে আপনার বাজেটের সঙ্গে তুলনা করে, মডেলের সরকারি সীমা বা প্ল্যান কোটার সঙ্গে নয়।",
+  "ui.contextBudgetUnavailable": "কনটেক্সট বাজেট: ডেটা নেই",
+  "ui.contextBudgetLoading": "বর্তমান কথোপকথন পড়া হচ্ছে…",
+  "ui.contextBudgetNote": "এই শাখার পাঠযোগ্য টেক্সটের অনুমান (টুলসহ), মডেলের প্রকৃত কনটেক্সট ব্যবহার নয়।",
+  "ui.contextBudgetIncomplete": "এই শাখার পাঠযোগ্য টেক্সটের অনুমান (টুলসহ); ছবি, অডিও, ভিডিও এবং সংযুক্তি গণনা করা হয় না। এটি প্রকৃত মডেল কনটেক্সট ব্যবহার নয়।",
+  "ui.contextBudgetTitle": "কনটেক্সট বাজেট: ~{used} / {total} Tokens ({percent}%)",
+  "ui.contextBudgetSummary": "~{used} / {total} Tokens · {percent}%",
   "ui.openChatGPT": "ChatGPT খুলুন ↗",
   "ui.initializing": "শুরু হচ্ছে",
   "ui.extensionReady": "এক্সটেনশন প্রস্তুত",

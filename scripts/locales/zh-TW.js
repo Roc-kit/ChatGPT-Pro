@@ -1,5 +1,15 @@
 /** zh-TW offline UI translations. */
 window.ChatGPTProLocalePacks["zh-TW"] = {
+  "ui.contextBudgetName": "上下文預算",
+  "ui.showContextBudget": "顯示上下文預算進度",
+  "ui.contextBudgetLimit": "單一對話 Token 預算",
+  "ui.contextBudgetHelp": "預設 100K；百分比是目前分支文字估算量相對於自訂預算的比例，不是模型官方視窗或訂閱額度。",
+  "ui.contextBudgetUnavailable": "上下文預算：資料尚未就緒",
+  "ui.contextBudgetLoading": "正在讀取目前對話資料…",
+  "ui.contextBudgetNote": "僅估算目前分支可讀取的文字（含工具呼叫與回傳），不代表模型實際上下文用量。",
+  "ui.contextBudgetIncomplete": "僅估算目前分支可讀取的文字（含工具呼叫與回傳）；圖片、影音及附件不計入。不代表模型實際上下文用量。",
+  "ui.contextBudgetTitle": "上下文預算：約 {used} / {total} Tokens（{percent}%）",
+  "ui.contextBudgetSummary": "約 {used} / {total} Tokens · {percent}%",
   "ui.openChatGPT": "開啟 ChatGPT ↗",
   "ui.initializing": "初始化中",
   "ui.extensionReady": "擴充功能已就緒",

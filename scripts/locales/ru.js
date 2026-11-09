@@ -1,5 +1,15 @@
 /** ru offline UI translations. */
 window.ChatGPTProLocalePacks["ru"] = {
+  "ui.contextBudgetName": "Бюджет контекста",
+  "ui.showContextBudget": "Показывать бюджет контекста",
+  "ui.contextBudgetLimit": "Бюджет токенов на чат",
+  "ui.contextBudgetHelp": "По умолчанию 100K. Процент сравнивает оценку текста этой ветки с вашим бюджетом, а не с официальным окном модели или лимитом подписки.",
+  "ui.contextBudgetUnavailable": "Бюджет контекста: нет данных",
+  "ui.contextBudgetLoading": "Чтение текущего диалога…",
+  "ui.contextBudgetNote": "Оценка доступного текста этой ветки (включая инструменты), а не реального контекста модели.",
+  "ui.contextBudgetIncomplete": "Оценка доступного текста этой ветки (включая инструменты); изображения, аудио, видео и вложения не учтены. Не отражает реальный контекст модели.",
+  "ui.contextBudgetTitle": "Бюджет контекста: ~{used} / {total} Tokens ({percent}%)",
+  "ui.contextBudgetSummary": "~{used} / {total} Tokens · {percent}%",
   "ui.openChatGPT": "Открыть ChatGPT ↗",
   "ui.initializing": "Инициализация",
   "ui.extensionReady": "Расширение готово",

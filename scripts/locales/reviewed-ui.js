@@ -5114,6 +5114,22 @@ ui.behaviorSettings`.split('\n');
       'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
     ].map(locale => [locale, popupDisplayKeys.map(key => scope.ChatGPTProLocalePacks[locale][key])]))
   });
+  const contextBudgetKeys = `ui.contextBudgetName
+ui.showContextBudget
+ui.contextBudgetLimit
+ui.contextBudgetHelp
+ui.contextBudgetUnavailable
+ui.contextBudgetLoading
+ui.contextBudgetNote
+ui.contextBudgetIncomplete
+ui.contextBudgetTitle
+ui.contextBudgetSummary`.split('\n');
+  blocks.push({
+    keys: contextBudgetKeys,
+    translations: Object.fromEntries([
+      'zh-TW', 'es', 'hi', 'ar', 'pt-BR', 'bn', 'id', 'fr', 'ru', 'ja'
+    ].map(locale => [locale, contextBudgetKeys.map(key => scope.ChatGPTProLocalePacks[locale][key])]))
+  });
   for (const block of blocks) {
     for (const [locale, translations] of Object.entries(block.translations)) {
       if (translations.length !== block.keys.length) {

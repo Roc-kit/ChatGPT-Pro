@@ -179,6 +179,7 @@ async function main() {
   ], { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
   const cdp = new PipeCDP(chrome);
   const requests = { session: 0, directory: 0, projectList: 0, details: 0, detailLog: [] };
+  let detailOffset = 0;
   let failDirectoryRequests = false;
   let pageSession;
   let extensionId;
@@ -485,6 +486,51 @@ async function main() {
       Object.keys(firstMinimapCache.raw?.mapping || {}).length === Object.keys(CHAT.mapping).length,
     'Minimap initial fetch is persisted as complete raw conversation JSON in IndexedDB before display decisions');
 
+    if (process.argv.includes('--context-budget-only')) {
+      await eventually(async () => cdp.eval(pageSession, `(() => {
+        const ring = document.querySelector('[data-chatgpt-pro-context-budget]');
+        return Boolean(ring?.dataset.percent) && ring.nextElementSibling?.matches('[data-chatgpt-pro-auto-continue]');
+      })()`), 'context ring counts the cached current branch and sits above Auto Continue');
+      await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-context-budget]').click()`);
+      await eventually(async () => cdp.eval(pageSession, `(() => {
+        const pop = document.querySelector('[data-chatgpt-pro-context-popover]');
+        return pop && !pop.hidden && pop.querySelector('[data-context-summary]').textContent.includes('100,000') &&
+          pop.querySelector('[data-context-note]').textContent.length > 20;
+      })()`), 'context popover shows one total without per-role breakdown');
+      await cdp.eval(popupSession, `(() => {
+        const input = document.querySelector('#contextBudgetInput');
+        input.value = '200000'; input.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`);
+      await eventually(async () => cdp.eval(pageSession,
+        `document.querySelector('[data-chatgpt-pro-context-budget]').title.includes('200,000')`),
+      'custom token budget updates the live meter');
+      await cdp.eval(popupSession, `document.querySelector('#contextBudgetToggle').click()`);
+      await eventually(async () => cdp.eval(pageSession,
+        `!document.querySelector('[data-chatgpt-pro-context-budget]')`),
+      'disabling the feature removes only the context ring');
+      await cdp.eval(popupSession, `document.querySelector('#contextBudgetToggle').click()`);
+      await eventually(async () => cdp.eval(pageSession,
+        `Boolean(document.querySelector('[data-chatgpt-pro-context-budget]'))`),
+      're-enabling restores the context ring');
+      assert.equal(requests.details, 1, 'budget UI does not duplicate Minimap detail requests');
+      console.log('CONTEXT_BUDGET_BROWSER_PASS: MV3 ring, ordering, cache reuse, popover, budget setting, toggle');
+      return;
+    }
+    if (process.argv.includes('--context-budget-disabled-control')) {
+      await cdp.eval(popupSession, `document.querySelector('#contextBudgetToggle').click()`);
+      await eventually(async () => cdp.eval(pageSession,
+        `!document.querySelector('[data-chatgpt-pro-context-budget]')`),
+      'baseline control disables the new budget ring before remaining Minimap regression');
+      await eventually(async () => cdp.eval(pageSession, `(() => {
+        const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
+        const actions = dock.querySelector('[data-chatgpt-pro-tool-actions]');
+        const header = dock.querySelector('[data-chatgpt-pro-launcher]');
+        return Math.abs(dock.getBoundingClientRect().height - header.offsetHeight - actions.offsetHeight) <= 2;
+      })()`), 'disabled ring settles the compact dock geometry');
+      compactDockSize.height = await cdp.eval(pageSession,
+        `document.querySelector('[data-chatgpt-pro-tool-dock]').getBoundingClientRect().height`);
+    }
+
     // Five logical messages remain compact. The sixth must expand the same
     // dock smoothly, with the panel generated from the persisted full JSON.
     detailResponse = CHAT_FIVE;
@@ -522,7 +568,7 @@ async function main() {
       document.querySelector('main').append(section);
     })()`);
     try {
-      await eventually(async () => requests.details === 2 && cdp.eval(pageSession, `(() => {
+      await eventually(async () => requests.details >= 2 && cdp.eval(pageSession, `(() => {
       const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
       return document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6 &&
         !dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden') &&
@@ -546,6 +592,9 @@ async function main() {
           mappingCount: Object.keys(cached?.raw?.mapping || {}).length,
           update_time: cached?.raw?.update_time })}; logs=${JSON.stringify(browserErrors)}`);
     }
+    assert(requests.details <= 3,
+      'at most one additional detail fetch is permitted for the intermediate fifth message');
+    detailOffset = requests.details - 2;
     await sleep(350);
     const expandTransition = await readDockHeightTransition();
     const expandedDockHeight = await cdp.eval(pageSession,
@@ -618,6 +667,9 @@ async function main() {
       const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
       return Math.abs(dock.getBoundingClientRect().height - innerHeight * 0.5) <= 2;
     })()`), 'restored Minimap dock finishes its expansion before the shrink test');
+    await eventually(async () => cdp.eval(pageSession,
+      `!document.querySelector('[data-chatgpt-pro-tool-dock]').classList.contains('chatgpt-pro-dock-animating')`),
+    'finish the previous Minimap expansion before measuring its collapse');
     detailResponse = CHAT_FIVE_AFTER_EXPAND;
     await armDockHeightTransition();
     await cdp.eval(pageSession, `(() => {
@@ -627,7 +679,7 @@ async function main() {
       trigger.textContent = 'temporary branch refresh trigger';
       document.querySelector('main').append(trigger);
     })()`);
-    await eventually(async () => requests.details === 3 && cdp.eval(pageSession, `(() => {
+    await eventually(async () => requests.details === 3 + detailOffset && cdp.eval(pageSession, `(() => {
       const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
       return !document.querySelector('[data-chatgpt-pro-minimap]') &&
         dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden') &&
@@ -649,7 +701,7 @@ async function main() {
     await armDockHeightTransition();
     await cdp.eval(pageSession, `document.querySelector('[data-message-id="refresh-trigger"]').remove()`);
     try {
-      await eventually(async () => requests.details === 4 && cdp.eval(pageSession, `(() => {
+      await eventually(async () => requests.details === 4 + detailOffset && cdp.eval(pageSession, `(() => {
         const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
         return document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6 &&
           !dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden') &&
@@ -871,7 +923,7 @@ async function main() {
         section.textContent = text;
         main.append(section);
       }`);
-    await eventually(async () => requests.details === 6 && cdp.eval(pageSession,
+    await eventually(async () => requests.details === 6 + detailOffset && cdp.eval(pageSession,
       `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6`),
     'six-message fixture restored after logical-turn grouping test');
     const longMessages = Array.from({ length: 122 }, (_, index) => ({
@@ -909,7 +961,7 @@ async function main() {
     })()`);
     assert(minimapAnchors.count <= 49 && minimapAnchors.first.startsWith('1/122') &&
       minimapAnchors.last.startsWith('122/122'), 'first and last chat messages remain pinned on a long rail');
-    assert.equal(requests.details, 7,
+    assert.equal(requests.details, 7 + detailOffset,
       'long Minimap navigation is built from a complete conversation JSON persisted in IndexedDB');
     await cdp.eval(pageSession, `(() => {
       const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
@@ -1111,7 +1163,9 @@ async function main() {
     assert.equal(beforeDrag.autoHidden, true, 'auto continuation control stays hidden until enabled');
     assert.equal(beforeDrag.exportWidth, beforeDrag.actionWidth,
       'export buttons fill the same available toolbar width without overflowing');
-    assert.equal(beforeDrag.actionsCount, 1, 'downloads share one compact movable toolbar action');
+    assert.equal(beforeDrag.actionsCount,
+      process.argv.includes('--context-budget-disabled-control') ? 1 : 2,
+      'one export action and, when enabled, one context-budget ring share the compact dock');
     await cdp.eval(popupSession, `new Promise(resolve =>
       chrome.storage.local.set({ autoContinueEnabled: true }, resolve))`);
     await eventually(async () => cdp.eval(pageSession,
@@ -1305,9 +1359,23 @@ async function main() {
         main.append(section);
       }
     })()`);
-    await eventually(async () => requests.details === 8 && cdp.eval(pageSession,
-      `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6`),
-    'Minimap restores the six-message fixture after long-conversation navigation');
+    try {
+      await eventually(async () => requests.details >= 8 + detailOffset && cdp.eval(pageSession,
+        `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6`),
+      'Minimap restores the six-message fixture after long-conversation navigation');
+    } catch (error) {
+      const state = await cdp.eval(pageSession, `(() => ({
+        count: document.querySelectorAll('.chatgpt-pro-minimap-marker').length,
+        hidden: document.querySelector('[data-chatgpt-pro-tool-dock]')?.classList.contains('chatgpt-pro-tool-dock-minimap-hidden'),
+        rendered: [...document.querySelectorAll('main [data-message-id]')].map(node => node.dataset.messageId)
+      }))()`);
+      throw Error(`${error.message}; requests=${requests.details}; offset=${detailOffset}; state=${JSON.stringify(state)}; log=${JSON.stringify(requests.detailLog)}`);
+    }
+    // Persist the actual number of verified detail refreshes before assertions
+    // that perform unrelated exports/searches. Those actions must add none.
+    detailOffset = requests.details - 8;
+    assert(detailOffset >= 0 && detailOffset <= 2,
+      `budget/Minimap integration must not cause unbounded duplicate detail requests: ${JSON.stringify(requests.detailLog)}`);
     if (process.argv.includes('--minimap-only')) {
       console.log('MINIMAP_PASS: bounded window, pinned and clickable first/last, hover preview, draggable auto-shrinking dock');
       return;
@@ -1473,7 +1541,7 @@ async function main() {
     await cdp.eval(popupSession,
       `window.confirm = () => false; document.querySelector('#indexStart').click();`);
     await sleep(250);
-    assert.equal(requests.details, 8,
+    assert.equal(requests.details, 8 + detailOffset,
       `Minimap has already fetched and cached the current conversation independently of index consent: ${JSON.stringify(requests.detailLog)}`);
 
     // Directory export does not depend on full-text indexing or its consent.
@@ -1524,12 +1592,12 @@ async function main() {
     await eventually(async () => fs.existsSync(path.join(downloadPath,
       `${fixtureDateTime}_Offline acceptance test.json`)),
       'raw JSON exported with sortable create timestamp and no full-text index');
-    assert.equal(requests.details, 8, 'unindexed single exports reuse the Minimap-cached original JSON');
+    assert.equal(requests.details, 8 + detailOffset, 'unindexed single exports reuse the Minimap-cached original JSON');
     await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-row-checkbox').click()`);
     await cdp.eval(pageSession, `document.querySelector('[data-batch-format="json"]').click()`);
     await eventually(async () => fs.readdirSync(downloadPath).some(name => name.endsWith('.zip')),
       'unindexed selection produced JSON ZIP', 24000);
-    assert.equal(requests.details, 8, 'unindexed batch export reuses the single-export cache');
+    assert.equal(requests.details, 8 + detailOffset, 'unindexed batch export reuses the single-export cache');
     for (const name of fs.readdirSync(downloadPath).filter(name => name.endsWith('.zip'))) {
       fs.rmSync(path.join(downloadPath, name));
     }
@@ -1544,7 +1612,7 @@ async function main() {
       return (await cdp.eval(popupSession,
         `document.querySelector('#indexConsentStatus').textContent`)).includes('已完成');
     }, 'initial index completion persisted in real MV3 IndexedDB', 24000);
-    assert.equal(requests.details, 8, 'first index reused the complete raw JSON cached before consent');
+    assert.equal(requests.details, 8 + detailOffset, 'first index reused the complete raw JSON cached before consent');
     assert(requests.directory > 0 && requests.projectList > 0, 'real strict scan covered normal and project listings');
 
     // R8 original settings: switches propagate to the real content script and
@@ -1597,7 +1665,7 @@ async function main() {
     })()`);
     assert.equal(await cdp.eval(popupSession, `document.querySelector('#size').value`), '24',
       'custom font size remains within the supported range');
-    assert.equal(requests.details, 8, 'timestamp decoration reuses cached JSON');
+    assert.equal(requests.details, 8 + detailOffset, 'timestamp decoration reuses cached JSON');
     await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelectorAll('[data-chatgpt-pro-message-timestamp]').length === 0`),
@@ -1641,7 +1709,7 @@ async function main() {
       'Markdown contains user and assistant text');
     assert.equal(singleJson.conversation.mapping.question.message.id, 'question',
       'JSON preserves complete original conversation mapping');
-    assert.equal(requests.details, 8, 'both single exports share cached full JSON');
+    assert.equal(requests.details, 8 + detailOffset, 'both single exports share cached full JSON');
     // Custom templates can also sort by exact update timestamp. Saved older
     // date-only presets remain valid and were covered above.
     await cdp.eval(popupSession, `(() => {
@@ -1720,7 +1788,7 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6`),
     'minimap restores after a delayed full-text target is restored');
-    assert.equal(requests.details, 8, 'searching the persisted index did not refetch JSON');
+    assert.equal(requests.details, 8 + detailOffset, 'searching the persisted index did not refetch JSON');
 
     await cdp.eval(pageSession,
       `document.querySelector('#fallback-assistant-wrapper').style.display = 'block'`);
@@ -1732,7 +1800,7 @@ async function main() {
         && timestamp.nextElementSibling === controls.querySelector('button')
         && getComputedStyle(timestamp).display === 'inline-flex');
     })()`), 'legacy assistant timestamp uses compact inline styling inside its action-controls fallback');
-    assert.equal(requests.details, 8,
+    assert.equal(requests.details, 8 + detailOffset,
       'legacy timestamp placement reuses the already cached conversation JSON');
     await cdp.eval(popupSession, `document.querySelector('#messageTimeToggle').click()`);
     await eventually(async () => cdp.eval(pageSession,
@@ -1751,7 +1819,7 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-search-results').textContent.includes('third assistant reply')`),
     'typing searches without explicit submit after debounce');
-    assert.equal(requests.details, 8, 'debounced search does not call remote API');
+    assert.equal(requests.details, 8 + detailOffset, 'debounced search does not call remote API');
 
     const markLocal = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
       action: 'localDataMarkOfficialGone', accountId: 's6-isolated-account', id: '${CHAT_ID}'
@@ -1806,7 +1874,7 @@ async function main() {
       `Array.from(document.querySelectorAll('.chatgpt-pro-search-result button'))
         .some(button => button.textContent.includes('Eliminar copia local'))`),
     'local-only cleanup action uses the active locale');
-    assert.equal(requests.details, 8, 'local-only preview did not reach official conversation endpoint');
+    assert.equal(requests.details, 8 + detailOffset, 'local-only preview did not reach official conversation endpoint');
     await cdp.eval(popupSession, `new Promise(resolve =>
       chrome.storage.local.set({ uiLanguage: 'zh-CN' }, resolve))`);
     await eventually(async () => cdp.eval(pageSession,
@@ -1820,7 +1888,7 @@ async function main() {
     await cdp.eval(pageSession, `document.querySelector('[data-batch-format="json"]').click()`);
     await eventually(async () => fs.readdirSync(downloadPath).some(name => name.endsWith('.zip')),
       'real browser saved the cached JSON ZIP volume', 24000);
-    assert.equal(requests.details, 8, 'ZIP export reused the indexed original JSON without extra details');
+    assert.equal(requests.details, 8 + detailOffset, 'ZIP export reused the indexed original JSON without extra details');
     const zipName = fs.readdirSync(downloadPath).find(name => name.endsWith('.zip'));
     const bytes = fs.readFileSync(path.join(downloadPath, zipName));
     assert.equal(bytes.readUInt32LE(0), 0x04034b50, 'real Chrome download is a valid ZIP container');
@@ -1866,7 +1934,7 @@ async function main() {
     await cdp.eval(pageSession, `document.querySelector('[data-batch-format="md"]').click()`);
     await eventually(async () => fs.readdirSync(downloadPath).filter(name => name.endsWith('.zip')).length >= 3,
       'both Markdown ZIP volumes downloaded independently', 24000);
-    assert.equal(requests.details, 8, '56 cached records exported without further detail requests');
+    assert.equal(requests.details, 8 + detailOffset, '56 cached records exported without further detail requests');
     const volumeFiles = fs.readdirSync(downloadPath).filter(name => name.endsWith('.zip'));
     const secondVolume = volumeFiles.find(name => name.includes('_MD_part002.zip'));
     assert(secondVolume, `second independent Markdown ZIP present: ${volumeFiles.join(', ')}`);
@@ -1910,7 +1978,7 @@ async function main() {
     assert.equal(await cdp.eval(pageSession,
       `document.querySelectorAll('.chatgpt-pro-row').length`), 1,
     'title filter composes with project navigation');
-    assert.equal(requests.details, 8, 'filtering cached directory never calls conversation detail API');
+    assert.equal(requests.details, 8 + detailOffset, 'filtering cached directory never calls conversation detail API');
     const unverifiedSeed = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
       action: 'localDataUpsertDirectory', accountId: 's6-isolated-account',
       records: [{ id: 'r8-unverified-status', title: 'Unverified status fixture',

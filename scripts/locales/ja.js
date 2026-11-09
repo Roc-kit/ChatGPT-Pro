@@ -1,5 +1,15 @@
 /** ja offline UI translations. */
 window.ChatGPTProLocalePacks["ja"] = {
+  "ui.contextBudgetName": "コンテキスト予算",
+  "ui.showContextBudget": "コンテキスト予算を表示",
+  "ui.contextBudgetLimit": "チャットごとのトークン予算",
+  "ui.contextBudgetHelp": "初期値は100K。割合はこの分岐の推定テキスト量を設定予算と比較したもので、モデルの公式上限や契約枠ではありません。",
+  "ui.contextBudgetUnavailable": "コンテキスト予算：データなし",
+  "ui.contextBudgetLoading": "現在の会話を読み込み中…",
+  "ui.contextBudgetNote": "この分岐で取得できるテキスト（ツールを含む）の推定値であり、モデルの実際のコンテキスト使用量ではありません。",
+  "ui.contextBudgetIncomplete": "この分岐で取得できるテキスト（ツールを含む）の推定値です。画像・音声・動画・添付ファイルは含みません。モデルの実際の使用量ではありません。",
+  "ui.contextBudgetTitle": "コンテキスト予算：約 {used} / {total} Tokens（{percent}%）",
+  "ui.contextBudgetSummary": "約 {used} / {total} Tokens · {percent}%",
   "ui.openChatGPT": "ChatGPT を開く ↗",
   "ui.initializing": "初期化中",
   "ui.extensionReady": "拡張機能の準備完了",

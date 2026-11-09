@@ -18,6 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const sidebarTimeToggle = document.getElementById('sidebarTimeToggle');
   const messageTimeToggle = document.getElementById('messageTimeToggle');
   const minimapToggle = document.getElementById('minimapToggle');
+  const contextBudgetToggle = document.getElementById('contextBudgetToggle');
+  const contextBudgetInput = document.getElementById('contextBudgetInput');
   const openInBackgroundToggle = document.getElementById('openInBackgroundToggle');
   const outsideCloseToggle = document.getElementById('outsideCloseToggle');
   const autoContinueToggle = document.getElementById('autoContinueToggle');
@@ -454,7 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
     filenamePreview.textContent = previewFilename(value);
   }
 
-  chrome.storage.local.get(['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'openInBackground', 'closeOnOutsideClick', 'fontSize', 'toolDockOpacity', 'exportFilenameTemplate', 'uiLanguage', 'autoContinueEnabled', 'autoContinueText', 'autoContinueDelaySeconds', 'autoContinueMaxCount'], values => {
+  chrome.storage.local.get(['enabled', 'showSidebarTime', 'showMessageTimestamps', 'showMinimap', 'showContextBudget', 'contextBudgetTokens', 'openInBackground', 'closeOnOutsideClick', 'fontSize', 'toolDockOpacity', 'exportFilenameTemplate', 'uiLanguage', 'autoContinueEnabled', 'autoContinueText', 'autoContinueDelaySeconds', 'autoContinueMaxCount'], values => {
     languageSelect.value = values.uiLanguage || 'auto';
     i18n.setLanguage(languageSelect.value);
     i18n.setDirection(document.documentElement);
@@ -464,6 +466,9 @@ document.addEventListener('DOMContentLoaded', () => {
     setToggle(sidebarTimeToggle, showSidebarTime);
     setToggle(messageTimeToggle, values.showMessageTimestamps === true);
     setToggle(minimapToggle, values.showMinimap !== false);
+    setToggle(contextBudgetToggle, values.showContextBudget !== false);
+    contextBudgetInput.value = Number.isFinite(Number(values.contextBudgetTokens)) && Number(values.contextBudgetTokens) >= 10000
+      && Number(values.contextBudgetTokens) <= 2000000 ? Math.round(Number(values.contextBudgetTokens)) : 100000;
     setToggle(openInBackgroundToggle, values.openInBackground !== false);
     setToggle(outsideCloseToggle, values.closeOnOutsideClick !== false);
     const autoEnabled = values.autoContinueEnabled === true;
@@ -513,6 +518,28 @@ document.addEventListener('DOMContentLoaded', () => {
       event.preventDefault();
       minimapToggle.click();
     }
+  });
+  contextBudgetToggle.addEventListener('click', () => {
+    const showContextBudget = !contextBudgetToggle.classList.contains('active');
+    setToggle(contextBudgetToggle, showContextBudget);
+    chrome.storage.local.set({ showContextBudget });
+  });
+  contextBudgetToggle.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      contextBudgetToggle.click();
+    }
+  });
+  contextBudgetInput.addEventListener('change', () => {
+    const value = Number(contextBudgetInput.value);
+    if (!Number.isFinite(value) || value < 10000 || value > 2000000) {
+      contextBudgetInput.value = 100000;
+      chrome.storage.local.set({ contextBudgetTokens: 100000 });
+      return;
+    }
+    const contextBudgetTokens = Math.round(value);
+    contextBudgetInput.value = contextBudgetTokens;
+    chrome.storage.local.set({ contextBudgetTokens });
   });
   openInBackgroundToggle.addEventListener('click', () => {
     const openInBackground = !openInBackgroundToggle.classList.contains('active');

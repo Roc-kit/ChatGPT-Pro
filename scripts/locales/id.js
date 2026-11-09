@@ -1,5 +1,15 @@
 /** id offline UI translations. */
 window.ChatGPTProLocalePacks["id"] = {
+  "ui.contextBudgetName": "Anggaran konteks",
+  "ui.showContextBudget": "Tampilkan anggaran konteks",
+  "ui.contextBudgetLimit": "Anggaran token per percakapan",
+  "ui.contextBudgetHelp": "Default 100K. Persentase membandingkan perkiraan teks pada cabang ini dengan anggaran Anda, bukan jendela resmi model atau kuota paket.",
+  "ui.contextBudgetUnavailable": "Anggaran konteks: belum ada data",
+  "ui.contextBudgetLoading": "Membaca percakapan saat ini…",
+  "ui.contextBudgetNote": "Perkiraan teks yang dapat dibaca pada cabang ini (termasuk alat), bukan penggunaan konteks model yang sebenarnya.",
+  "ui.contextBudgetIncomplete": "Perkiraan teks yang dapat dibaca pada cabang ini (termasuk alat); gambar, audio, video, dan lampiran tidak dihitung. Bukan penggunaan konteks model yang sebenarnya.",
+  "ui.contextBudgetTitle": "Anggaran konteks: ~{used} / {total} Tokens ({percent}%)",
+  "ui.contextBudgetSummary": "~{used} / {total} Tokens · {percent}%",
   "ui.openChatGPT": "Buka ChatGPT ↗",
   "ui.initializing": "Memulai",
   "ui.extensionReady": "Ekstensi siap",

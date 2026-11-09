@@ -917,6 +917,46 @@ html.dark .chatgpt-pro-launcher:not(.chatgpt-pro-dock-launcher),
   pointer-events: none !important;
 }
 
+/* Single-number context budget indicator, directly above Auto Continue. */
+.chatgpt-pro-context-budget svg {
+  width: 36px !important;
+  height: 36px !important;
+}
+.chatgpt-pro-context-budget svg circle {
+  fill: none !important;
+  stroke-width: 3 !important;
+}
+.chatgpt-pro-context-budget svg .chatgpt-pro-context-track {
+  stroke: rgba(100, 116, 139, 0.22) !important;
+}
+.chatgpt-pro-context-budget svg .chatgpt-pro-context-progress {
+  stroke: #64748b !important;
+  stroke-linecap: round !important;
+  transform: rotate(-90deg);
+  transform-origin: 19px 19px;
+}
+.chatgpt-pro-context-budget[data-tier="medium"] svg .chatgpt-pro-context-progress { stroke: #ca8a04 !important; }
+.chatgpt-pro-context-budget[data-tier="high"] svg .chatgpt-pro-context-progress { stroke: #d97706 !important; }
+.chatgpt-pro-context-budget[data-tier="over"] svg .chatgpt-pro-context-progress { stroke: #dc2626 !important; }
+.chatgpt-pro-context-budget svg text {
+  font: 600 11px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  fill: currentColor !important;
+  stroke: none !important;
+  text-anchor: middle !important;
+}
+.chatgpt-pro-context-budget[data-tier="over"] svg text { font-size: 10px !important; }
+.chatgpt-pro-context-popover { width: 285px !important; }
+.chatgpt-pro-context-popover [data-context-summary] {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  font-variant-numeric: tabular-nums !important;
+}
+.chatgpt-pro-context-popover [data-context-note] {
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+  color: #64748b !important;
+}
+
 .chatgpt-pro-current-export.chatgpt-pro-dragging {
   cursor: ns-resize !important;
   opacity: 0.78 !important;
