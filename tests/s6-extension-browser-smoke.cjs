@@ -575,7 +575,7 @@ async function main() {
       return document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6 &&
         !dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden') &&
         Math.abs(dock.getBoundingClientRect().height - innerHeight * 0.5) <= 2;
-      })()`), 'sixth logical message expands the dock and reveals the Minimap');
+      })()`), 'sixth logical message expands the dock and reveals the Minimap', 40000);
     } catch (error) {
       const state = await cdp.eval(pageSession, `(() => {
         const dock = document.querySelector('[data-chatgpt-pro-tool-dock]');
@@ -686,7 +686,7 @@ async function main() {
       return !document.querySelector('[data-chatgpt-pro-minimap]') &&
         dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden') &&
         Math.abs(dock.getBoundingClientRect().height - ${compactDockSize.height}) <= 2;
-    })()`), 'when the current branch falls below six messages, the dock collapses to compact mode');
+    })()`), 'when the current branch falls below six messages, the dock collapses to compact mode', 40000);
     await sleep(350);
     const collapseTransition = await readDockHeightTransition();
     const collapsedAfterSix = await cdp.eval(pageSession,
@@ -708,7 +708,7 @@ async function main() {
         return document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6 &&
           !dock.classList.contains('chatgpt-pro-tool-dock-minimap-hidden') &&
           Math.abs(dock.getBoundingClientRect().height - innerHeight * 0.5) <= 2;
-      })()`), 'returning to six messages expands the dock again');
+      })()`), 'returning to six messages expands the dock again', 40000);
     } catch (error) {
       const cache = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
         action: 'localDataGetConversation', accountId: 's6-isolated-account', id: '${CHAT_ID}' })`);
@@ -881,7 +881,7 @@ async function main() {
       const markers = [...document.querySelectorAll('.chatgpt-pro-minimap-marker')];
       return markers.length === 12 && markers[0]?.title.startsWith('1/12') &&
         markers.at(-1)?.title.startsWith('12/12');
-    })()`), 'six user messages and six multi-part assistant replies are grouped into 12 logical entries');
+    })()`), 'six user messages and six multi-part assistant replies are grouped into 12 logical entries', 40000);
     const logicalCounts = await cdp.eval(pageSession, `(() => {
       const markers = [...document.querySelectorAll('.chatgpt-pro-minimap-marker')];
       return { total: markers.length,
@@ -927,7 +927,7 @@ async function main() {
       }`);
     await eventually(async () => requests.details === 6 + detailOffset && cdp.eval(pageSession,
       `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6`),
-    'six-message fixture restored after logical-turn grouping test');
+    'six-message fixture restored after logical-turn grouping test', 40000);
     const longMessages = Array.from({ length: 122 }, (_, index) => ({
       id: 'minimap-test-' + index, role: index % 2 ? 'assistant' : 'user',
       text: 'Message number ' + index
@@ -955,7 +955,7 @@ async function main() {
     })()`);
     await eventually(async () => cdp.eval(pageSession,
       `document.querySelectorAll('.chatgpt-pro-minimap-marker').length >= 10`),
-    'long conversation renders a bounded navigation window');
+    'long conversation renders a bounded navigation window', 40000);
     const minimapAnchors = await cdp.eval(pageSession, `(() => {
       const markers = [...document.querySelectorAll('.chatgpt-pro-minimap-marker')];
       return { count: markers.length, first: markers[0].title,
@@ -1364,7 +1364,7 @@ async function main() {
     try {
       await eventually(async () => requests.details >= 8 + detailOffset && cdp.eval(pageSession,
         `document.querySelectorAll('.chatgpt-pro-minimap-marker').length === 6`),
-      'Minimap restores the six-message fixture after long-conversation navigation');
+      'Minimap restores the six-message fixture after long-conversation navigation', 40000);
     } catch (error) {
       const state = await cdp.eval(pageSession, `(() => ({
         count: document.querySelectorAll('.chatgpt-pro-minimap-marker').length,

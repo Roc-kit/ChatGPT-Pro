@@ -11,7 +11,7 @@ const end = source.indexOf('  function closeTimeline(', start);
 assert(start >= 0 && end > start, 'production automatic-index scheduler is present');
 const adapterSource = fs.readFileSync(path.join(__dirname, '../scripts/chatgpt-dom-adapter.js'), 'utf8');
 
-let clock = 0;
+let clock = 100000;
 let nextTimerId = 0;
 let stopControl = null;
 const timers = new Map();
@@ -53,13 +53,20 @@ async function advance(ms) {
     timers.delete(id);
     clock = timer.at;
     await timer.callback();
+    for (let i = 0; i < 6; i++) await Promise.resolve();
   }
   clock = target;
+  for (let i = 0; i < 6; i++) await Promise.resolve();
 }
 
 const context = {
   S,
   document,
+  Date: { now: () => clock },
+  AUTO_INDEX_POST_MESSAGE_DELAY_MS: 25000,
+  AUTO_INDEX_MIN_TAB_INTERVAL_MS: 60000,
+  AUTO_INDEX_INTERACTION_RECHECK_MS: 2000,
+  AUTO_INDEX_SCROLL_QUIET_MS: 1500,
   window: {
     setTimeout: setTimeoutFake,
     clearTimeout: clearTimeoutFake,
@@ -77,7 +84,10 @@ const context = {
 };
 
 vm.createContext(context);
-vm.runInContext(`${source.slice(start, end)}\nglobalThis.schedule = scheduleAutomaticIndexRefresh;`, context);
+vm.runInContext(`${source.slice(start, end)}\n`
+  + 'globalThis.schedule = scheduleAutomaticIndexRefresh;\n'
+  + 'globalThis.noteActivity = noteAutomaticIndexUserActivity;\n'
+  + 'globalThis.resetLastRun = () => { automaticIndexLastRunAt = 0; };', context);
 
 async function main() {
   // A burst of route/DOM events is collapsed into one refresh.
@@ -95,23 +105,52 @@ async function main() {
   assert.equal(calls.index[0].options.force, true,
     'event-driven indexing bypasses the five-minute maintenance throttle');
 
+  // Default event-driven refresh is intentionally low priority.
+  context.resetLastRun();
+  context.schedule();
+  await advance(24999);
+  assert.equal(calls.sync.length, 1, 'default automatic refresh waits about 25 seconds');
+  await advance(1);
+  assert.equal(calls.sync.length, 2, 'default delayed refresh eventually runs');
+
   // The stop button remains present during streaming. Do not index the
   // partial assistant response; retry until ChatGPT reports generation done.
+  context.resetLastRun();
   stopControl = { getClientRects: () => [{}] };
   assert.equal(domAdapter.isGenerating(), true, 'visible ChatGPT stop control means generation is active');
   context.schedule(0);
   await advance(0);
-  assert.equal(calls.sync.length, 1, 'directory sync waits while ChatGPT is generating');
-  assert.equal(calls.index.length, 1, 'partial assistant response is not indexed');
+  assert.equal(calls.sync.length, 2, 'directory sync waits while ChatGPT is generating');
+  assert.equal(calls.index.length, 2, 'partial assistant response is not indexed');
   const nextCheck = [...timers.values()][0];
   assert.equal(nextCheck.at - clock, 2000, 'generation state is rechecked every two seconds');
   await advance(1999);
-  assert.equal(calls.sync.length, 1, 'generation wait does not poll the API');
+  assert.equal(calls.sync.length, 2, 'generation wait does not poll the API');
   stopControl = { getClientRects: () => [] };
   assert.equal(domAdapter.isGenerating(), false, 'hidden ChatGPT stop control means generation is complete');
   await advance(1);
-  assert.equal(calls.sync.length, 2, 'one refresh runs after the stop control disappears');
-  assert.equal(calls.index.length, 2, 'the completed assistant response is indexed');
+  assert.equal(calls.sync.length, 3, 'one refresh runs after the stop control disappears');
+  assert.equal(calls.index.length, 3, 'the completed assistant response is indexed');
+
+  // A successful run suppresses another automatic index for at least 60s.
+  context.schedule(0);
+  await advance(0);
+  assert.equal(calls.sync.length, 3, 'per-tab minimum interval prevents an immediate second sync');
+  await advance(59999);
+  assert.equal(calls.sync.length, 3, 'minimum interval remains active before 60 seconds');
+  await advance(1);
+  assert.equal(calls.sync.length, 4, 'automatic sync resumes once the 60-second interval elapses');
+
+  // Recent user scrolling defers automatic work until interaction is quiet.
+  context.resetLastRun();
+  context.noteActivity();
+  context.schedule(0);
+  await advance(0);
+  assert.equal(calls.sync.length, 4, 'recent user navigation defers indexing');
+  await advance(1499);
+  assert.equal(calls.sync.length, 4, 'scroll quiet window has not elapsed yet');
+  await advance(501);
+  assert.equal(calls.sync.length, 5, 'deferred work runs after the interaction recheck');
 
   // Hidden or disabled tabs must not start a queued request.
   document.hidden = true;
@@ -121,10 +160,10 @@ async function main() {
   context.schedule(10);
   S.settings.enabled = false;
   await advance(10);
-  assert.equal(calls.sync.length, 2, 'disabling the extension cancels the queued refresh');
-  assert.equal(calls.index.length, 2, 'disabling the extension prevents automatic indexing');
+  assert.equal(calls.sync.length, 5, 'disabling the extension cancels the queued refresh');
+  assert.equal(calls.index.length, 5, 'disabling the extension prevents automatic indexing');
 
-  console.log('S3_AUTO_INDEX_TRIGGER_PASS: debounce, generation wait, completion refresh, hidden/disabled guards');
+  console.log('S3_AUTO_INDEX_TRIGGER_PASS: delayed debounce, generation/scroll wait, 60s interval, hidden/disabled guards');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

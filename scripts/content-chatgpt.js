@@ -22,6 +22,14 @@
   const EXPORT_RETRY_DELAYS_MS = [1000, 3000, 8000];
   const MESSAGE_ROUTE_CHECK_MS = 500;
   const MESSAGE_ROUTE_RETRY_DELAYS_MS = [100, 400, 1000, 2200, 5000, 10000];
+  const CONVERSATION_INITIAL_QUIET_MS = 3000;
+  const CONVERSATION_INITIAL_MAX_WAIT_MS = 10000;
+  const CONVERSATION_READY_POLL_MS = 250;
+  const CONVERSATION_FORCE_REFRESH_COOLDOWN_MS = 30000;
+  const AUTO_INDEX_POST_MESSAGE_DELAY_MS = 25000;
+  const AUTO_INDEX_MIN_TAB_INTERVAL_MS = 60000;
+  const AUTO_INDEX_INTERACTION_RECHECK_MS = 2000;
+  const AUTO_INDEX_SCROLL_QUIET_MS = 1500;
   const AUTO_CONTINUE_TASK_STATE_KEY = 'autoContinueTaskState';
 
   const S = {
@@ -49,11 +57,16 @@
     },
     messageConversationId: null,
     messageConversation: null,
-    messageConversationPromise: null,
     messageConversationRefreshId: null,
     messageConversationRefreshPromise: null,
     messageConversationRefreshSignature: '',
     messageConversationRefreshAt: 0,
+    conversationLoadId: null,
+    conversationLoadPromise: null,
+    conversationLoadData: null,
+    conversationReadyId: null,
+    conversationReadyPromise: null,
+    conversationForceRefreshAt: 0,
     messageVisibilityObserver: null,
     observedMessageElements: new WeakSet(),
     observedConversationId: undefined,
@@ -68,6 +81,7 @@
       syncTimer: null, transitionTimer: null, transitionToken: 0 },
     contextBudget: { id: null, accountId: null, snapshot: null, stats: null,
       pending: null, lastNetworkAt: 0, wasGenerating: false, pendingRefresh: false },
+    autoIndexWasGenerating: false,
     settings: {
       enabled: true,
       showSidebarTime: false,
@@ -151,7 +165,6 @@
     S.observedMessageElements = new WeakSet();
     S.messageConversationId = null;
     S.messageConversation = null;
-    S.messageConversationPromise = null;
     S.messageConversationRefreshSignature = '';
     S.messageConversationRefreshAt = 0;
   }
@@ -240,17 +253,13 @@
       S.messageConversationId = conversationId;
     }
     if (!S.messageConversation) {
-      const conversationPromise = S.messageConversationPromise
-        || (S.messageConversationPromise = window.APIHandler.getConversation(conversationId));
       try {
-        const data = await conversationPromise;
+        const data = await loadCurrentConversation(conversationId);
         if (currentConversationId() !== conversationId || S.messageConversationId !== conversationId) return 0;
         if (isConversationSnapshotNewer(data, S.messageConversation)) S.messageConversation = data;
       } catch (error) {
         log('Message timestamp data load failed:', error.message);
         return 0;
-      } finally {
-        if (S.messageConversationPromise === conversationPromise) S.messageConversationPromise = null;
       }
     }
 
@@ -307,7 +316,7 @@
         && S.messageConversationRefreshId === conversationId) {
       return S.messageConversationRefreshPromise;
     }
-    const promise = window.APIHandler.getConversation(conversationId, { forceNetwork: true });
+    const promise = loadCurrentConversation(conversationId, { forceNetwork: true });
     S.messageConversationRefreshId = conversationId;
     S.messageConversationRefreshPromise = promise;
     promise.then(data => {
@@ -373,6 +382,7 @@
 
   function refreshMessageTimestampsForRoute(force = false) {
     const conversationId = currentConversationId();
+    if (S.conversationLoadId !== conversationId) resetCurrentConversationLoader(conversationId);
     if (!force && conversationId === S.observedConversationId) return false;
 
     S.observedConversationId = conversationId;
@@ -394,7 +404,7 @@
       }, delay);
       S.messageRouteRetryTimers.push(timer);
     }
-    scheduleAutomaticIndexRefresh(12000);
+    scheduleAutomaticIndexRefresh(AUTO_INDEX_POST_MESSAGE_DELAY_MS);
     return true;
   }
 
@@ -417,6 +427,7 @@
       if (event.type === 'keydown' && ![
         'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '
       ].includes(event.key)) return;
+      noteAutomaticIndexUserActivity();
       activeSearchJumpToken++;
       S.minimap.jumpToken++;
     };
@@ -425,6 +436,8 @@
     document.addEventListener('touchmove', cancelPendingJumpForManualNavigation,
       { passive: true, capture: true });
     document.addEventListener('keydown', cancelPendingJumpForManualNavigation, true);
+    document.addEventListener('scroll', noteAutomaticIndexUserActivity,
+      { passive: true, capture: true });
     const scheduleActive = () => {
       if (S.minimap.frame) return;
       S.minimap.frame = window.requestAnimationFrame(() => {
@@ -600,13 +613,23 @@
   }
 
   function checkMinimapGenerationState() {
-    if (!S.settings.enabled || !S.settings.showMinimap || !currentConversationId()) {
+    if (!S.settings.enabled || !currentConversationId()) {
       S.minimap.wasGenerating = false;
+      S.autoIndexWasGenerating = false;
       return;
     }
     const generating = window.ChatGPTDomAdapter.isGenerating();
     if (generating) {
-      S.minimap.wasGenerating = true;
+      S.autoIndexWasGenerating = true;
+      if (S.settings.showMinimap) S.minimap.wasGenerating = true;
+      return;
+    }
+    if (S.autoIndexWasGenerating) {
+      S.autoIndexWasGenerating = false;
+      scheduleAutomaticIndexRefresh(AUTO_INDEX_POST_MESSAGE_DELAY_MS);
+    }
+    if (!S.settings.showMinimap) {
+      S.minimap.wasGenerating = false;
       return;
     }
     if (!S.minimap.wasGenerating) return;
@@ -702,26 +725,24 @@
     S.minimap.checking = true;
     const pending = (async () => {
       try {
-        let result = forceNetwork
-          ? { data: await refreshConversationFromNetwork(id), source: 'network' }
-          : await window.APIHandler.getConversation(id, { withSource: true });
-        if (result?.data?.id && result.data.id !== id) {
+        let data = await loadCurrentConversation(id, { forceNetwork });
+        if (data?.id && data.id !== id) {
           throw new Error('详情接口返回的对话 ID 与当前页面不一致');
         }
-        let branch = minimapBranchMessages(result?.data);
-        if (!branch && result?.source === 'cache' && !forceNetwork) {
-          result = { data: await refreshConversationFromNetwork(id), source: 'network' };
-          branch = minimapBranchMessages(result?.data);
+        let branch = minimapBranchMessages(data);
+        if (!branch && !forceNetwork) {
+          data = await loadCurrentConversation(id, { forceNetwork: true });
+          branch = minimapBranchMessages(data);
         }
         if (!branch) throw new Error('完整对话 JSON 缺少有效的 current_node 分支');
         // APIHandler normally persists network details itself. Verify the
         // IndexedDB write before exposing this snapshot to the Minimap; a
         // failed write must never turn an in-memory partial result into data.
-        if (!await adoptMinimapConversationSnapshot(id, accountId, result.data, branch)) {
+        if (!await adoptMinimapConversationSnapshot(id, accountId, data, branch)) {
           throw new Error('完整对话 JSON 尚未成功保存到 IndexedDB');
         }
         if (S.settings.enabled && S.settings.showMinimap) syncConversationMinimap();
-        return result.data;
+        return data;
       } catch (error) {
         log('Minimap local cache unavailable:', error.message);
         return null;
@@ -1457,7 +1478,14 @@
 
   async function backgroundSyncConversationList() {
     if (!S.settings.enabled || document.hidden) return;
+    if (automaticIndexPageBusy()) {
+      scheduleAutomaticIndexRefresh(AUTO_INDEX_INTERACTION_RECHECK_MS);
+      return;
+    }
+    const sinceLastRun = Date.now() - automaticIndexLastRunAt;
+    if (automaticIndexLastRunAt && sinceLastRun < AUTO_INDEX_MIN_TAB_INTERVAL_MS) return;
     try {
+      automaticIndexLastRunAt = Date.now();
       const records = await incrementalSyncConversationList('已完成后台增量同步');
       await maybeAutoIncrementalIndex(records);
     } catch (error) {
@@ -1467,28 +1495,83 @@
 
   const AUTO_INDEX_GENERATION_RECHECK_MS = 2000;
   let automaticIndexRefreshTimer = null;
-  function scheduleAutomaticIndexRefresh(delay = 1500) {
+  let automaticIndexIdleHandle = null;
+  let automaticIndexLastRunAt = 0;
+  let automaticIndexLastUserScrollAt = 0;
+
+  function noteAutomaticIndexUserActivity() {
+    automaticIndexLastUserScrollAt = Date.now();
+  }
+
+  function cancelAutomaticIndexIdleCallback() {
+    if (automaticIndexIdleHandle === null) return;
+    if (typeof window.cancelIdleCallback === 'function') {
+      window.cancelIdleCallback(automaticIndexIdleHandle);
+    } else {
+      window.clearTimeout(automaticIndexIdleHandle);
+    }
+    automaticIndexIdleHandle = null;
+  }
+
+  function runAutomaticIndexWhenIdle(callback) {
+    cancelAutomaticIndexIdleCallback();
+    if (typeof window.requestIdleCallback === 'function') {
+      automaticIndexIdleHandle = window.requestIdleCallback(() => {
+        automaticIndexIdleHandle = null;
+        callback();
+      }, { timeout: 5000 });
+      return;
+    }
+    automaticIndexIdleHandle = window.setTimeout(() => {
+      automaticIndexIdleHandle = null;
+      callback();
+    }, 0);
+  }
+
+  function automaticIndexPageBusy() {
+    const id = typeof currentConversationId === 'function' ? currentConversationId() : null;
+    const conversationDomLoading = Boolean(id && (
+      !document.querySelector('main') || !window.ChatGPTDomAdapter.messageElements().length
+    ));
+    return conversationDomLoading || window.ChatGPTDomAdapter.isGenerating()
+      || Date.now() - automaticIndexLastUserScrollAt < AUTO_INDEX_SCROLL_QUIET_MS;
+  }
+
+  function scheduleAutomaticIndexRefresh(delay = AUTO_INDEX_POST_MESSAGE_DELAY_MS) {
     if (!S.settings.enabled || document.hidden) return;
     window.clearTimeout(automaticIndexRefreshTimer);
+    cancelAutomaticIndexIdleCallback();
     automaticIndexRefreshTimer = window.setTimeout(async () => {
       automaticIndexRefreshTimer = null;
       if (!S.settings.enabled || document.hidden) return;
-      // The first DOM event often arrives while ChatGPT is still streaming.
-      // Wait for its stop control to disappear before saving the final reply.
-      if (window.ChatGPTDomAdapter.isGenerating()) {
+      // Streaming and active user navigation both take priority over index
+      // maintenance. Recheck later without stacking additional tasks.
+      if (automaticIndexPageBusy()) {
         scheduleAutomaticIndexRefresh(AUTO_INDEX_GENERATION_RECHECK_MS);
         return;
       }
-      try {
-        // A newly created conversation or a freshly completed response must
-        // not wait for the five-minute maintenance poll. Revalidate the first
-        // directory page, then bypass only the in-page auto-check throttle;
-        // updateFullTextIndex still fetches details solely for changed IDs.
-        const records = await incrementalSyncConversationList('已完成新对话同步', { checkLatest: true });
-        await maybeAutoIncrementalIndex(records, { force: true });
-      } catch (error) {
-        log('Event-driven automatic index refresh failed:', error.message);
+      const sinceLastRun = Date.now() - automaticIndexLastRunAt;
+      if (automaticIndexLastRunAt && sinceLastRun < AUTO_INDEX_MIN_TAB_INTERVAL_MS) {
+        scheduleAutomaticIndexRefresh(AUTO_INDEX_MIN_TAB_INTERVAL_MS - sinceLastRun);
+        return;
       }
+      runAutomaticIndexWhenIdle(async () => {
+        if (!S.settings.enabled || document.hidden) return;
+        if (automaticIndexPageBusy()) {
+          scheduleAutomaticIndexRefresh(AUTO_INDEX_INTERACTION_RECHECK_MS);
+          return;
+        }
+        try {
+          automaticIndexLastRunAt = Date.now();
+          // Only revalidate the latest directory metadata here. The indexing
+          // pipeline requests conversation bodies solely for IDs whose local
+          // index is missing or older than the directory update time.
+          const records = await incrementalSyncConversationList('已完成新对话同步', { checkLatest: true });
+          await maybeAutoIncrementalIndex(records, { force: true });
+        } catch (error) {
+          log('Event-driven automatic index refresh failed:', error.message);
+        }
+      });
     }, delay);
   }
 
@@ -1685,6 +1768,95 @@
   function currentConversationId() {
     const match = window.location.pathname.match(/\/c\/([a-zA-Z0-9-]+)/);
     return match ? match[1] : null;
+  }
+
+  function resetCurrentConversationLoader(id = null) {
+    S.conversationLoadId = id;
+    S.conversationLoadPromise = null;
+    S.conversationLoadData = null;
+    S.conversationReadyId = id;
+    S.conversationReadyPromise = null;
+    S.conversationForceRefreshAt = 0;
+  }
+
+  function waitForCurrentConversationReady(conversationId) {
+    if (!conversationId || currentConversationId() !== conversationId) return Promise.resolve(false);
+    if (S.conversationReadyId === conversationId && S.conversationReadyPromise) {
+      return S.conversationReadyPromise;
+    }
+    if (S.conversationReadyId !== conversationId) resetCurrentConversationLoader(conversationId);
+
+    const pending = new Promise(resolve => {
+      const startedAt = Date.now();
+      let lastSignature = '';
+      let quietSince = startedAt;
+      let timer = null;
+      const finish = result => {
+        if (timer !== null) window.clearTimeout(timer);
+        resolve(result);
+      };
+      const check = () => {
+        if (currentConversationId() !== conversationId) return finish(false);
+        const main = document.querySelector('main');
+        const messages = window.ChatGPTDomAdapter.messageElements();
+        const hasConversationDom = Boolean(main && messages.length);
+        const signature = hasConversationDom
+          ? conversationProgressSnapshot(document.scrollingElement) : '';
+        const now = Date.now();
+        if (signature !== lastSignature) {
+          lastSignature = signature;
+          quietSince = now;
+        }
+        const stable = hasConversationDom
+          && !window.ChatGPTDomAdapter.isGenerating()
+          && now - quietSince >= CONVERSATION_INITIAL_QUIET_MS;
+        if (stable || now - startedAt >= CONVERSATION_INITIAL_MAX_WAIT_MS) {
+          return finish(true);
+        }
+        timer = window.setTimeout(check, CONVERSATION_READY_POLL_MS);
+      };
+      check();
+    });
+    S.conversationReadyId = conversationId;
+    S.conversationReadyPromise = pending;
+    return pending;
+  }
+
+  async function loadCurrentConversation(conversationId, { forceNetwork = false } = {}) {
+    if (!conversationId || currentConversationId() !== conversationId) return null;
+    if (S.conversationLoadId !== conversationId) resetCurrentConversationLoader(conversationId);
+
+    if (S.conversationLoadPromise) return S.conversationLoadPromise;
+    if (!forceNetwork && S.conversationLoadData) return S.conversationLoadData;
+
+    const pending = (async () => {
+      const ready = await waitForCurrentConversationReady(conversationId);
+      if (!ready || currentConversationId() !== conversationId) return null;
+      if (forceNetwork && S.conversationForceRefreshAt) {
+        const remaining = CONVERSATION_FORCE_REFRESH_COOLDOWN_MS
+          - (Date.now() - S.conversationForceRefreshAt);
+        if (remaining > 0) {
+          await new Promise(resolve => window.setTimeout(resolve, remaining));
+          if (currentConversationId() !== conversationId || S.conversationLoadId !== conversationId) return null;
+        }
+      }
+      if (forceNetwork) S.conversationForceRefreshAt = Date.now();
+      const data = await window.APIHandler.getConversation(conversationId,
+        forceNetwork ? { forceNetwork: true } : undefined);
+      if (!data || currentConversationId() !== conversationId || S.conversationLoadId !== conversationId) {
+        return data || null;
+      }
+      if (isConversationSnapshotNewer(data, S.conversationLoadData)) S.conversationLoadData = data;
+      if (S.messageConversationId === conversationId
+          && isConversationSnapshotNewer(data, S.messageConversation)) {
+        S.messageConversation = data;
+      }
+      return S.conversationLoadData || data;
+    })().finally(() => {
+      if (S.conversationLoadPromise === pending) S.conversationLoadPromise = null;
+    });
+    S.conversationLoadPromise = pending;
+    return pending;
   }
 
   function currentConversationRecord() {
@@ -2190,6 +2362,7 @@
       let data = S.minimap.cachedId === id && S.minimap.cachedAccountId === accountId
         ? S.minimap.cachedMessages : null;
       if (!data && S.messageConversationId === id) data = S.messageConversation;
+      if (!data && S.conversationLoadId === id) data = S.conversationLoadData;
       if (S.settings.showMinimap && !data) return; // Minimap already owns the fetch.
       if (!S.settings.showMinimap && forceNetwork && !window.ChatGPTDomAdapter.isGenerating()
           && Date.now() - state.lastNetworkAt >= 30000) {
@@ -2197,7 +2370,7 @@
         state.pendingRefresh = false;
         data = await refreshConversationFromNetwork(id);
       }
-      if (!data) data = await window.APIHandler.getConversation(id);
+      if (!data) data = await loadCurrentConversation(id);
       // An independent timestamp/minimap cache can lag behind a just-refreshed
       // budget snapshot. Never overwrite the latter with an older revision.
       if (state.snapshot && data && data !== state.snapshot
@@ -5343,7 +5516,6 @@
     S.observer?.disconnect();
     let messageTimer = null;
     S.observer = new MutationObserver(mutations => {
-      refreshMessageTimestampsForView();
       const sidebarRelevant = mutations.some(mutation =>
         Array.from(mutation.addedNodes).some(node =>
           node.nodeType === 1 && window.ChatGPTDomAdapter.containsSidebarConversationLink(node)
@@ -5370,15 +5542,13 @@
         )
       );
       if (messageRelevant) {
-        scheduleMinimapSync(180);
         clearTimeout(messageTimer);
         messageTimer = setTimeout(() => {
-          if (S.settings.showMessageTimestamps) {
-            stampMessageTimestamps().catch(error => log('Message timestamp refresh failed:', error.message));
-          }
+          refreshMessageTimestampsForView();
+          scheduleMinimapSync(180);
           resumePendingSearchJump().catch(error => log('Search result jump failed:', error.message));
+          scheduleAutomaticIndexRefresh(AUTO_INDEX_POST_MESSAGE_DELAY_MS);
         }, 100);
-        scheduleAutomaticIndexRefresh(12000);
       }
     });
     S.observer.observe(document.body, {
@@ -5681,7 +5851,7 @@
     setInterval(backgroundSyncConversationList, BACKGROUND_SYNC_MS);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) {
-        scheduleAutomaticIndexRefresh(1200);
+        scheduleAutomaticIndexRefresh(AUTO_INDEX_POST_MESSAGE_DELAY_MS);
         recoverIndexTasks().catch(error => log('Visible index recovery failed:', error.message));
       }
     });
@@ -5689,7 +5859,7 @@
     window.setInterval(tickContextBudget, 2000);
     // Resume ordinary incremental indexing automatically only AFTER the user
     // authorized and completed the first full index. Never auto-consent.
-    window.setTimeout(() => backgroundSyncConversationList(), 3000);
+    window.setTimeout(() => scheduleAutomaticIndexRefresh(AUTO_INDEX_POST_MESSAGE_DELAY_MS), 3000);
     // On tab restart, expired running leases and elapsed rate-limit pauses can
     // be reclaimed. Manual, authentication, and consecutive-failure pauses stay paused.
     window.setInterval(() => recoverIndexTasks().catch(error => log('Index recovery failed:', error.message)), 15000);
@@ -5723,6 +5893,8 @@
     S.minimap.renderedRefreshSignature = '';
     S.minimap.renderedRefreshAt = 0;
     S.minimap.wasGenerating = false;
+    S.autoIndexWasGenerating = false;
+    resetCurrentConversationLoader(currentConversationId());
     resetContextBudget(currentConversationId());
     syncContextBudget();
     if (S.minimap.syncTimer !== null) clearTimeout(S.minimap.syncTimer);
