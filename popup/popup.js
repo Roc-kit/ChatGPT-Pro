@@ -468,7 +468,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setToggle(minimapToggle, values.showMinimap !== false);
     setToggle(contextBudgetToggle, values.showContextBudget !== false);
     contextBudgetInput.value = Number.isFinite(Number(values.contextBudgetTokens)) && Number(values.contextBudgetTokens) >= 10000
-      && Number(values.contextBudgetTokens) <= 2000000 ? Math.round(Number(values.contextBudgetTokens)) : 100000;
+      && Number(values.contextBudgetTokens) <= 2000000 ? Math.round(Number(values.contextBudgetTokens) / 1000) : 100;
     setToggle(openInBackgroundToggle, values.openInBackground !== false);
     setToggle(outsideCloseToggle, values.closeOnOutsideClick !== false);
     const autoEnabled = values.autoContinueEnabled === true;
@@ -531,14 +531,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   contextBudgetInput.addEventListener('change', () => {
-    const value = Number(contextBudgetInput.value);
-    if (!Number.isFinite(value) || value < 10000 || value > 2000000) {
-      contextBudgetInput.value = 100000;
+    const valueK = Number(contextBudgetInput.value);
+    if (!Number.isFinite(valueK) || valueK < 10 || valueK > 2000) {
+      contextBudgetInput.value = 100;
       chrome.storage.local.set({ contextBudgetTokens: 100000 });
       return;
     }
-    const contextBudgetTokens = Math.round(value);
-    contextBudgetInput.value = contextBudgetTokens;
+    const normalizedK = Math.round(valueK);
+    const contextBudgetTokens = normalizedK * 1000;
+    contextBudgetInput.value = normalizedK;
     chrome.storage.local.set({ contextBudgetTokens });
   });
   openInBackgroundToggle.addEventListener('click', () => {

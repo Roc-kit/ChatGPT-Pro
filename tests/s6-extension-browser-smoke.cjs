@@ -487,6 +487,8 @@ async function main() {
     'Minimap initial fetch is persisted as complete raw conversation JSON in IndexedDB before display decisions');
 
     if (process.argv.includes('--context-budget-only')) {
+      assert(await cdp.eval(popupSession, "(() => { const advanced = document.querySelector('#advancedSettings'); const input = document.querySelector('#contextBudgetInput'); const toggle = document.querySelector('#contextBudgetToggle'); return advanced.contains(input) && advanced.contains(toggle) && input.value === '100' && input.nextElementSibling?.textContent === 'K'; })()"),
+      'context budget settings live in Advanced Settings and display the budget in K');
       await eventually(async () => cdp.eval(pageSession, `(() => {
         const ring = document.querySelector('[data-chatgpt-pro-context-budget]');
         return Boolean(ring?.dataset.percent) && ring.nextElementSibling?.matches('[data-chatgpt-pro-auto-continue]');
@@ -499,7 +501,7 @@ async function main() {
       })()`), 'context popover shows one total without per-role breakdown');
       await cdp.eval(popupSession, `(() => {
         const input = document.querySelector('#contextBudgetInput');
-        input.value = '200000'; input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.value = '200'; input.dispatchEvent(new Event('change', { bubbles: true }));
       })()`);
       await eventually(async () => cdp.eval(pageSession,
         `document.querySelector('[data-chatgpt-pro-context-budget]').title.includes('200,000')`),

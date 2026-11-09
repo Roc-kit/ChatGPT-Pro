@@ -39,7 +39,9 @@
     .timestamp-size-control { display:flex; align-items:center; gap:5px; flex:0 0 auto; }
     .timestamp-size-control input { width:68px; padding:6px 8px; text-align:center; font-size:12px; }
     .timestamp-size-control span { font-size:11px; color:#6b7280; }
-    .context-budget-input { width:116px; flex:0 0 116px; padding:6px 8px; text-align:right; }
+    .context-budget-control { display:flex; align-items:center; gap:6px; flex:0 0 auto; }
+    .context-budget-input { width:82px; flex:0 0 82px; padding:6px 8px; text-align:right; }
+    .context-budget-unit { min-width:12px; font-size:11px; color:#6b7280; }
     #languageSelect { width:142px; max-width:142px; height:32px; }
     .opacity-setting { display:flex; flex-direction:column; gap:7px; padding:8px 0 3px; }
     .opacity-setting .row { min-height:0; }
@@ -141,9 +143,6 @@
     <div class="row setting-row"><span>侧边栏显示时间</span><div class="toggle" id="sidebarTimeToggle" role="switch" aria-checked="false"></div></div>
     <div class="row setting-row"><span>聊天消息显示时间戳</span><div class="toggle" id="messageTimeToggle" role="switch" aria-checked="false"></div></div>
     <div class="row setting-row"><span>长对话快速导航（Minimap）</span><div class="toggle active" id="minimapToggle" role="switch" aria-checked="true" tabindex="0" aria-label="长对话快速导航（Minimap）"></div></div>
-    <div class="row setting-row"><span>显示上下文预算进度</span><div class="toggle active" id="contextBudgetToggle" role="switch" aria-checked="true" tabindex="0" aria-label="显示上下文预算进度"></div></div>
-    <div class="row setting-row"><label for="contextBudgetInput">单对话 Token 预算</label><input id="contextBudgetInput" class="context-budget-input" type="number" min="10000" max="2000000" step="1000" value="100000" aria-label="单对话 Token 预算"></div>
-    <div class="hint">默认 100K；百分比表示当前分支文本估算量占自定义预算的比例，不是模型官方窗口或订阅额度。</div>
     <div class="row setting-row"><span>界面语言</span><select id="languageSelect" class="inline-select" aria-label="界面语言">
       <option value="auto">跟随浏览器</option>
       <option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option>
@@ -164,6 +163,9 @@
         <div class="hint">鼠标悬停时恢复为 100%</div>
       </div>
       <div class="row setting-row"><span>时间戳字号</span><div class="timestamp-size-control"><input id="size" type="number" min="8" max="24" step="1" value="11" aria-label="时间戳字号（侧边栏及消息）"><span>px</span></div></div>
+      <div class="row setting-row"><span>显示上下文预算进度</span><div class="toggle active" id="contextBudgetToggle" role="switch" aria-checked="true" tabindex="0" aria-label="显示上下文预算进度"></div></div>
+      <div class="row setting-row"><label for="contextBudgetInput">单对话 Token 预算</label><div class="context-budget-control"><input id="contextBudgetInput" class="context-budget-input" type="number" min="10" max="2000" step="1" value="100" aria-label="单对话 Token 预算（K）"><span class="context-budget-unit" aria-hidden="true">K</span></div></div>
+      <div class="hint">默认 100K；百分比表示当前分支文本估算量占自定义预算的比例，不是模型官方窗口或订阅额度。</div>
     </div>
     <div class="subsection"><div class="label">行为设置</div>
     <div class="row setting-row"><span>启用扩展</span><div class="toggle active" id="toggle" role="switch" aria-checked="true"></div></div>
