@@ -2320,6 +2320,9 @@
       button.setAttribute('data-chatgpt-pro-context-budget', '1');
       button.innerHTML = '<svg viewBox="0 0 38 38" aria-hidden="true"><circle cx="19" cy="19" r="13.5" class="chatgpt-pro-context-track"/><circle cx="19" cy="19" r="13.5" class="chatgpt-pro-context-progress" data-context-ring-progress/><text x="19" y="22.5" data-context-ring-value>—</text></svg>';
       button.addEventListener('click', () => {
+        // A manual click is an explicit request for a fresh conversation snapshot.
+        // This must bypass the minimap cache and its 30s refresh cooldown.
+        syncContextBudget(true, true);
         const popover = ensureContextBudgetPopover();
         const opening = popover.hidden;
         closeToolPopovers(popover);
@@ -2348,7 +2351,7 @@
     renderContextBudget();
   }
 
-  async function syncContextBudget(forceNetwork = false) {
+  async function syncContextBudget(forceNetwork = false, bypassCooldown = false) {
     if (document.hidden) return;
     const id = currentConversationId();
     if (!S.settings.enabled || !S.settings.showContextBudget || !id) return;
@@ -2368,9 +2371,14 @@
         ? S.minimap.cachedMessages : null;
       if (!data && S.messageConversationId === id) data = S.messageConversation;
       if (!data && S.conversationLoadId === id) data = S.conversationLoadData;
-      if (S.settings.showMinimap && !data) return; // Minimap already owns the fetch.
+      if (S.settings.showMinimap && !data && !forceNetwork) return; // Minimap already owns the fetch.
       if (!S.settings.showMinimap && forceNetwork && !window.ChatGPTDomAdapter.isGenerating()
-          && Date.now() - state.lastNetworkAt >= 30000) {
+          && (bypassCooldown || Date.now() - state.lastNetworkAt >= 30000)) {
+        state.lastNetworkAt = Date.now();
+        state.pendingRefresh = false;
+        data = await refreshConversationFromNetwork(id);
+      } else if (S.settings.showMinimap && forceNetwork && !window.ChatGPTDomAdapter.isGenerating()
+          && (bypassCooldown || Date.now() - state.lastNetworkAt >= 30000)) {
         state.lastNetworkAt = Date.now();
         state.pendingRefresh = false;
         data = await refreshConversationFromNetwork(id);
@@ -2413,13 +2421,8 @@
     const finished = S.contextBudget.wasGenerating && !generating;
     S.contextBudget.wasGenerating = generating;
     if (finished) {
-      if (S.settings.showMinimap) {
-        syncContextBudget();
-        return;
-      }
       S.contextBudget.pendingRefresh = true;
     }
-    if (S.settings.showMinimap) return; // The existing Minimap refresh is authoritative.
     // Delayed search jumps and ChatGPT virtualization temporarily mount
     // placeholder message IDs. They must not trigger a network refetch.
     // A completed response is the authoritative refresh signal here. If a
