@@ -3795,12 +3795,30 @@
   }
 
   let recoveringIndexTasks = false;
+  async function indexTrace(accountId, event, details = {}) {
+    const payload = { event, at: new Date().toISOString(), hidden: document.hidden, ...details };
+    log('Index trace:', JSON.stringify(payload));
+    await runtimeMessage({ action: 'indexSetupLog', accountId,
+      message: `索引跟踪 ${JSON.stringify(payload)}` }).catch(() => {});
+  }
   async function recoverIndexTasks() {
     if (recoveringIndexTasks || !S.settings.enabled) return;
     recoveringIndexTasks = true;
     try {
       const accountId = await window.APIHandler.getAccountId();
       const tasks = await indexTaskMessage('taskList', accountId);
+      const policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
+      await indexTrace(accountId, 'recovery-state', {
+        consentAt: Boolean(policy?.consentAt),
+        initialCompletedAt: Boolean(policy?.initialCompletedAt),
+        initialSnapshotReady: Boolean(policy?.initialSnapshotReady),
+        autoEnabled: policy?.autoEnabled,
+        tasks: tasks.filter(task => task.type === 'index').map(task => ({
+          id: task.id, status: task.status, phase: task.phase,
+          nextIndex: task.nextIndex, total: task.items?.length || 0,
+          leaseExpiresAt: task.lease?.expiresAt || 0
+        }))
+      });
       const hasRateLimitPause = tasks.some(task => task.type === 'index'
         && task.status === 'paused' && task.phase === 'rate-limit');
       const cooldownUntil = hasRateLimitPause
@@ -3814,6 +3832,7 @@
           await indexTaskMessage('taskControl', accountId, {
             id: task.id, operation: 'resume', reason: 'auto-rate-limit'
           });
+          await indexTrace(accountId, 'resume-rate-limit', { taskId: task.id });
           await runIndexTask(accountId, task.id)
             .catch(error => log('Rate-limit recovery skipped:', error.message));
           continue;
@@ -3821,30 +3840,38 @@
         if (!['running', 'pending'].includes(task.status)) continue;
         if (task.status === 'running' && task.lease?.expiresAt > Date.now()) continue;
         // The lease is acquired atomically. Another active tab wins safely.
+        await indexTrace(accountId, 'resume-task', { taskId: task.id, status: task.status });
         await runIndexTask(accountId, task.id).catch(error => log('Index recovery skipped:', error.message));
       }
-      const policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
       if (policy?.initialSnapshotReady && !policy.initialCompletedAt) {
         await finishInitialIndexIfReady(accountId);
       }
-      // The auto-update preference is independent from initial completion.
-      // Once the user has granted full-index consent, use the same durable
-      // index queue to finish the initial snapshot without requiring a Popup click.
-      if (policy?.autoEnabled === true && policy?.consentAt && !policy?.initialCompletedAt) {
+      // Completing an explicitly authorized first index must not depend on the
+      // later incremental-update toggle. The toggle controls changes after the
+      // initial snapshot; once consent exists, keep recovering the snapshot
+      // automatically until it is complete.
+      if (policy?.consentAt && !policy?.initialCompletedAt) {
         const activeInitialTask = tasks.some(task => task.type === 'index'
           && ['pending', 'running', 'paused'].includes(task.status));
         const lastKickoff = initialIndexKickoffByAccount.get(accountId) || 0;
         if (!activeInitialTask && Date.now() - lastKickoff >= INITIAL_INDEX_KICKOFF_RETRY_MS) {
           initialIndexKickoffByAccount.set(accountId, Date.now());
           try {
+            await indexTrace(accountId, 'initial-kickoff', { cachedRecords: null });
             const records = await window.APIHandler.getCachedConversationList();
+            await indexTrace(accountId, 'initial-records-loaded', { cachedRecords: records?.length || 0 });
             if (policy.initialSnapshotReady) {
-              await updateFullTextIndex(records, null, { automatic: true, initial: true });
+              // This is completion of the user-authorized first snapshot.
+              // It must use the manual/consented path; autoEnabled only
+              // governs incremental updates after the snapshot is complete.
+              await updateFullTextIndex(records, null, { automatic: false, initial: true });
             } else {
               await updateIndexWithConsent(records, null, true);
             }
+            await indexTrace(accountId, 'initial-kickoff-finished');
           } catch (error) {
             log('Automatic initial index continuation failed:', error.message);
+            await indexTrace(accountId, 'initial-kickoff-failed', { error: error.message });
             await runtimeMessage({ action: 'indexSetupLog', accountId,
               message: `自动补齐首次索引失败：${error.message}` }).catch(() => {});
           }
@@ -4652,6 +4679,14 @@
         const skippedCount = currentRecords.filter(record => skippedIds.has(record.id)).length;
         const remaining = currentRecords.filter(record => !indexedIds.has(record.id)
           && !skippedIds.has(record.id)).length;
+        // A skipped conversation is an explicit terminal outcome for the
+        // first-index snapshot. Reconcile completion while rendering too, so
+        // older task records cannot leave the control stuck on “继续首次索引”.
+        if (remaining === 0 && policy.result?.consentAt && !policy.result?.initialCompletedAt) {
+          await runtimeMessage({ action: 'indexPolicyFinishInitial', accountId }).catch(() => {});
+          policy.result = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
+        }
+        const effectiveInitialDone = Boolean(policy.result?.initialCompletedAt) || remaining === 0;
         const outdated = (response.records || []).filter(
           record => record.schemaVersion !== SEARCH_INDEX_SCHEMA_VERSION
         ).length;
@@ -4663,7 +4698,7 @@
               : activeTask ? '执行中'
           : outdated ? `刷新索引规则（${outdated} 个）`
             : remaining ? `补齐剩余 ${remaining} 个`
-            : policy.result.initialCompletedAt ? '更新索引' : '继续首次索引';
+            : effectiveInitialDone ? '更新索引' : '继续首次索引';
         if (activeTask?.status === 'paused') searchIndexUpdate.dataset.resumeTaskId = activeTask.id;
         const statusParts = !policy.result?.consentAt
           ? [`首次建立全文索引需点击授权；不会自动抓取正文。已有索引可搜索 · 当前 ${response.records?.length || 0} 条`]
@@ -5421,7 +5456,10 @@
     }, RECHECK_MS);
     setInterval(backgroundSyncConversationList, BACKGROUND_SYNC_MS);
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) scheduleAutomaticIndexRefresh(1200);
+      if (!document.hidden) {
+        scheduleAutomaticIndexRefresh(1200);
+        recoverIndexTasks().catch(error => log('Visible index recovery failed:', error.message));
+      }
     });
     window.setInterval(tickAutoContinue, 1000);
     // Resume ordinary incremental indexing automatically only AFTER the user

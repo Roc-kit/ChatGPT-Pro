@@ -746,7 +746,7 @@ globalThis.ChatGPTProLocalData = (() => {
     validateAccount(accountId);
     validateId(taskId);
     validateId(conversationId);
-    return transaction([STORES.accounts, STORES.tasks], 'readwrite', async stores => {
+    const result = await transaction([STORES.accounts, STORES.tasks], 'readwrite', async stores => {
       const task = await requested(stores[STORES.tasks].get(taskId));
       if (!task || task.accountId !== accountId || task.type !== 'index') {
         throw new Error('E_INDEX_SKIP_TASK_NOT_FOUND');
@@ -778,6 +778,12 @@ globalThis.ChatGPTProLocalData = (() => {
       }
       return { skipped: true, alreadySkipped, skippedCount: Number(task.skippedCount || 0) };
     });
+    // Skipping a failed item changes the authoritative first-index coverage.
+    // Re-evaluate completion immediately so skipping the final failures moves
+    // the account to the completed state instead of leaving “continue first
+    // index” visible until another indexing run happens.
+    const completion = await finishInitialIndex(accountId).catch(() => null);
+    return { ...result, completion };
   }
 
   /** Persist the ZIP blob and its end-of-volume checkpoint atomically.
