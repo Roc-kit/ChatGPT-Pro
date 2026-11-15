@@ -816,6 +816,13 @@ html.dark .chatgpt-pro-launcher:not(.chatgpt-pro-dock-launcher),
 .chatgpt-pro-row:hover { background: rgba(127, 127, 127, 0.08) !important; }
 .chatgpt-pro-row-date { color: #000000 !important; font-size: 13px !important; white-space: nowrap !important; }
 .chatgpt-pro-row-title { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+.chatgpt-pro-row-title-link {
+  display: block !important;
+  min-width: 0 !important;
+  color: inherit !important;
+  text-decoration: none !important;
+  cursor: pointer !important;
+}
 .chatgpt-pro-row-project { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; color: #6b7280 !important; font-size: 11px !important; text-align: left !important; }
 
 .chatgpt-pro-panel.chatgpt-pro-compact .chatgpt-pro-columns,

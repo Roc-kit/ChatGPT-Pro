@@ -2975,15 +2975,8 @@
     container.replaceChildren();
     for (const rec of sorted) {
       const onlyLocal = rec.remoteState === 'local-only';
-      const row = document.createElement(onlyLocal ? 'div' : 'a');
+      const row = document.createElement('div');
       row.className = 'chatgpt-pro-row';
-      if (!onlyLocal) row.href = rec.href || `/c/${rec.id}`;
-      if (!onlyLocal) row.addEventListener('click', event => {
-        if (!S.settings.openInBackground) return;
-        if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-        event.preventDefault();
-        chrome.runtime.sendMessage({ action: 'openInBackground', url: row.href });
-      });
 
       const selectCell = document.createElement('span');
       selectCell.className = 'chatgpt-pro-row-select';
@@ -3010,8 +3003,18 @@
       date.className = 'chatgpt-pro-row-date';
       date.textContent = formatTime(rec.createTime);
 
-      const title = document.createElement('span');
+      const title = document.createElement(onlyLocal ? 'span' : 'a');
       title.className = 'chatgpt-pro-row-title';
+      if (!onlyLocal) {
+        title.classList.add('chatgpt-pro-row-title-link');
+        title.href = rec.href || `/c/${rec.id}`;
+        title.addEventListener('click', event => {
+          if (!S.settings.openInBackground) return;
+          if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+          event.preventDefault();
+          chrome.runtime.sendMessage({ action: 'openInBackground', url: title.href });
+        });
+      }
       if (onlyLocal || rec.remoteState === 'unverified') {
         const statusLabel = document.createElement('span');
         statusLabel.className = 'chatgpt-pro-row-status';

@@ -1552,6 +1552,102 @@ async function main() {
     await eventually(async () => cdp.eval(pageSession,
       `Boolean(document.querySelector('.chatgpt-pro-row-checkbox'))`),
     'unindexed directory rendered');
+    const rowClickTargets = await cdp.eval(pageSession, `(() => {
+      const row = document.querySelector('.chatgpt-pro-row');
+      const title = row?.querySelector('.chatgpt-pro-row-title');
+      return {
+        rowTag: row?.tagName,
+        rowHref: row?.getAttribute('href'),
+        titleTag: title?.tagName,
+        titleHref: title?.getAttribute('href'),
+        checkboxInsideTitle: Boolean(title?.contains(row?.querySelector('.chatgpt-pro-row-checkbox'))),
+        dateInsideTitle: Boolean(title?.contains(row?.querySelector('.chatgpt-pro-row-date'))),
+        projectInsideTitle: Boolean(title?.contains(row?.querySelector('.chatgpt-pro-row-project'))),
+        exportInsideTitle: Boolean(title?.contains(row?.querySelector('.chatgpt-pro-row-export')))
+      };
+    })()`);
+    assert.deepEqual(rowClickTargets, {
+      rowTag: 'DIV', rowHref: null, titleTag: 'A', titleHref: `/c/${CHAT_ID}`,
+      checkboxInsideTitle: false, dateInsideTitle: false,
+      projectInsideTitle: false, exportInsideTitle: false
+    }, 'only the conversation title is a link; selection, date, source and export cells are outside it');
+    await cdp.evalInContext(pageSession, contentContextId, `(() => {
+      window.__s6OriginalSendMessage = chrome.runtime.sendMessage.bind(chrome.runtime);
+      window.__s6OpenRequests = [];
+      chrome.runtime.sendMessage = (message, ...args) => {
+        if (message?.action === 'openInBackground') {
+          window.__s6OpenRequests.push(message);
+          return Promise.resolve({ success: true });
+        }
+        return window.__s6OriginalSendMessage(message, ...args);
+      };
+    })()`);
+    const nonTitleClickBehavior = await cdp.eval(pageSession, `(() => {
+      const results = {};
+      for (const [name, selector] of [
+        ['date', '.chatgpt-pro-row-date'], ['project', '.chatgpt-pro-row-project']
+      ]) {
+        const target = document.querySelector(selector);
+        let defaultPrevented = null;
+        const observe = event => {
+          if (event.target !== target) return;
+          defaultPrevented = event.defaultPrevented;
+          event.preventDefault();
+        };
+        document.addEventListener('click', observe);
+        target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+        document.removeEventListener('click', observe);
+        results[name] = defaultPrevented;
+      }
+      return results;
+    })()`);
+    assert.deepEqual(nonTitleClickBehavior, { date: false, project: false },
+      'clicking date or source cells does not trigger conversation navigation');
+    assert.deepEqual(await cdp.evalInContext(pageSession, contentContextId,
+      'window.__s6OpenRequests'), [],
+    'date and source clicks do not request a background tab');
+    const titleClickPrevented = await cdp.eval(pageSession, `(() => {
+      const target = document.querySelector('.chatgpt-pro-row-title-link');
+      let defaultPrevented = null;
+      const observe = event => {
+        if (!target.contains(event.target)) return;
+        defaultPrevented = event.defaultPrevented;
+        event.preventDefault();
+      };
+      document.addEventListener('click', observe);
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+      document.removeEventListener('click', observe);
+      return defaultPrevented;
+    })()`);
+    assert.equal(titleClickPrevented, true,
+      'title click uses the configured background-tab behavior');
+    assert.deepEqual(await cdp.evalInContext(pageSession, contentContextId,
+      'window.__s6OpenRequests'), [{ action: 'openInBackground', url: CHAT_URL }],
+    'background-tab request is emitted only by the title link');
+    await cdp.eval(popupSession, `new Promise(resolve =>
+      chrome.storage.local.set({ openInBackground: false }, resolve))`);
+    await sleep(150);
+    const currentTabClickPrevented = await cdp.eval(pageSession, `(() => {
+      const target = document.querySelector('.chatgpt-pro-row-title-link');
+      let defaultPrevented = null;
+      const observe = event => {
+        if (!target.contains(event.target)) return;
+        defaultPrevented = event.defaultPrevented;
+        event.preventDefault();
+      };
+      document.addEventListener('click', observe);
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+      document.removeEventListener('click', observe);
+      return defaultPrevented;
+    })()`);
+    assert.equal(currentTabClickPrevented, false,
+      'disabling background tabs leaves the title link to open in the current tab');
+    assert.deepEqual(await cdp.evalInContext(pageSession, contentContextId,
+      'window.__s6OpenRequests'), [{ action: 'openInBackground', url: CHAT_URL }],
+    'current-tab title click does not emit a background-tab request');
+    await cdp.eval(popupSession, `new Promise(resolve =>
+      chrome.storage.local.set({ openInBackground: true }, resolve))`);
+    await sleep(150);
     const controls = await cdp.eval(pageSession, `(() => {
       return ['.chatgpt-pro-select-all input', '.chatgpt-pro-row-checkbox',
         '.chatgpt-pro-export-check-latest']
@@ -1578,6 +1674,13 @@ async function main() {
       `document.querySelector('.chatgpt-pro-select-all input').checked &&
        document.querySelector('.chatgpt-pro-batch-count').textContent.includes('1')`), true,
     'row checkbox still updates bulk selection and select-all state');
+    assert.deepEqual(await cdp.evalInContext(pageSession, contentContextId,
+      'window.__s6OpenRequests'), [{ action: 'openInBackground', url: CHAT_URL }],
+    'checkbox click changes selection without opening the conversation');
+    await cdp.evalInContext(pageSession, contentContextId, `(() => {
+      chrome.runtime.sendMessage = window.__s6OriginalSendMessage;
+      delete window.__s6OriginalSendMessage;
+    })()`);
     assert.equal(await cdp.eval(pageSession,
       `document.querySelector('.chatgpt-pro-export-check-latest').getBoundingClientRect().width >= 12`), true,
     'export check-latest checkbox is painted after selection reveals its toolbar');
