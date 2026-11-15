@@ -160,6 +160,10 @@ const context = {
           assert.equal(msg.record.updateTime, 1700000100,
             'detail JSON version takes precedence over a stale directory timestamp');
         }
+        if (msg.record.id === 'directory-ahead') {
+          assert.equal(msg.record.updateTime, 1700000200,
+            'a fresh detail fetch satisfies a slightly newer directory version');
+        }
         indexed.set(msg.record.id, msg.record.searchRecord.updateTime);
         return { success: true };
       case 'taskCheckpoint':
@@ -279,6 +283,11 @@ async function main() {
     { id: 'newer-detail', title: 'Newer detail', updateTime: 14, rawUpdateTime: 1700000100 }
   ], { force: true });
   assert.equal(newerDetail.indexedCount, 1);
+  const directoryAhead = await context.runner.maybeAutoIncrementalIndex([
+    { id: 'directory-ahead', title: 'Directory ahead', updateTime: 1700000200,
+      rawUpdateTime: 1700000198 }
+  ], { force: true });
+  assert.equal(directoryAhead.indexedCount, 1);
   assert.equal(strictFullScans, 1, 'automatic incremental indexing never repeats first full scan');
 
   policy.skippedIndexIds = ['user-skipped'];

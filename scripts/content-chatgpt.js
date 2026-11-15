@@ -4008,11 +4008,20 @@
             { pauseOnRateLimit: true });
           usedNetwork = source === 'network';
           await indexTaskMessage('taskHeartbeat', accountId, { id: taskId, owner: INDEX_EXECUTOR_ID, token });
+          // A freshly fetched detail response is authoritative even when its
+          // embedded update_time trails the directory timestamp by a few
+          // seconds. Persist the newer observed version so the same response
+          // does not remain permanently stale and get fetched forever.
+          const observedDetailVersion = timestampValue(
+            data?.update_time ?? data?.updated_at
+          );
+          const requestedDirectoryVersion = timestampValue(rec.updateTime);
+          const indexedVersion = Math.max(observedDetailVersion, requestedDirectoryVersion) || null;
           await runtimeMessage({
             action: 'localDataPutConversation', accountId,
             record: {
               id: rec.id, raw: data,
-              updateTime: data?.update_time ?? data?.updated_at ?? rec.updateTime,
+              updateTime: indexedVersion,
               searchRecord: buildSearchIndexRecord(data, rec)
             }
           });
