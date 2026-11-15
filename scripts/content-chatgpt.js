@@ -4205,12 +4205,6 @@
   }
 
   let recoveringIndexTasks = false;
-  async function indexTrace(accountId, event, details = {}) {
-    const payload = { event, at: new Date().toISOString(), hidden: document.hidden, ...details };
-    log('Index trace:', JSON.stringify(payload));
-    await runtimeMessage({ action: 'indexSetupLog', accountId,
-      message: `索引跟踪 ${JSON.stringify(payload)}` }).catch(() => {});
-  }
   async function recoverIndexTasks() {
     if (recoveringIndexTasks || !S.settings.enabled) return;
     recoveringIndexTasks = true;
@@ -4218,17 +4212,6 @@
       const accountId = await window.APIHandler.getAccountId();
       const tasks = await indexTaskMessage('taskList', accountId);
       const policy = (await runtimeMessage({ action: 'indexPolicyGet', accountId })).result;
-      await indexTrace(accountId, 'recovery-state', {
-        consentAt: Boolean(policy?.consentAt),
-        initialCompletedAt: Boolean(policy?.initialCompletedAt),
-        initialSnapshotReady: Boolean(policy?.initialSnapshotReady),
-        autoEnabled: policy?.autoEnabled,
-        tasks: tasks.filter(task => task.type === 'index').map(task => ({
-          id: task.id, status: task.status, phase: task.phase,
-          nextIndex: task.nextIndex, total: task.items?.length || 0,
-          leaseExpiresAt: task.lease?.expiresAt || 0
-        }))
-      });
       const hasRateLimitPause = tasks.some(task => task.type === 'index'
         && task.status === 'paused' && task.phase === 'rate-limit');
       const cooldownUntil = hasRateLimitPause
@@ -4242,7 +4225,6 @@
           await indexTaskMessage('taskControl', accountId, {
             id: task.id, operation: 'resume', reason: 'auto-rate-limit'
           });
-          await indexTrace(accountId, 'resume-rate-limit', { taskId: task.id });
           await runIndexTask(accountId, task.id)
             .catch(error => log('Rate-limit recovery skipped:', error.message));
           continue;
@@ -4250,7 +4232,6 @@
         if (!['running', 'pending'].includes(task.status)) continue;
         if (task.status === 'running' && task.lease?.expiresAt > Date.now()) continue;
         // The lease is acquired atomically. Another active tab wins safely.
-        await indexTrace(accountId, 'resume-task', { taskId: task.id, status: task.status });
         await runIndexTask(accountId, task.id).catch(error => log('Index recovery skipped:', error.message));
       }
       if (policy?.initialSnapshotReady && !policy.initialCompletedAt) {
@@ -4267,9 +4248,7 @@
         if (!activeInitialTask && Date.now() - lastKickoff >= INITIAL_INDEX_KICKOFF_RETRY_MS) {
           initialIndexKickoffByAccount.set(accountId, Date.now());
           try {
-            await indexTrace(accountId, 'initial-kickoff', { cachedRecords: null });
             const records = await window.APIHandler.getCachedConversationList();
-            await indexTrace(accountId, 'initial-records-loaded', { cachedRecords: records?.length || 0 });
             if (policy.initialSnapshotReady) {
               // This is completion of the user-authorized first snapshot.
               // It must use the manual/consented path; autoEnabled only
@@ -4278,10 +4257,8 @@
             } else {
               await updateIndexWithConsent(records, null, true);
             }
-            await indexTrace(accountId, 'initial-kickoff-finished');
           } catch (error) {
             log('Automatic initial index continuation failed:', error.message);
-            await indexTrace(accountId, 'initial-kickoff-failed', { error: error.message });
             await runtimeMessage({ action: 'indexSetupLog', accountId,
               message: `自动补齐首次索引失败：${error.message}` }).catch(() => {});
           }
@@ -4296,9 +4273,8 @@
   // Its task controls must go through this authenticated content script.
   async function getTaskDashboard() {
     const accountId = await window.APIHandler.getAccountId();
-    const [tasksResult, logsResult, cooldownResult, indexPolicyResult, statsResult] = await Promise.all([
+    const [tasksResult, cooldownResult, indexPolicyResult, statsResult] = await Promise.all([
       runtimeMessage({ action: 'taskList', accountId }),
-      runtimeMessage({ action: 'logList', accountId, limit: 12 }),
       runtimeMessage({ action: 'detailStatus', accountId }),
       runtimeMessage({ action: 'indexPolicyGet', accountId }),
       runtimeMessage({ action: 'localDataStats', accountId })
@@ -4355,10 +4331,6 @@
         phase: task.phase || null, waitUntil: task.waitUntil || 0,
         updatedAt: task.updatedAt, createdAt: task.createdAt,
         recoveryPending: task.status === 'running' && task.lease?.expiresAt <= Date.now()
-      })),
-      logs: (logsResult.result || []).map(log => ({
-        id: log.id, type: log.type, code: log.code,
-        createdAt: log.createdAt, message: log.message
       })),
       cooldownUntil: cooldownResult.result?.cooldownUntil || 0,
       indexPolicy: indexPolicyResult.result,
