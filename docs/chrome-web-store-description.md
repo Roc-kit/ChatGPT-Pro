@@ -143,31 +143,33 @@ GitHub: https://github.com/Roc-kit/ChatGPT-Pro
 ChatGPT Pro is an independent third-party extension. It is not affiliated with, endorsed by, or sponsored by OpenAI, and it is separate from any paid ChatGPT plan.
 ```
 
-## v3.0.2 What's New（English）
+## v3.0.3 What's New（English）
 
 ```text
-- Added on-demand full-text indexing with automatic updates for new or changed conversations.
-- Bulk archive and permanent deletion are now available from the conversation list.
-- Added a minimap for jumping around long conversations.
-- Added ZIP export for images in the current conversation, including split volumes and a result summary.
-- Bulk exports can be split into ZIP parts and resumed after an interruption, with clearer progress and rate-limit status.
-- Improved message timestamp display when switching between conversations.
+- Conversation rows now open only from the title link, preventing accidental navigation when selecting rows or using other columns.
+- Fully cached bulk exports are no longer split at the legacy 50-conversation request boundary; uncached exports keep the existing request pacing and grouping.
+- Fixed index version handling so a freshly fetched conversation is not immediately treated as stale when the directory timestamp is slightly newer.
+- Removed obsolete high-frequency index trace logging while retaining failure, retry, and rate-limit diagnostics.
 ```
 
-## v3.0.2 本次更新（简体中文）
+## v3.0.3 本次更新（简体中文）
 
 ```text
-首次使用全文搜索时，可以按需建立索引；之后会自动更新新增或发生变化的对话。
-聊天目录新增批量归档和永久删除操作。
-新增长对话快速导航 Minimap，方便快速跳转到不同消息。
-新增当前对话图片 ZIP 导出，支持分卷并显示导出结果。
-批量导出支持 ZIP 分卷和中断后继续，任务进度与限流等待状态也更清楚。
-改进切换对话后时间戳的显示稳定性。
+聊天目录现在只有标题可以打开对话，点击复选框、日期、来源等其他列不会误触跳转。
+已经完整缓存的批量导出不再按旧的 50 条请求分组拆分 ZIP；未缓存对话仍保留原有请求节奏与分组。
+修复全文索引版本判断：刚刚获取的完整对话不会因为目录时间戳略新而立即再次被判定为过期。
+清理自动全文索引遗留的高频跟踪日志，同时保留失败、重试和限流等必要诊断信息。
 ```
 
 ## Chrome Web Store 简体中文完整简介（可直接粘贴）
 
 ```text
+3.0.3
+- 聊天目录现在只有标题可以打开对话，点击复选框、日期、来源等其他列不会误触跳转。
+- 已经完整缓存的批量导出不再按旧的 50 条请求分组拆分 ZIP；未缓存对话仍保留原有请求节奏与分组。
+- 修复全文索引版本判断，避免刚抓取的对话因为目录时间戳略新而被重复抓取。
+- 清理自动全文索引遗留的高频跟踪日志，保留失败、重试和限流等必要诊断。
+
 3.0.2
 - 首次使用全文搜索时，可以按需建立索引；之后会自动更新新增或发生变化的对话。
 - 聊天目录新增批量归档和永久删除操作。
@@ -285,8 +287,8 @@ GitHub：https://github.com/Roc-kit/ChatGPT-Pro
 ## 提交前检查
 
 - 在 Chrome Web Store Developer Dashboard 的 Store listing 中同步更新名称、简短说明和完整说明。
-- 上传包含 `manifest.json` v3.0.2 的完整 ZIP 包。
-- 当前公开商品页仍显示旧名称 `ChatGPT Timeline` 和 v2.6.0；本地 manifest 使用 v3.0.2 和 `ChatGPT Pro: Timeline, Search, Timestamps & Bulk Export`。提交前统一商店名称、版本号和本地清单。
+- 上传包含 `manifest.json` v3.0.3 的完整 ZIP 包。
+- 当前公开商品页仍显示旧名称 `ChatGPT Timeline` 和 v2.6.0；本地 manifest 使用 v3.0.3 和 `ChatGPT Pro: Timeline, Search, Timestamps & Bulk Export`。提交前统一商店名称、版本号和本地清单。
 - 更新截图，至少展示聊天时间线/Minimap、全文搜索、本地索引管理、消息时间戳和可恢复的批量导出。
 - 检查 Privacy practices 与 `PRIVACY.md` 保持一致。
 - 提交审核前确认商品详情中没有声明尚未实现的功能。

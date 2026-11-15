@@ -90,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  document.getElementById('extensionVersion').textContent = `v${chrome.runtime.getManifest?.().version || '3.0.2'}`;
+  document.getElementById('extensionVersion').textContent = `v${chrome.runtime.getManifest?.().version || '3.0.3'}`;
 
   function findChatGPTTab() {
     return new Promise(resolve => {
