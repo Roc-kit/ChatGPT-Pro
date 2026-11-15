@@ -3738,7 +3738,6 @@
 
     const totalGroups = Math.ceil(records.length / EXPORT_GROUP_SIZE);
     for (let index = volumeStartIndex; index < records.length; index++) {
-      if (volumeEntries.length >= EXPORT_VOLUME_MAX_FILES) await flushVolume(false, index);
       const rec = records[index];
       const progress = {
         done: index,
@@ -3775,6 +3774,9 @@
             id: session.taskId, operation: 'pause', reason: 'auth-error' });
           throw new Error('登录/权限异常，导出任务已暂停；本地分卷与检查点仍保留');
         }
+        if (usedNetwork && volumeEntries.length >= EXPORT_VOLUME_MAX_FILES) {
+          await flushVolume(false, index);
+        }
         const entry = { id: rec.id, title: rec.title || rec.id, status: 'failed',
           filename: null, volume: volumeNumber, error: error.message || String(error) };
         failures.push(entry);
@@ -3785,6 +3787,12 @@
       }
       if (prepared) {
         consecutiveFailures = 0;
+        // Fully cached conversations need no request pacing or 50-item
+        // download batches. Keep the legacy volume boundary for records
+        // that require a network fetch; byte-size limits still apply below.
+        if (usedNetwork && volumeEntries.length >= EXPORT_VOLUME_MAX_FILES) {
+          await flushVolume(false, index);
+        }
         if (volumeEntries.length && volumeBytes + prepared.bytes.byteLength > EXPORT_VOLUME_MAX_BYTES) {
           // Save errors must abort this task, never turn a successfully
           // converted conversation into an unrelated item failure.

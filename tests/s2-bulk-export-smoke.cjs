@@ -73,27 +73,37 @@ async function main() {
     const result = await harness.context.runBatch(records, 'json');
     assert.equal(result.successCount, 100);
     assert.equal(result.failureCount, 0);
-    assert.equal(result.volumeCount, 2);
-    assert.equal(harness.downloads.length, 2);
+    assert.equal(result.volumeCount, 1);
+    assert.equal(harness.downloads.length, 1);
     assert.equal(harness.delays.length, 0, '100 cached conversations have zero artificial pacing');
     assert.equal(harness.getNetworkCalls(), 0, 'cached export makes zero detail API requests');
-    const first = await zipEntries(harness.downloads[0].blob);
-    const last = await zipEntries(harness.downloads[1].blob);
-    assert.equal(first.size, 51, '50 chats plus manifest in part one');
-    assert.equal(last.size, 51, '50 chats plus manifest in part two');
-    const firstManifest = JSON.parse(first.get('manifest.json').toString());
-    const lastManifest = JSON.parse(last.get('manifest.json').toString());
-    assert.equal(firstManifest.scope, 'volume');
-    assert.equal(firstManifest.conversations.length, 50);
-    assert.equal(lastManifest.scope, 'complete');
-    assert.equal(lastManifest.conversations.length, 100);
-    assert.equal(lastManifest.conversations[0].filename, 'same.json');
-    assert.equal(lastManifest.conversations[1].filename, 'same (2).json');
-    assert.equal(lastManifest.conversations[99].volume, 2);
-    const allNames = new Set([...first.keys(), ...last.keys()]);
+    const archive = await zipEntries(harness.downloads[0].blob);
+    assert.equal(archive.size, 101, '100 cached conversations plus one manifest in a single ZIP');
+    const manifest = JSON.parse(archive.get('manifest.json').toString());
+    assert.equal(manifest.scope, 'complete');
+    assert.equal(manifest.conversations.length, 100);
+    assert.equal(manifest.conversations[0].filename, 'same.json');
+    assert.equal(manifest.conversations[1].filename, 'same (2).json');
+    assert.equal(manifest.conversations[99].volume, 1);
+    const allNames = new Set(archive.keys());
     assert(allNames.has('same (100).json'), 'filenames unique across volumes');
     assert(harness.downloads[0].filename.endsWith('_part001.zip'));
-    assert(harness.downloads[1].filename.endsWith('_part002.zip'));
+  }
+  {
+    const harness = makeHarness();
+    const records = Array.from({ length: 100 }, (_, i) => ({
+      id: `network-${i}`, title: `Network chat ${i}`, source: 'network'
+    }));
+    const result = await harness.context.runBatch(records, 'json');
+    assert.equal(result.volumeCount, 2, 'uncached conversations retain 50-item ZIP volumes');
+    assert.equal(harness.downloads.length, 2);
+    assert.equal(harness.delays.length, 99, 'uncached conversations retain per-request pacing');
+    assert.equal(harness.delays.filter(delay => delay.ms === 10000).length, 1,
+      'uncached conversations retain the 50-item group cooldown');
+    const first = await zipEntries(harness.downloads[0].blob);
+    const last = await zipEntries(harness.downloads[1].blob);
+    assert.equal(JSON.parse(first.get('manifest.json').toString()).conversations.length, 50);
+    assert.equal(JSON.parse(last.get('manifest.json').toString()).conversations.length, 100);
   }
   {
     const harness = makeHarness();
@@ -140,7 +150,7 @@ async function main() {
   {
     const harness = makeHarness({ throwAtVolume: 2 });
     await assert.rejects(() => harness.context.runBatch(
-      Array.from({ length: 100 }, (_, i) => ({ id: String(i) })), 'json'
+      Array.from({ length: 100 }, (_, i) => ({ id: String(i), source: 'network' })), 'json'
     ), /simulated download failure/);
     assert.equal(harness.downloads.length, 1, 'previously created volume remains available');
     assert.equal((await zipEntries(harness.downloads[0].blob)).size, 51);

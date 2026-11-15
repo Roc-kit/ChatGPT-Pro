@@ -2029,7 +2029,8 @@ async function main() {
     assert.equal(seed, 55, '55 complete cached JSON records seeded via real worker');
 
     // Force panel rerender after cache seeding. The original indexed fixture
-    // plus these 55 rows should yield two independently downloaded ZIP parts.
+    // plus these 55 rows are all locally cached, so they should be exported
+    // together instead of being split at the legacy 50-item request boundary.
     await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
     await cdp.eval(pageSession, `document.querySelector('[data-chatgpt-pro-launcher]').click()`);
     await eventually(async () => cdp.eval(pageSession,
@@ -2037,16 +2038,20 @@ async function main() {
     'all locally cached conversations present in directory');
     await cdp.eval(pageSession, `document.querySelector('.chatgpt-pro-select-all input').click()`);
     await cdp.eval(pageSession, `document.querySelector('[data-batch-format="md"]').click()`);
-    await eventually(async () => fs.readdirSync(downloadPath).filter(name => name.endsWith('.zip')).length >= 3,
-      'both Markdown ZIP volumes downloaded independently', 24000);
+    await eventually(async () => fs.readdirSync(downloadPath).some(name =>
+      name.includes('_MD_part001.zip')),
+    'cached Markdown export downloaded as one ZIP', 24000);
     assert.equal(requests.details, 8 + detailOffset, '56 cached records exported without further detail requests');
     const volumeFiles = fs.readdirSync(downloadPath).filter(name => name.endsWith('.zip'));
-    const secondVolume = volumeFiles.find(name => name.includes('_MD_part002.zip'));
-    assert(secondVolume, `second independent Markdown ZIP present: ${volumeFiles.join(', ')}`);
-    const secondBytes = fs.readFileSync(path.join(downloadPath, secondVolume));
+    const markdownVolumes = volumeFiles.filter(name => name.includes('_MD_part'));
+    assert.equal(markdownVolumes.length, 1,
+      `cached Markdown export must not use the legacy 50-item split: ${volumeFiles.join(', ')}`);
+    assert(markdownVolumes[0].includes('_MD_part001.zip'));
+    const markdownBytes = fs.readFileSync(path.join(downloadPath, markdownVolumes[0]));
     const manifestLabel = Buffer.from('manifest.json');
-    assert(secondBytes.includes(manifestLabel), 'second ZIP has manifest entry');
-    assert(secondBytes.includes(Buffer.from('s6-batch-54')), 'second ZIP manifest covers final conversation');
+    assert(markdownBytes.includes(manifestLabel), 'cached Markdown ZIP has manifest entry');
+    assert(markdownBytes.includes(Buffer.from('s6-batch-54')),
+      'single cached Markdown ZIP manifest covers final conversation');
 
     const projectSeed = await cdp.eval(popupSession, `chrome.runtime.sendMessage({
       action: 'localDataUpsertDirectory', accountId: 's6-isolated-account',
